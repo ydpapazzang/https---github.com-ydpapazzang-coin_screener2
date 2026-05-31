@@ -9,29 +9,29 @@ class Strategy(models.Model):
 
 class Condition(models.Model):
     TIMEFRAME_CHOICES = [
-        ('minute1', '1분봉'),
-        ('minute3', '3분봉'),
-        ('minute5', '5분봉'),
-        ('minute10', '10분봉'),
-        ('minute15', '15분봉'),
-        ('minute30', '30분봉'),
-        ('minute60', '1시간봉'),
+        ('minute1',   '1분봉'),
+        ('minute3',   '3분봉'),
+        ('minute5',   '5분봉'),
+        ('minute10',  '10분봉'),
+        ('minute15',  '15분봉'),
+        ('minute30',  '30분봉'),
+        ('minute60',  '1시간봉'),
         ('minute240', '4시간봉'),
-        ('day', '일봉'),
-        ('week', '주봉'),
-        ('month', '월봉'),
+        ('day',       '일봉'),
+        ('week',      '주봉'),
+        ('month',     '월봉'),
     ]
-    
+
     INDICATOR_CHOICES = [
-        ('MA',  '단순이동평균(SMA)'),
-        ('EMA', '지수이동평균(EMA)'),
-        ('WMA', '가중이동평균(WMA)'),
-        ('RSI', 'RSI'),
-        ('BB_UPPER', '볼린저 상단'),
+        ('MA',        '단순이동평균(SMA)'),
+        ('EMA',       '지수이동평균(EMA)'),
+        ('WMA',       '가중이동평균(WMA)'),
+        ('RSI',       'RSI'),
+        ('BB_UPPER',  '볼린저 상단'),
         ('BB_MIDDLE', '볼린저 중단'),
-        ('BB_LOWER', '볼린저 하단'),
-        ('VAL', '고정값'),
-        ('CLOSE', '종가'),
+        ('BB_LOWER',  '볼린저 하단'),
+        ('VAL',       '고정값'),
+        ('CLOSE',     '종가'),
     ]
 
     OPERATOR_CHOICES = [
@@ -42,17 +42,20 @@ class Condition(models.Model):
     ]
 
     strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='conditions')
-    
-    timeframe = models.CharField(max_length=20, choices=TIMEFRAME_CHOICES, default='day')
-    offset = models.IntegerField(default=0, verbose_name="n봉 전")
 
-    left_indicator  = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
-    left_param      = models.IntegerField(default=5, verbose_name="좌변 기간/값")
+    timeframe   = models.CharField(max_length=20, choices=TIMEFRAME_CHOICES, default='day')
+    offset      = models.IntegerField(default=0, verbose_name="n봉 전")
+    offset_mode = models.CharField(max_length=20, null=True, blank=True)  # DB에 존재, nullable 처리
+
+    left_indicator = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
+    left_param     = models.IntegerField(default=5, verbose_name="좌변 기간/값")
 
     operator = models.CharField(max_length=5, choices=OPERATOR_CHOICES, default='gte')
 
     right_indicator = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
     right_param     = models.IntegerField(default=20, verbose_name="우변 기간/값")
+
+    bb_std = models.FloatField(null=True, blank=True)  # DB에 존재, nullable 처리
 
     def __str__(self):
         return (f"{self.offset}봉전 "
