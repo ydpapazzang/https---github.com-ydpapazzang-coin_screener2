@@ -299,11 +299,16 @@
 
         /* ── ACTION BUTTONS ── */
         .action-bar {
-            display: grid;
-            grid-template-columns: auto auto 1fr auto;
-            gap: 10px;
+            display: flex;
             align-items: center;
+            gap: 10px;
             margin-top: 24px;
+            flex-wrap: wrap;
+        }
+        .action-bar-right {
+            display: flex;
+            gap: 10px;
+            margin-left: auto;
         }
         .btn {
             padding: 13px 22px;
@@ -313,6 +318,7 @@
             font-weight: 700;
             cursor: pointer;
             transition: opacity .15s, transform .1s;
+            white-space: nowrap;
         }
         .btn:active { transform: scale(.97); }
         .btn-outline {
@@ -321,10 +327,60 @@
             color: var(--text);
         }
         .btn-outline:hover { border-color: var(--text); }
+        .btn-outline.active-filter {
+            border-color: var(--blue);
+            color: var(--blue);
+            background: rgba(41,98,255,.08);
+        }
         .btn-primary { background: var(--blue); color: #fff; }
         .btn-primary:hover { opacity: .88; }
         .btn-gold { background: var(--gold); color: #000; }
         .btn-gold:hover { opacity: .88; }
+
+        /* ── VOLUME DROPDOWN ── */
+        .vol-wrap { position: relative; }
+        .vol-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 13px 16px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: border-color .15s;
+            white-space: nowrap;
+        }
+        .vol-btn:hover, .vol-btn.open { border-color: var(--text); }
+        .vol-btn.active-filter { border-color: var(--blue); color: var(--blue); background: rgba(41,98,255,.08); }
+        .vol-btn .arrow { font-size: 10px; transition: transform .2s; }
+        .vol-btn.open .arrow { transform: rotate(180deg); }
+        .vol-menu {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 0;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            min-width: 160px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.4);
+            z-index: 100;
+        }
+        .vol-menu.open { display: block; }
+        .vol-item {
+            padding: 11px 16px;
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+            transition: background .1s;
+        }
+        .vol-item:hover { background: var(--surface2); }
+        .vol-item.selected { color: var(--blue); font-weight: 700; background: rgba(41,98,255,.08); }
         .btn-add-cond {
             background: var(--blue);
             color: #fff;
@@ -650,14 +706,35 @@
 
     </div><!-- /card -->
 
-    <!-- ── 하단 액션 버튼 ── -->
+    <!-- ── 하단 액션 바 ── -->
     <div class="action-bar">
-        <button class="btn btn-outline" onclick="filterUpbit()">업비트</button>
-        <button class="btn btn-outline" onclick="filterTop100()">거래대금 상위 100개</button>
-        <div></div><!-- spacer -->
-        <div style="display:flex; gap:10px;">
-            <a href="{% url 'coin_search' strategy.id %}" class="btn btn-primary" style="text-decoration:none;">검색 실행</a>
-            <button class="btn btn-gold" onclick="alert('백테스팅 기능 준비 중입니다.')">📈 백테스팅</button>
+
+        <!-- 거래소 토글 -->
+        <button id="btn-upbit"  class="btn btn-outline active-filter" onclick="selectExchange('upbit')">업비트</button>
+        <button id="btn-bithumb" class="btn btn-outline"              onclick="selectExchange('bithumb')">빗썸</button>
+
+        <!-- 거래대금 드롭다운 -->
+        <div class="vol-wrap">
+            <button class="vol-btn active-filter" id="vol-btn" onclick="toggleVolMenu()">
+                <span id="vol-label">거래대금 상위 100개</span>
+                <span class="arrow">▼</span>
+            </button>
+            <div class="vol-menu" id="vol-menu">
+                <div class="vol-item" data-val="30"   onclick="selectVol(this)">거래대금 상위 30개</div>
+                <div class="vol-item" data-val="50"   onclick="selectVol(this)">거래대금 상위 50개</div>
+                <div class="vol-item selected" data-val="100" onclick="selectVol(this)">거래대금 상위 100개</div>
+                <div class="vol-item" data-val="200"  onclick="selectVol(this)">거래대금 상위 200개</div>
+                <div class="vol-item" data-val="0"    onclick="selectVol(this)">전체 코인</div>
+            </div>
+        </div>
+
+        <input type="hidden" id="selected-exchange" value="upbit">
+        <input type="hidden" id="selected-vol"      value="100">
+
+        <!-- 검색 + 백테스팅 -->
+        <div class="action-bar-right">
+            <button class="btn btn-primary" onclick="runSearch()">검색 실행</button>
+            <button class="btn btn-gold"    onclick="alert('백테스팅 기능 준비 중입니다.')">📈 백테스팅</button>
         </div>
     </div>
 
@@ -739,9 +816,44 @@ function selectBB(val, btn) {
     document.getElementById('bb_target_val').value = val;
 }
 
-/* ── FILTER BUTTONS (placeholder) ── */
-function filterUpbit()  { alert('업비트 필터 적용'); }
-function filterTop100() { alert('거래대금 상위 100개 필터 적용'); }
+/* ── EXCHANGE SELECTOR ── */
+function selectExchange(ex) {
+    document.getElementById('selected-exchange').value = ex;
+    document.getElementById('btn-upbit').classList.toggle('active-filter',  ex === 'upbit');
+    document.getElementById('btn-bithumb').classList.toggle('active-filter', ex === 'bithumb');
+}
+
+/* ── VOLUME DROPDOWN ── */
+function toggleVolMenu() {
+    const btn  = document.getElementById('vol-btn');
+    const menu = document.getElementById('vol-menu');
+    btn.classList.toggle('open');
+    menu.classList.toggle('open');
+}
+function selectVol(el) {
+    document.querySelectorAll('.vol-item').forEach(i => i.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('vol-label').textContent = el.textContent;
+    document.getElementById('selected-vol').value    = el.dataset.val;
+    document.getElementById('vol-btn').classList.add('active-filter');
+    toggleVolMenu();
+}
+// 외부 클릭 시 메뉴 닫기
+document.addEventListener('click', function(e) {
+    const wrap = document.querySelector('.vol-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+        document.getElementById('vol-btn').classList.remove('open');
+        document.getElementById('vol-menu').classList.remove('open');
+    }
+});
+
+/* ── RUN SEARCH ── */
+function runSearch() {
+    const exchange = document.getElementById('selected-exchange').value;
+    const vol      = document.getElementById('selected-vol').value;
+    const url      = `{% url 'coin_search' strategy.id %}?exchange=${exchange}&vol_limit=${vol}`;
+    window.location.href = url;
+}
 
 /* ── VALIDATIONS ── */
 function validateMA() {

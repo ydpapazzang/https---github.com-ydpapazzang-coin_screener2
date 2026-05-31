@@ -166,12 +166,47 @@ def condition_delete(request, strategy_id, condition_id):
 # 3. 코인 검색 — SSE 스트리밍 버전
 # ──────────────────────────────────────────
 
+def _get_tickers(exchange, vol_limit):
+    """거래소·거래대금 조건에 맞는 티커 목록 반환"""
+    if exchange == 'bithumb':
+        import requests as req
+        try:
+            r = req.get('https://api.bithumb.com/public/ticker/ALL_KRW', timeout=5)
+            data = r.json().get('data', {})
+            tickers = [f"KRW-{k}" for k in data if k != 'date']
+            if vol_limit:
+                # 빗썸은 acc_trade_value_24H 필드로 정렬
+                def trade_val(k):
+                    try: return float(data[k.replace('KRW-','')].get('acc_trade_value_24H', 0))
+                    except: return 0
+                tickers.sort(key=trade_val, reverse=True)
+                tickers = tickers[:vol_limit]
+        except Exception:
+            tickers = []
+    else:
+        # 업비트 기본
+        all_tickers = pyupbit.get_tickers(fiat="KRW") or []
+        if vol_limit:
+            # pyupbit으로 거래대금 순 정렬
+            try:
+                import requests as req
+                symbols = [t.replace('KRW-', '') for t in all_tickers]
+                r = req.get(
+                    'https://api.upbit.com/v1/ticker',
+                    params={'markets': ','.join(all_tickers)},
+                    timeout=5
+                )
+                data = r.json()
+                sorted_tickers = sorted(data, key=lambda x: x.get('acc_trade_price_24h', 0), reverse=True)
+                tickers = [d['market'] for d in sorted_tickers[:vol_limit]]
+            except Exception:
+                tickers = all_tickers[:vol_limit]
+        else:
+            tickers = all_tickers
+    return tickers
+
+
 def coin_search(request, strategy_id):
-    """
-    일반 GET: 캐시 있으면 바로 결과 페이지 렌더.
-    캐시 없으면 로딩 페이지(search_loading.html)를 먼저 띄우고,
-    JS가 /strategy/<id>/search-stream/ SSE 엔드포인트를 구독해 진행률을 받는다.
-    """
     strategy   = get_object_or_404(Strategy, id=strategy_id)
     conditions = list(strategy.conditions.all())
 
@@ -179,7 +214,10 @@ def coin_search(request, strategy_id):
         messages.warning(request, "조건을 먼저 추가해주세요.")
         return redirect('strategy_detail', strategy_id=strategy_id)
 
-    cache_key   = f"strategy_results_{strategy_id}"
+    exchange  = request.GET.get('exchange', 'upbit')
+    vol_limit = int(request.GET.get('vol_limit', 0) or 0)
+
+    cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
     cached_data = cache.get(cache_key)
 
     if cached_data and request.GET.get('refresh') != '1':
@@ -191,24 +229,29 @@ def coin_search(request, strategy_id):
             'last_updated':       cached_data.get('last_updated'),
         })
 
-    # 캐시 없음 → 로딩 페이지 반환 (JS가 SSE로 진행)
-    return render(request, 'screener/search_loading.html', {'strategy': strategy})
+    # 캐시 없음 → 로딩 페이지 (JS가 SSE로 진행)
+    return render(request, 'screener/search_loading.html', {
+        'strategy':  strategy,
+        'exchange':  exchange,
+        'vol_limit': vol_limit,
+    })
 
 
 def coin_search_stream(request, strategy_id):
-    """SSE: 검색 진행률 + 최종 결과를 스트리밍으로 전송"""
+    """SSE: 검색 진행률 + 최종 결과 스트리밍"""
     from django.http import StreamingHttpResponse
-    import time
 
     strategy   = get_object_or_404(Strategy, id=strategy_id)
     conditions = list(strategy.conditions.all())
+    exchange   = request.GET.get('exchange', 'upbit')
+    vol_limit  = int(request.GET.get('vol_limit', 0) or 0)
 
     def event_stream():
         if not conditions:
             yield "data: " + json.dumps({"type": "error", "msg": "조건이 없습니다."}) + "\n\n"
             return
 
-        tickers = pyupbit.get_tickers(fiat="KRW") or []
+        tickers = _get_tickers(exchange, vol_limit)
         total   = len(tickers)
         results = []
         done    = 0
@@ -232,10 +275,8 @@ def coin_search_stream(request, strategy_id):
                 pass
             return None
 
-        # max_workers=20 으로 4배 병렬화
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             futures = {executor.submit(process_ticker, t): t for t in tickers}
-
             last_sent_pct = -1
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
@@ -246,7 +287,6 @@ def coin_search_stream(request, strategy_id):
                     results.append(result)
 
                 pct = int(done / total * 100) if total else 100
-                # 진행률은 2% 단위로만 전송 (너무 잦은 전송 방지)
                 if pct >= last_sent_pct + 2 or done == total:
                     last_sent_pct = pct
                     yield "data: " + json.dumps({
@@ -259,16 +299,17 @@ def coin_search_stream(request, strategy_id):
 
         results.sort(key=lambda x: x.get('volume', 0), reverse=True)
         last_updated = timezone.now()
+        cache_key = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
 
-        cache.set(f"strategy_results_{strategy_id}", {
+        cache.set(cache_key, {
             'results':            results,
             'rate_limit_warning': error_occurred,
             'last_updated':       last_updated,
         }, timeout=300)
 
         yield "data: " + json.dumps({
-            "type":    "done",
-            "redirect": f"/strategy/{strategy_id}/results/",
+            "type":     "done",
+            "redirect": f"/strategy/{strategy_id}/results/?exchange={exchange}&vol_limit={vol_limit}",
         }) + "\n\n"
 
     response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
@@ -279,8 +320,10 @@ def coin_search_stream(request, strategy_id):
 
 def coin_search_results(request, strategy_id):
     """SSE 완료 후 결과 페이지 렌더 (캐시에서 읽음)"""
-    strategy    = get_object_or_404(Strategy, id=strategy_id)
-    cache_key   = f"strategy_results_{strategy_id}"
+    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    exchange   = request.GET.get('exchange', 'upbit')
+    vol_limit  = int(request.GET.get('vol_limit', 0) or 0)
+    cache_key  = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
     cached_data = cache.get(cache_key)
 
     if not cached_data:

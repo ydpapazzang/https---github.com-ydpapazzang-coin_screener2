@@ -181,8 +181,10 @@
 
 <script>
     const strategyId = {{ strategy.id }};
-    const streamUrl  = `/strategy/${strategyId}/search-stream/`;
-    const resultUrl  = `/strategy/${strategyId}/results/`;
+    const exchange   = "{{ exchange }}";
+    const volLimit   = "{{ vol_limit }}";
+    const streamUrl  = `/strategy/${strategyId}/search-stream/?exchange=${exchange}&vol_limit=${volLimit}`;
+    const resultUrl  = `/strategy/${strategyId}/results/?exchange=${exchange}&vol_limit=${volLimit}`;
 
     const bar        = document.getElementById('bar');
     const statLeft   = document.getElementById('stat-left');
