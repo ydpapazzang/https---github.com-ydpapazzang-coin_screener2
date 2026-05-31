@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Screener Results</title>
+    <style>
+        body { background-color: #131722; color: #d1d4dc; font-family: -apple-system, sans-serif; margin: 0; padding: 40px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { color: #ffffff; margin-bottom: 10px; }
+        .back-link { color: #2962ff; text-decoration: none; font-size: 14px; display: block; margin-bottom: 30px; }
+        table { width: 100%; border-collapse: collapse; background-color: #1e222d; border-radius: 8px; overflow: hidden; }
+        th { background-color: #2a2e39; color: #868993; font-weight: 600; text-align: left; padding: 16px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; user-select: none; }
+        th.th-sort-asc::after  { content: " ▲"; }
+        th.th-sort-desc::after { content: " ▼"; }
+        td { padding: 16px; border-bottom: 1px solid #363a45; font-size: 15px; }
+        tr:hover { background-color: #2a2e39; }
+        .coin-symbol { color: #2962ff; font-weight: bold; text-decoration: none; }
+        .coin-symbol:hover { text-decoration: underline; }
+        .price { font-family: "Roboto Mono", monospace; color: #ffffff; }
+        .details { color: #868993; font-size: 13px; }
+        .warning-banner { background-color: #f23645; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; display: flex; align-items: center; }
+        .warning-icon { margin-right: 10px; font-size: 20px; }
+        .cached-banner { background-color: #2a2e39; color: #868993; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+        .refresh-link { color: #2962ff; text-decoration: none; font-size: 13px; }
+        .refresh-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="{% url 'strategy_list' %}" class="back-link">← 전략 리스트로 돌아가기</a>
+        <h1>검색 결과: {{ strategy.name }}</h1>
+
+        {% if rate_limit_warning %}
+        <div class="warning-banner">
+            <span class="warning-icon">⚠️</span>
+            업비트 API 호출 제한으로 일부 코인이 누락되었을 수 있습니다. 잠시 후 다시 시도해주세요.
+        </div>
+        {% endif %}
+
+        {% if is_cached %}
+        <div class="cached-banner">
+            <span>캐시된 결과 ({{ last_updated|date:"H:i:s" }} 기준) — 최대 5분간 유지됩니다.</span>
+            <a href="?refresh=1" class="refresh-link">🔄 새로고침</a>
+        </div>
+        {% endif %}
+
+        <p style="color: #868993; margin-bottom: 30px;">
+            조건을 만족하는 코인 목록입니다. 코인명을 클릭하면 업비트 차트로 이동합니다.
+            컬럼 헤더를 클릭하면 정렬됩니다.
+        </p>
+
+        <table id="result-table">
+            <thead>
+                <tr>
+                    <th data-col="0">코인명 (Symbol)</th>
+                    <th data-col="1">현재가 (KRW)</th>
+                    <th data-col="2">거래대금</th>
+                    <th data-col="3">지표 정보</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for coin in results %}
+                <tr>
+                    <td>
+                        <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ coin.symbol }}"
+                           target="_blank" rel="noopener noreferrer" class="coin-symbol">
+                            {{ coin.symbol }}
+                        </a>
+                    </td>
+                    <td class="price" data-value="{{ coin.price }}">{{ coin.price|floatformat:0 }}</td>
+                    <td class="price" data-value="{{ coin.volume }}">{{ coin.volume_display }}</td>
+                    <td class="details">{{ coin.details }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 40px; color: #5d606b;">
+                        조건에 맞는 코인이 없습니다.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // 테이블 정렬: data-value 속성의 숫자를 우선 사용하고, 없으면 텍스트 비교
+        const table = document.getElementById('result-table');
+        let lastSortedCol = -1;
+        let sortAsc = true;
+
+        table.querySelectorAll('th[data-col]').forEach(th => {
+            th.addEventListener('click', () => {
+                const colIdx = parseInt(th.dataset.col);
+                const tbody = table.querySelector('tbody');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+
+                // 빈 결과(colspan)인 경우 정렬 스킵
+                if (rows.length === 1 && rows[0].querySelector('td[colspan]')) return;
+
+                if (lastSortedCol === colIdx) {
+                    sortAsc = !sortAsc;
+                } else {
+                    sortAsc = true;
+                    lastSortedCol = colIdx;
+                }
+
+                rows.sort((a, b) => {
+                    const aCell = a.children[colIdx];
+                    const bCell = b.children[colIdx];
+                    // data-value가 있으면 숫자 비교, 없으면 텍스트 비교
+                    const aRaw = aCell.dataset.value ?? aCell.textContent.trim();
+                    const bRaw = bCell.dataset.value ?? bCell.textContent.trim();
+                    const aNum = parseFloat(aRaw);
+                    const bNum = parseFloat(bRaw);
+                    const numeric = !isNaN(aNum) && !isNaN(bNum);
+
+                    let cmp = numeric
+                        ? aNum - bNum
+                        : aRaw.localeCompare(bRaw, 'ko');
+
+                    return sortAsc ? cmp : -cmp;
+                });
+
+                tbody.append(...rows);
+
+                // 정렬 방향 표시
+                table.querySelectorAll('th').forEach(h => {
+                    h.classList.remove('th-sort-asc', 'th-sort-desc');
+                });
+                th.classList.add(sortAsc ? 'th-sort-asc' : 'th-sort-desc');
+            });
+        });
+    </script>
+</body>
+</html>
