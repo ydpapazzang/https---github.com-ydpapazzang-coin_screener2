@@ -259,7 +259,7 @@ def coin_search_stream(request, strategy_id):
 
         def process_ticker(ticker):
             try:
-                is_match, details, price, volume = check_strategy(ticker, conditions)
+                is_match, details, price, volume, status = check_strategy(ticker, conditions)
                 if price is None:
                     return "API_ERROR"
                 if is_match:
@@ -270,6 +270,7 @@ def coin_search_stream(request, strategy_id):
                         'details':        ", ".join(unique_details),
                         'volume':         volume,
                         'volume_display': f"{volume / 100_000_000:.1f}억",
+                        'status':         status,
                     }
             except Exception:
                 pass
@@ -430,13 +431,14 @@ def alert_send_now(request, strategy_id):
 
     def _proc(ticker):
         try:
-            is_match, details, price, volume = check_strategy(ticker, conditions)
+            is_match, details, price, volume, status = check_strategy(ticker, conditions)
             if is_match and price:
                 return {
                     'symbol':         ticker,
                     'price':          price,
                     'volume':         volume,
                     'volume_display': f"{volume/100_000_000:.1f}억",
+                    'status':         status,
                     'details':        ", ".join(list(dict.fromkeys(details))),
                 }
         except Exception:

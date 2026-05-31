@@ -35,9 +35,10 @@ def send_alert(strategy_name: str, results: list) -> dict:
         text = f"📊 <b>{strategy_name}</b>\n조건에 맞는 코인이 없습니다."
     else:
         lines = [f"📊 <b>{strategy_name}</b> — {len(results)}개 매칭\n"]
-        for r in results[:20]:   # 최대 20개
+        for r in results[:20]:  # 최대 20개
             vol = r.get('volume_display', '')
-            lines.append(f"• <b>{r['symbol']}</b>  {r['price']:,.0f}원  거래대금 {vol}")
+            status_icon = '🆕' if r.get('status') == 'new' else '🔁'
+            lines.append(f"{status_icon} <b>{r['symbol']}</b>  {r['price']:,.0f}원  거래대금 {vol}")
         if len(results) > 20:
             lines.append(f"... 외 {len(results)-20}개")
         text = "\n".join(lines)
