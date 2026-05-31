@@ -92,7 +92,12 @@ TIME_ZONE = 'Asia/Seoul'
 USE_I18N = True
 USE_TZ = True
 
+# ────────────────────────────────────────────
+# 정적 파일 설정 (Vercel 필수 누락 보완)
+# ────────────────────────────────────────────
 STATIC_URL = 'static/'
+# Vercel 빌드 시 정적 파일들을 한곳에 모아 서빙할 수 있도록 경로 지정
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # 캐시 설정 (기본 로컬 메모리 캐시)
 CACHES = {
