@@ -58,20 +58,27 @@ TEMPLATES = [
 WSGI_APPLICATION = 'coinscreener.wsgi.application'
 
 # ────────────────────────────────────────────
-# DB 설정
-# DATABASE_URL 환경변수가 있으면 PostgreSQL(Neon 등) 사용,
-# 없으면 로컬 개발용 SQLite 사용
+# DB 설정 (오류 수정 버전)
 # ────────────────────────────────────────────
+# Vercel 환경변수(DATABASE_URL)를 체크하고, 있으면 Neon 연동 / 없으면 로컬 SQLite fallback
 DATABASE_URL = os.environ.get('DATABASE_URL')
- 
-DATABASES = {
-    'default': dj_database_url.parse(
-        os.environ.get('DATABASE_URL'),
-        conn_max_age=600,
-        conn_health_checks=True,
-    )
-}
- 
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+else:
+    # 로컬에서 작업할 때는 편하게 SQLite가 돌아가도록 방어 코드 추가
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
