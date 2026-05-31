@@ -734,11 +734,13 @@
         <!-- 검색 + 백테스팅 -->
         <div class="action-bar-right">
             <button class="btn btn-primary" onclick="runSearch()">검색 실행</button>
-            <button class="btn btn-gold"    onclick="alert('백테스팅 기능 준비 중입니다.')">📈 백테스팅</button>
+            <button class="btn btn-gold"    onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}')">📈 백테스팅</button>
         </div>
     </div>
 
 </div><!-- /page-wrap -->
+
+{% include "screener/backtest_modal.html" %}
 
 <script>
 /* ── TAB SWITCH ── */

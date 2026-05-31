@@ -331,7 +331,7 @@
 
                     <!-- 백테스팅 -->
                     <button type="button" class="btn-bt"
-                            onclick="alert('백테스팅 준비 중입니다.')">
+                            onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}')">
                         ☑ 백테스팅
                     </button>
 
@@ -453,6 +453,8 @@
 
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
+
+{% include "screener/backtest_modal.html" %}
 
 <script>
 /* ── 현재 열려있는 전략 ID ── */

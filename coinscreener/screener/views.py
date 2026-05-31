@@ -453,3 +453,48 @@ def alert_send_now(request, strategy_id):
     if res['ok']:
         return JsonResponse({'ok': True, 'matched': len(results)})
     return JsonResponse({'ok': False, 'error': res['error']})
+
+
+# ──────────────────────────────────────────
+# 5. 백테스팅 API
+# ──────────────────────────────────────────
+
+from .backtest import run_backtest, MAJOR_COINS
+
+
+@require_GET
+def backtest_coins(request):
+    """GET: 메이저 코인 목록 반환"""
+    return JsonResponse({'coins': MAJOR_COINS})
+
+
+@csrf_exempt
+@require_POST
+def backtest_run(request, strategy_id):
+    """POST: 백테스팅 실행"""
+    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    conditions = list(strategy.conditions.all())
+
+    if not conditions:
+        return JsonResponse({'error': '조건이 없습니다.'}, status=400)
+
+    try:
+        body         = _json.loads(request.body)
+        ticker       = body.get('ticker', 'KRW-BTC')
+        candle_count = int(body.get('candle_count', 200))
+        sell_mode    = body.get('sell_mode', 'cond_exit')
+        sell_param   = float(body.get('sell_param', 5))
+    except Exception:
+        return JsonResponse({'error': '잘못된 요청'}, status=400)
+
+    # 허용 값 검증
+    allowed_tickers = [c[0] for c in MAJOR_COINS]
+    if ticker not in allowed_tickers:
+        return JsonResponse({'error': '허용되지 않은 티커'}, status=400)
+    if candle_count not in (50, 100, 200, 500):
+        candle_count = 200
+
+    result = run_backtest(ticker, conditions, candle_count, sell_mode, sell_param)
+    if 'error' in result:
+        return JsonResponse(result, status=400)
+    return JsonResponse(result)

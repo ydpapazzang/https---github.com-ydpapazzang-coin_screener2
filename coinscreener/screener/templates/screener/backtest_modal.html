@@ -1,0 +1,358 @@
+<!-- ══════════════════════════════════════════
+     백테스팅 모달 (strategy_list / strategy_detail 공통 include)
+     ══════════════════════════════════════════ -->
+<style>
+/* ── BACKTEST MODAL ── */
+#bt-modal-backdrop {
+    display:none; position:fixed; inset:0;
+    background:rgba(10,12,20,.78); backdrop-filter:blur(5px);
+    z-index:600; align-items:center; justify-content:center;
+}
+#bt-modal-backdrop.open { display:flex; }
+#bt-modal {
+    background:#1e222d; border:1px solid #363a45;
+    border-radius:14px; width:min(740px,96vw);
+    max-height:92vh; overflow-y:auto;
+    padding:28px 28px 24px; position:relative;
+    box-shadow:0 24px 60px rgba(0,0,0,.55);
+}
+.bt-close {
+    position:absolute; top:16px; right:16px;
+    background:#2a2e39; border:none; color:#868993;
+    width:28px; height:28px; border-radius:50%;
+    font-size:15px; cursor:pointer; display:grid; place-items:center;
+}
+.bt-close:hover { background:#363a45; color:#fff; }
+
+.bt-title { font-size:18px; font-weight:800; color:#fff; margin-bottom:4px; }
+.bt-sub   { font-size:12px; color:#868993; margin-bottom:22px; }
+
+/* controls row */
+.bt-controls {
+    display:flex; align-items:flex-end; gap:14px;
+    flex-wrap:wrap; margin-bottom:22px;
+}
+.bt-field { display:flex; flex-direction:column; gap:5px; }
+.bt-label { font-size:11px; color:#868993; font-weight:700; text-transform:uppercase; }
+.bt-sel {
+    background:#131722; border:1px solid #363a45; color:#d1d4dc;
+    padding:9px 12px; border-radius:6px; font-size:13px;
+    font-weight:600; outline:none; cursor:pointer; min-width:120px;
+}
+.bt-sel:focus { border-color:#2962ff; }
+.bt-run {
+    background:#2962ff; color:#fff; border:none;
+    padding:10px 22px; border-radius:8px; font-size:14px;
+    font-weight:700; cursor:pointer; white-space:nowrap;
+    margin-left:auto;
+}
+.bt-run:hover { opacity:.88; }
+.bt-run:disabled { opacity:.5; cursor:not-allowed; }
+
+/* result stats */
+.bt-stats {
+    display:grid; grid-template-columns:repeat(3,1fr);
+    gap:10px; margin-bottom:18px;
+}
+.bt-stat {
+    background:#131722; border:1px solid #363a45;
+    border-radius:8px; padding:14px 16px; text-align:center;
+}
+.bt-stat-label { font-size:11px; color:#868993; margin-bottom:6px; }
+.bt-stat-val   { font-size:20px; font-weight:800; color:#fff; }
+.bt-stat-val.pos { color:#26a69a; }
+.bt-stat-val.neg { color:#f23645; }
+.bt-stat-val.neu { color:#2962ff; }
+
+/* equity chart */
+.bt-chart-wrap {
+    background:#131722; border:1px solid #363a45;
+    border-radius:8px; padding:16px; margin-bottom:18px;
+    height:200px; position:relative;
+}
+#bt-canvas { width:100%; height:100%; display:block; }
+
+/* trades table */
+.bt-table-title { font-size:13px; font-weight:700; color:#fff; margin-bottom:10px; }
+.bt-table { width:100%; border-collapse:collapse; font-size:12px; }
+.bt-table th {
+    background:#2a2e39; color:#868993; font-weight:700;
+    padding:9px 12px; text-align:left; font-size:11px;
+    text-transform:uppercase; letter-spacing:.4px;
+}
+.bt-table td { padding:9px 12px; border-bottom:1px solid #2a2e39; color:#d1d4dc; }
+.bt-table tr:hover td { background:#2a2e39; }
+.bt-ret.pos { color:#26a69a; font-weight:700; }
+.bt-ret.neg { color:#f23645; font-weight:700; }
+.bt-empty { text-align:center; padding:30px; color:#5d606b; font-size:13px; }
+.bt-loading {
+    display:none; position:absolute; inset:0;
+    background:rgba(19,23,34,.85); border-radius:14px;
+    align-items:center; justify-content:center; flex-direction:column;
+    gap:14px; color:#d1d4dc; font-size:14px; font-weight:600;
+}
+#bt-modal { position:relative; }
+.bt-spinner {
+    width:40px; height:40px;
+    border:3px solid #363a45; border-top-color:#2962ff;
+    border-radius:50%; animation:btspin .7s linear infinite;
+}
+@keyframes btspin { to { transform:rotate(360deg); } }
+</style>
+
+<!-- MODAL -->
+<div id="bt-modal-backdrop">
+    <div id="bt-modal">
+        <button class="bt-close" onclick="closeBT()">✕</button>
+        <div class="bt-title" id="bt-title">📈 백테스팅</div>
+        <div class="bt-sub"  id="bt-sub">BTC-KRW 기준 · 전략 타임프레임 적용</div>
+
+        <!-- controls -->
+        <div class="bt-controls">
+            <div class="bt-field">
+                <div class="bt-label">코인</div>
+                <select class="bt-sel" id="bt-ticker">
+                    <option value="KRW-BTC">BTC</option>
+                    <option value="KRW-ETH">ETH</option>
+                    <option value="KRW-XRP">XRP</option>
+                    <option value="KRW-SOL">SOL</option>
+                    <option value="KRW-DOGE">DOGE</option>
+                    <option value="KRW-ADA">ADA</option>
+                    <option value="KRW-AVAX">AVAX</option>
+                    <option value="KRW-DOT">DOT</option>
+                    <option value="KRW-LINK">LINK</option>
+                    <option value="KRW-TRX">TRX</option>
+                </select>
+            </div>
+            <div class="bt-field">
+                <div class="bt-label">데이터 기간</div>
+                <select class="bt-sel" id="bt-count">
+                    <option value="50">최근 50봉</option>
+                    <option value="100">최근 100봉</option>
+                    <option value="200" selected>최근 200봉</option>
+                    <option value="500">최근 500봉</option>
+                </select>
+            </div>
+            <div class="bt-field">
+                <div class="bt-label">매도 조건</div>
+                <select class="bt-sel" id="bt-sell-mode" onchange="btSellModeChange()">
+                    <option value="exit_n">N봉 후 매도</option>
+                    <option value="tp_sl">익절/손절 %</option>
+                    <option value="cond_exit" selected>조건 이탈 시 매도</option>
+                </select>
+            </div>
+            <div class="bt-field" id="bt-param-wrap" style="display:none;">
+                <div class="bt-label" id="bt-param-label">N봉</div>
+                <input type="number" class="bt-sel" id="bt-param" value="5" min="1" style="width:80px;">
+            </div>
+            <button class="bt-run" id="bt-run-btn" onclick="runBT()">▶ 백테스트 실행</button>
+        </div>
+
+        <!-- loading overlay -->
+        <div class="bt-loading" id="bt-loading">
+            <div class="bt-spinner"></div>
+            <span>백테스팅 실행 중...</span>
+        </div>
+
+        <!-- results (hidden until run) -->
+        <div id="bt-results" style="display:none;">
+            <!-- stats -->
+            <div class="bt-stats">
+                <div class="bt-stat"><div class="bt-stat-label">총 거래 횟수</div><div class="bt-stat-val neu" id="bt-total"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">승률</div><div class="bt-stat-val" id="bt-winrate"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">평균 수익률</div><div class="bt-stat-val" id="bt-avg"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">누적 수익률</div><div class="bt-stat-val" id="bt-total-ret"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">최대 수익</div><div class="bt-stat-val pos" id="bt-max-p"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">최대 손실</div><div class="bt-stat-val neg" id="bt-max-l"></div></div>
+            </div>
+
+            <!-- equity chart -->
+            <div class="bt-chart-wrap">
+                <canvas id="bt-canvas"></canvas>
+            </div>
+
+            <!-- trades -->
+            <div class="bt-table-title">최근 거래 내역 (최대 20건)</div>
+            <div style="overflow-x:auto;">
+                <table class="bt-table">
+                    <thead>
+                        <tr>
+                            <th>매수일</th><th>매도일</th>
+                            <th>매수가</th><th>매도가</th><th>수익률</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bt-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let btStrategyId = null;
+let btStrategyName = '';
+
+function openBT(strategyId, strategyName) {
+    btStrategyId   = strategyId;
+    btStrategyName = strategyName;
+    document.getElementById('bt-title').textContent = `📈 ${strategyName} 백테스팅`;
+    document.getElementById('bt-results').style.display = 'none';
+    document.getElementById('bt-modal-backdrop').classList.add('open');
+}
+function closeBT() {
+    document.getElementById('bt-modal-backdrop').classList.remove('open');
+}
+document.getElementById('bt-modal-backdrop').addEventListener('click', function(e) {
+    if (e.target === this) closeBT();
+});
+
+function btSellModeChange() {
+    const mode = document.getElementById('bt-sell-mode').value;
+    const wrap  = document.getElementById('bt-param-wrap');
+    const label = document.getElementById('bt-param-label');
+    if (mode === 'cond_exit') {
+        wrap.style.display = 'none';
+    } else {
+        wrap.style.display = 'flex';
+        label.textContent = mode === 'exit_n' ? 'N봉' : '익절/손절 %';
+        document.getElementById('bt-param').value = mode === 'exit_n' ? 5 : 5;
+    }
+}
+
+async function runBT() {
+    if (!btStrategyId) return;
+    const btn = document.getElementById('bt-run-btn');
+    btn.disabled = true;
+    document.getElementById('bt-loading').style.display = 'flex';
+    document.getElementById('bt-results').style.display = 'none';
+
+    const ticker   = document.getElementById('bt-ticker').value;
+    const count    = parseInt(document.getElementById('bt-count').value);
+    const sellMode = document.getElementById('bt-sell-mode').value;
+    const param    = parseFloat(document.getElementById('bt-param').value) || 5;
+    const sub      = document.getElementById('bt-sub');
+    sub.textContent = `${ticker.replace('KRW-','')} · 최근 ${count}봉 · ${document.getElementById('bt-sell-mode').selectedOptions[0].text}`;
+
+    try {
+        const res  = await fetch(`/strategy/${btStrategyId}/backtest/run/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ticker, candle_count: count, sell_mode: sellMode, sell_param: param}),
+        });
+        const data = await res.json();
+        if (data.error) { alert('오류: ' + data.error); return; }
+        renderBT(data);
+    } catch(e) {
+        alert('네트워크 오류가 발생했습니다.');
+    } finally {
+        btn.disabled = false;
+        document.getElementById('bt-loading').style.display = 'none';
+    }
+}
+
+function renderBT(d) {
+    // stats
+    const setVal = (id, val, prefix='') => {
+        const el = document.getElementById(id);
+        el.textContent = prefix + val + (id.includes('ret')||id.includes('avg')||id.includes('max')||id.includes('win') ? '%' : '');
+        el.className = 'bt-stat-val ' + (parseFloat(val) > 0 ? 'pos' : parseFloat(val) < 0 ? 'neg' : 'neu');
+    };
+    document.getElementById('bt-total').textContent = d.total_trades;
+    document.getElementById('bt-total').className   = 'bt-stat-val neu';
+    setVal('bt-winrate',   d.win_rate);
+    setVal('bt-avg',       d.avg_return,   d.avg_return > 0 ? '+' : '');
+    setVal('bt-total-ret', d.total_return, d.total_return > 0 ? '+' : '');
+    document.getElementById('bt-max-p').textContent = '+' + d.max_profit + '%';
+    document.getElementById('bt-max-l').textContent = d.max_loss + '%';
+
+    // equity chart
+    drawEquityChart(d.equity_curve);
+
+    // trades table
+    const tbody = document.getElementById('bt-tbody');
+    if (!d.trades || d.trades.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="bt-empty">거래 내역이 없습니다.</td></tr>`;
+    } else {
+        tbody.innerHTML = d.trades.map(t => `
+            <tr>
+                <td>${t.entry_date}</td>
+                <td>${t.exit_date}</td>
+                <td>${t.entry_price.toLocaleString()}</td>
+                <td>${t.exit_price.toLocaleString()}</td>
+                <td class="bt-ret ${t.return_pct>=0?'pos':'neg'}">${t.return_pct>=0?'+':''}${t.return_pct}%</td>
+            </tr>`).join('');
+    }
+
+    document.getElementById('bt-results').style.display = 'block';
+}
+
+/* ── 간단한 Canvas 라인 차트 ── */
+function drawEquityChart(curve) {
+    const canvas = document.getElementById('bt-canvas');
+    const wrap   = canvas.parentElement;
+    canvas.width  = wrap.clientWidth  || 600;
+    canvas.height = wrap.clientHeight || 180;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!curve || curve.length < 2) return;
+
+    const vals  = curve.map(p => p.equity);
+    const dates = curve.map(p => p.date);
+    const minV  = Math.min(...vals);
+    const maxV  = Math.max(...vals);
+    const range = maxV - minV || 1;
+    const W = canvas.width, H = canvas.height;
+    const pad = { top:16, bottom:28, left:48, right:16 };
+    const innerW = W - pad.left - pad.right;
+    const innerH = H - pad.top - pad.bottom;
+
+    const toX = i => pad.left + (i / (vals.length - 1)) * innerW;
+    const toY = v => pad.top  + (1 - (v - minV) / range) * innerH;
+
+    // grid lines
+    ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1;
+    [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+        const y = pad.top + t * innerH;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(W - pad.right, y);
+        ctx.stroke();
+        const val = maxV - t * range;
+        ctx.fillStyle = '#868993'; ctx.font = '10px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(val.toFixed(1) + '%', pad.left - 4, y + 4);
+    });
+
+    // fill
+    const grad = ctx.createLinearGradient(0, pad.top, 0, H - pad.bottom);
+    const isProfit = vals[vals.length-1] >= 100;
+    grad.addColorStop(0, isProfit ? 'rgba(38,166,154,.35)' : 'rgba(242,54,69,.25)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.beginPath();
+    ctx.moveTo(toX(0), toY(vals[0]));
+    vals.forEach((v,i) => ctx.lineTo(toX(i), toY(v)));
+    ctx.lineTo(toX(vals.length-1), H - pad.bottom);
+    ctx.lineTo(toX(0), H - pad.bottom);
+    ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+
+    // line
+    ctx.beginPath(); ctx.strokeStyle = isProfit ? '#26a69a' : '#f23645';
+    ctx.lineWidth = 2;
+    vals.forEach((v,i) => i===0 ? ctx.moveTo(toX(i),toY(v)) : ctx.lineTo(toX(i),toY(v)));
+    ctx.stroke();
+
+    // dots at trade points
+    ctx.fillStyle = isProfit ? '#26a69a' : '#f23645';
+    vals.forEach((v,i) => {
+        if (i===0 || i===vals.length-1 || i % Math.max(1,Math.floor(vals.length/8))===0) {
+            ctx.beginPath(); ctx.arc(toX(i), toY(v), 3, 0, Math.PI*2); ctx.fill();
+        }
+    });
+
+    // x-axis dates
+    ctx.fillStyle = '#868993'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    const step = Math.max(1, Math.floor(vals.length / 4));
+    for (let i = 0; i < vals.length; i += step) {
+        ctx.fillText(dates[i], toX(i), H - 6);
+    }
+}
+</script>
