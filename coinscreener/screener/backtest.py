@@ -71,7 +71,7 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
         df = pyupbit.get_ohlcv(ticker, interval=tf, count=max(candle_count + 100, 300))
         if df is None:
             return {'error': f'{ticker} 데이터를 불러올 수 없습니다.'}
-        df_map[tf] = df.reset_index()   # date 컬럼 생성
+        df_map[tf] = df.reset_index().rename(columns={'index': 'date'})
 
     primary_df = df_map[primary_tf]
     n = len(primary_df)
