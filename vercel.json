@@ -1,14 +1,16 @@
 {
+  "version": 2,
   "builds": [
     {
-      "src": "coinscreener/coinscreener/wsgi.py",
-      "use": "@vercel/python"
+      "src": "coinscreener/wsgi.py",
+      "use": "@vercel/python",
+      "config": { "maxDuration": 90 }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "coinscreener/coinscreener/wsgi.py"
+      "dest": "coinscreener/wsgi.py"
     }
   ]
 }
