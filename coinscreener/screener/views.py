@@ -451,7 +451,7 @@ def alert_send_now(request, strategy_id):
                 results.append(r)
 
     results.sort(key=lambda x: x.get('volume', 0), reverse=True)
-    res = tg.send_alert(strategy.name, results)
+    res = tg.send_alert(strategy.name, results, strategy_id=strategy.id)
     if res['ok']:
         return JsonResponse({'ok': True, 'matched': len(results)})
     return JsonResponse({'ok': False, 'error': res['error']})
