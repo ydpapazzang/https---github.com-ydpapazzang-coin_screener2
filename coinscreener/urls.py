@@ -19,5 +19,5 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('screener.urls')),  # <--- 이 줄을 추가하여 screener 앱과 연결
+    path('', include('coinscreener.screener.urls')),  # <--- 이 줄을 추가하여 screener 앱과 연결
 ]
