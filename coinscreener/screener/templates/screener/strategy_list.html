@@ -1,73 +1,655 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>Crypto Screener - Strategies</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gg — 전략 리스트</title>
     <style>
-        body { background-color: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 40px; }
-        h1 { color: #ffffff; font-size: 28px; margin-bottom: 30px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .strategy-item { background-color: #1e222d; border: 1px solid #363a45; padding: 16px 20px; margin: 12px 0; display: flex; justify-content: space-between; align-items: center; border-radius: 8px; transition: border-color 0.2s; }
-        .strategy-item:hover { border-color: #2962ff; }
-        .strategy-name { font-size: 18px; font-weight: 600; color: #d1d4dc; text-decoration: none; }
-        .strategy-name:hover { color: #2962ff; }
-        button { background-color: #2962ff; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 14px; }
-        button:hover { background-color: #1e53e5; }
-        .btn-delete { background-color: transparent; color: #f23645; border: 1px solid #f23645; margin-left: 10px; }
-        .btn-delete:hover { background-color: #f23645; color: white; }
-        input[type="text"] { background-color: #1e222d; border: 1px solid #363a45; color: white; padding: 10px; border-radius: 4px; width: 250px; margin-right: 10px; }
-        .del-mode { display: none; }
-        #loading-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%; background: rgba(19, 23, 34, 0.9);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            color: white;
-            font-size: 24px;
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg:      #131722;
+            --surface: #1e222d;
+            --surface2:#2a2e39;
+            --border:  #363a45;
+            --text:    #d1d4dc;
+            --muted:   #868993;
+            --blue:    #2962ff;
+            --gold:    #f5a623;
+            --red:     #f23645;
+            --green:   #26a69a;
         }
+        body { background: var(--bg); color: var(--text);
+               font-family: -apple-system,'Segoe UI',sans-serif; min-height:100vh; }
+
+        /* NAV */
+        .topnav { display:flex; align-items:center; justify-content:space-between;
+                  padding:14px 32px; border-bottom:1px solid var(--border);
+                  background:var(--surface); }
+        .logo { font-size:22px; font-weight:800; color:#fff; letter-spacing:-.5px; }
+        .logo span { color:var(--blue); }
+
+        /* PAGE */
+        .page { max-width:860px; margin:0 auto; padding:32px 20px 80px; }
+
+        /* TOP BAR */
+        .topbar { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+        .search-input {
+            flex:1; background:var(--surface); border:1px solid var(--border);
+            color:var(--text); padding:11px 16px; border-radius:8px; font-size:15px;
+            outline:none; transition:border-color .15s;
+        }
+        .search-input:focus { border-color:var(--blue); }
+        .btn { padding:11px 18px; border:none; border-radius:8px; font-size:14px;
+               font-weight:700; cursor:pointer; transition:opacity .15s; white-space:nowrap; }
+        .btn-blue { background:var(--blue); color:#fff; }
+        .btn-blue:hover { opacity:.88; }
+        .btn-outline { background:transparent; border:1px solid var(--border); color:var(--text); }
+        .btn-outline:hover { border-color:var(--text); }
+        .btn-red   { background:transparent; border:1px solid var(--red); color:var(--red); }
+        .btn-red:hover { background:var(--red); color:#fff; }
+
+        /* STRATEGY CARD */
+        .strategy-card {
+            background:var(--surface); border:1px solid var(--border);
+            border-radius:10px; padding:18px 20px; margin-bottom:12px;
+            transition:border-color .15s;
+        }
+        .strategy-card:hover { border-color:#4a5060; }
+
+        .card-top { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+        .del-chk { display:none; accent-color:var(--red); width:16px; height:16px; cursor:pointer; }
+        .del-chk.visible { display:inline-block; }
+        .strategy-name {
+            font-size:17px; font-weight:700; color:#fff; text-decoration:none; flex:1;
+        }
+        .strategy-name:hover { color:var(--blue); }
+        /* spinner (검색 중 표시용) */
+        .card-spinner { width:18px; height:18px; border:2px solid var(--border);
+                        border-top-color:var(--blue); border-radius:50%;
+                        animation:spin .7s linear infinite; display:none; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+
+        /* CARD BOTTOM CONTROLS */
+        .card-bottom { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+        /* exchange pill */
+        .ex-wrap { position:relative; }
+        .ex-btn {
+            display:flex; align-items:center; gap:5px;
+            padding:8px 12px; background:var(--surface2);
+            border:1px solid var(--border); color:var(--text);
+            border-radius:6px; font-size:13px; font-weight:600;
+            cursor:pointer; transition:border-color .15s;
+        }
+        .ex-btn:hover { border-color:var(--text); }
+        .ex-btn .arr { font-size:9px; }
+        .ex-menu {
+            display:none; position:absolute; top:calc(100%+4px); left:0;
+            background:var(--surface); border:1px solid var(--border);
+            border-radius:8px; overflow:hidden; min-width:110px;
+            box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:200;
+        }
+        .ex-menu.open { display:block; }
+        .ex-opt { padding:10px 14px; font-size:13px; color:var(--text);
+                  cursor:pointer; transition:background .1s; }
+        .ex-opt:hover { background:var(--surface2); }
+        .ex-opt.selected { color:var(--blue); font-weight:700; }
+
+        /* vol pill */
+        .vol-wrap { position:relative; }
+        .vol-btn {
+            display:flex; align-items:center; gap:5px;
+            padding:8px 12px; background:var(--surface2);
+            border:1px solid var(--border); color:var(--text);
+            border-radius:6px; font-size:13px; font-weight:600;
+            cursor:pointer; transition:border-color .15s;
+        }
+        .vol-btn:hover { border-color:var(--text); }
+        .vol-menu {
+            display:none; position:absolute; top:calc(100%+4px); left:0;
+            background:var(--surface); border:1px solid var(--border);
+            border-radius:8px; overflow:hidden; min-width:160px;
+            box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:200;
+        }
+        .vol-menu.open { display:block; }
+        .vol-opt { padding:10px 14px; font-size:13px; color:var(--text);
+                   cursor:pointer; transition:background .1s; }
+        .vol-opt:hover { background:var(--surface2); }
+        .vol-opt.selected { color:var(--blue); font-weight:700; }
+
+        /* search btn */
+        .btn-search { background:var(--blue); color:#fff; border:none; border-radius:6px;
+                      padding:8px 16px; font-size:13px; font-weight:700; cursor:pointer; }
+        .btn-search:hover { opacity:.88; }
+
+        /* backtest btn */
+        .btn-bt { background:transparent; border:1px solid var(--border); color:var(--muted);
+                  border-radius:6px; padding:8px 14px; font-size:13px; font-weight:600;
+                  cursor:pointer; display:flex; align-items:center; gap:5px; }
+        .btn-bt:hover { border-color:var(--text); color:var(--text); }
+
+        /* bell btn */
+        .btn-bell { background:none; border:none; cursor:pointer; padding:6px;
+                    font-size:20px; line-height:1; border-radius:6px;
+                    transition:background .15s; position:relative; }
+        .btn-bell:hover { background:var(--surface2); }
+        /* alert ON badge */
+        .bell-on {
+            display:inline-flex; align-items:center; gap:5px;
+            background:#1a3d1a; border:1px solid var(--green);
+            border-radius:20px; padding:5px 10px; font-size:12px;
+            font-weight:700; color:var(--green); cursor:pointer;
+        }
+        .bell-on .dot { width:7px; height:7px; border-radius:50%;
+                         background:var(--green); display:inline-block; }
+
+        /* ── ALERT MODAL ── */
+        .modal-backdrop {
+            display:none; position:fixed; inset:0;
+            background:rgba(10,12,20,.7); backdrop-filter:blur(4px);
+            z-index:500; align-items:center; justify-content:center;
+        }
+        .modal-backdrop.open { display:flex; }
+        .modal {
+            background:var(--surface); border:1px solid var(--border);
+            border-radius:14px; padding:28px; width:min(440px,95vw);
+            box-shadow:0 24px 60px rgba(0,0,0,.5); position:relative;
+        }
+        .modal-close {
+            position:absolute; top:16px; right:16px;
+            background:var(--surface2); border:none; color:var(--muted);
+            width:28px; height:28px; border-radius:50%; font-size:16px;
+            cursor:pointer; display:grid; place-items:center;
+            transition:background .15s;
+        }
+        .modal-close:hover { background:var(--border); color:#fff; }
+        .modal-title { font-size:18px; font-weight:800; color:#fff; margin-bottom:4px; }
+        .modal-sub   { font-size:13px; color:var(--muted); margin-bottom:22px; }
+
+        /* toggle switch */
+        .toggle-row { display:flex; align-items:center; justify-content:space-between;
+                      background:var(--surface2); border-radius:10px; padding:16px 18px;
+                      margin-bottom:16px; }
+        .toggle-label { font-size:14px; font-weight:700; color:#fff; }
+        .toggle-desc  { font-size:12px; color:var(--muted); margin-top:3px; }
+        .toggle { position:relative; width:44px; height:24px; flex-shrink:0; }
+        .toggle input { opacity:0; width:0; height:0; }
+        .toggle-track {
+            position:absolute; inset:0; background:var(--border);
+            border-radius:24px; cursor:pointer; transition:background .2s;
+        }
+        .toggle input:checked + .toggle-track { background:var(--green); }
+        .toggle-thumb {
+            position:absolute; top:3px; left:3px;
+            width:18px; height:18px; background:#fff;
+            border-radius:50%; transition:transform .2s; pointer-events:none;
+        }
+        .toggle input:checked ~ .toggle-thumb { transform:translateX(20px); }
+
+        /* time pickers */
+        .section-label { font-size:12px; font-weight:700; color:var(--muted);
+                         text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; }
+        .time-row { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+        .time-sel {
+            background:var(--surface2); border:1px solid var(--border);
+            color:var(--text); padding:9px 12px; border-radius:6px;
+            font-size:14px; font-weight:700; outline:none; cursor:pointer;
+        }
+        .time-sel:focus { border-color:var(--blue); }
+        .time-hint { font-size:11px; color:var(--muted); margin-bottom:18px; }
+
+        /* scan scope */
+        .scope-row { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:18px; }
+        .scope-sel {
+            background:var(--surface2); border:1px solid var(--border);
+            color:var(--text); padding:9px 12px; border-radius:6px;
+            font-size:13px; outline:none; cursor:pointer;
+        }
+        .scope-sel:focus { border-color:var(--blue); }
+
+        /* tg status */
+        .tg-row { background:var(--surface2); border-radius:10px; padding:16px 18px; margin-bottom:16px; }
+        .tg-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+        .tg-title { font-size:14px; font-weight:700; color:#fff; }
+        .tg-status-ok   { background:#1a3d1a; border:1px solid var(--green);
+                          color:var(--green); border-radius:6px; padding:6px 12px;
+                          font-size:12px; font-weight:700; }
+        .tg-status-fail { background:#3d1a1a; border:1px solid var(--red);
+                          color:var(--red); border-radius:6px; padding:6px 12px;
+                          font-size:12px; font-weight:700; }
+
+        /* test send checkbox */
+        .check-row { display:flex; align-items:center; gap:10px; margin-bottom:20px;
+                     padding:12px 16px; background:var(--surface2); border-radius:8px; }
+        .check-row input { accent-color:var(--blue); width:16px; height:16px; cursor:pointer; }
+        .check-row label { font-size:13px; color:var(--text); cursor:pointer; }
+        .check-row .check-desc { font-size:11px; color:var(--muted); display:block; margin-top:2px; }
+
+        /* save btn */
+        .btn-save { width:100%; padding:14px; background:var(--blue); color:#fff;
+                    border:none; border-radius:8px; font-size:15px; font-weight:700;
+                    cursor:pointer; transition:opacity .15s; }
+        .btn-save:hover { opacity:.88; }
+        .btn-save:disabled { opacity:.5; cursor:not-allowed; }
+
+        /* toast */
+        .toast {
+            position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(80px);
+            background:#222; border:1px solid var(--border); color:var(--text);
+            padding:12px 22px; border-radius:8px; font-size:14px; font-weight:600;
+            z-index:9999; transition:transform .3s; white-space:nowrap;
+            box-shadow:0 4px 20px rgba(0,0,0,.4);
+        }
+        .toast.show { transform:translateX(-50%) translateY(0); }
+        .toast.ok  { border-color:var(--green); color:var(--green); }
+        .toast.err { border-color:var(--red);   color:var(--red); }
+
+        /* del submit btn */
+        #del-submit { display:none; }
+
+        /* empty */
+        .empty { text-align:center; padding:60px 20px; color:var(--muted); font-size:15px; }
     </style>
-    <script>
-        function toggleDeleteMode() {
-            document.querySelectorAll('.del-chk').forEach(el => el.style.display = 'inline');
-            document.getElementById('del-btn').style.display = 'inline';
-        }
-        function showLoading() {
-            document.getElementById('loading-overlay').style.display = 'flex';
-        }
-    </script>
 </head>
 <body>
-    <div id="loading-overlay">검색 중입니다...</div>
 
-    <div class="container">
-        <h1>전략 리스트</h1>
-        
-        <div style="margin-bottom: 40px; display: flex; justify-content: space-between; align-items: center;">
-            <form action="{% url 'strategy_create' %}" method="post" style="display: flex;">
-                {% csrf_token %}
-                <input type="text" name="name" placeholder="새 전략 이름 입력" required>
-                <button type="submit">전략 추가</button>
-            </form>
-            <button class="btn-delete" onclick="toggleDeleteMode()">삭제 모드</button>
-        </div>
+<!-- NAV -->
+<nav class="topnav">
+    <div class="logo">gg<span>.</span></div>
+</nav>
 
-        <form action="{% url 'strategy_delete' %}" method="post">
-            {% csrf_token %}
-            <button type="submit" id="del-btn" class="btn-delete" style="display:none; margin-bottom: 20px;">선택한 전략 삭제</button>
-            
-            <div class="list">
-                {% for strategy in strategies %}
-                <div class="strategy-item">
-                    <div>
-                        <input type="checkbox" name="strategy_ids" value="{{ strategy.id }}" class="del-chk" style="display:none; margin-right: 15px;">
-                        <a href="{% url 'strategy_detail' strategy.id %}" class="strategy-name">{{ strategy.name }}</a>
-                    </div>
-                    <a href="{% url 'coin_search' strategy.id %}" onclick="showLoading()"><button type="button">검색 실행</button></a>
+<div class="page">
+
+    <!-- TOP BAR -->
+    <div class="topbar">
+        <input class="search-input" id="search-input" placeholder="gg" oninput="filterStrategies()">
+        <button class="btn btn-blue" onclick="openAddModal()">＋ 추가</button>
+        <button class="btn btn-outline" id="del-mode-btn" onclick="toggleDelMode()">삭제 모드</button>
+    </div>
+
+    <!-- 삭제 폼 래퍼 -->
+    <form action="{% url 'strategy_delete' %}" method="post" id="del-form">
+        {% csrf_token %}
+        <button type="submit" id="del-submit" class="btn btn-red" style="margin-bottom:16px; display:none;">
+            선택한 전략 삭제
+        </button>
+
+        <div id="strategy-list">
+            {% for strategy in strategies %}
+            <div class="strategy-card" data-name="{{ strategy.name|lower }}">
+                <div class="card-top">
+                    <input type="checkbox" name="strategy_ids" value="{{ strategy.id }}"
+                           class="del-chk" id="chk-{{ strategy.id }}">
+                    <a href="{% url 'strategy_detail' strategy.id %}" class="strategy-name">
+                        {{ strategy.name }}
+                    </a>
+                    <div class="card-spinner" id="spinner-{{ strategy.id }}"></div>
                 </div>
-                {% endfor %}
+
+                <div class="card-bottom">
+                    <!-- 거래소 드롭다운 -->
+                    <div class="ex-wrap">
+                        <button type="button" class="ex-btn"
+                                onclick="toggleMenu(event,'ex-menu-{{ strategy.id }}')">
+                            <span id="ex-label-{{ strategy.id }}">업비트</span>
+                            <span class="arr">▼</span>
+                        </button>
+                        <div class="ex-menu" id="ex-menu-{{ strategy.id }}">
+                            <div class="ex-opt selected"
+                                 onclick="selectEx({{ strategy.id }},'upbit','업비트',this)">업비트</div>
+                            <div class="ex-opt"
+                                 onclick="selectEx({{ strategy.id }},'bithumb','빗썸',this)">빗썸</div>
+                        </div>
+                        <input type="hidden" id="ex-val-{{ strategy.id }}" value="upbit">
+                    </div>
+
+                    <!-- 거래대금 드롭다운 -->
+                    <div class="vol-wrap">
+                        <button type="button" class="vol-btn"
+                                onclick="toggleMenu(event,'vol-menu-{{ strategy.id }}')">
+                            <span id="vol-label-{{ strategy.id }}">거래대금 상위 100개</span>
+                            <span class="arr">▼</span>
+                        </button>
+                        <div class="vol-menu" id="vol-menu-{{ strategy.id }}">
+                            <div class="vol-opt"    data-val="30"
+                                 onclick="selectVol({{ strategy.id }},this)">거래대금 상위 30개</div>
+                            <div class="vol-opt"    data-val="50"
+                                 onclick="selectVol({{ strategy.id }},this)">거래대금 상위 50개</div>
+                            <div class="vol-opt selected" data-val="100"
+                                 onclick="selectVol({{ strategy.id }},this)">거래대금 상위 100개</div>
+                            <div class="vol-opt"    data-val="200"
+                                 onclick="selectVol({{ strategy.id }},this)">거래대금 상위 200개</div>
+                            <div class="vol-opt"    data-val="0"
+                                 onclick="selectVol({{ strategy.id }},this)">전체 코인</div>
+                        </div>
+                        <input type="hidden" id="vol-val-{{ strategy.id }}" value="100">
+                    </div>
+
+                    <!-- 검색 실행 -->
+                    <button type="button" class="btn-search"
+                            onclick="runSearch({{ strategy.id }})">검색 실행</button>
+
+                    <!-- 백테스팅 -->
+                    <button type="button" class="btn-bt"
+                            onclick="alert('백테스팅 준비 중입니다.')">
+                        ☑ 백테스팅
+                    </button>
+
+                    <!-- 알림 벨 -->
+                    <div id="bell-wrap-{{ strategy.id }}">
+                        <!-- JS가 알림 상태에 따라 렌더 -->
+                        <button type="button" class="btn-bell"
+                                onclick="openAlert({{ strategy.id }}, '{{ strategy.name|escapejs }}')">
+                            🔔
+                        </button>
+                    </div>
+                </div>
             </div>
+            {% empty %}
+            <div class="empty">아직 전략이 없습니다. ＋ 추가 버튼으로 첫 전략을 만들어보세요!</div>
+            {% endfor %}
+        </div>
+    </form>
+</div>
+
+<!-- ── 전략 추가 모달 ── -->
+<div class="modal-backdrop" id="add-modal">
+    <div class="modal" style="max-width:360px;">
+        <button class="modal-close" onclick="closeAddModal()">✕</button>
+        <div class="modal-title" style="margin-bottom:16px;">새 전략 추가</div>
+        <form action="{% url 'strategy_create' %}" method="post">
+            {% csrf_token %}
+            <input type="text" name="name" placeholder="전략 이름 입력"
+                   class="search-input" style="width:100%; margin-bottom:12px;" required autofocus>
+            <button type="submit" class="btn-save">추가</button>
         </form>
     </div>
+</div>
+
+<!-- ── 알림 설정 모달 ── -->
+<div class="modal-backdrop" id="alert-modal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeAlert()">✕</button>
+        <div class="modal-title">🔔 알림 설정</div>
+        <div class="modal-sub" id="alert-modal-sub">전략명</div>
+
+        <!-- 자동 알림 토글 -->
+        <div class="toggle-row">
+            <div>
+                <div class="toggle-label">자동 알림 활성화</div>
+                <div class="toggle-desc" id="alert-toggle-desc">매일 오전 9:00 자동 스캔 후 알림 발송</div>
+            </div>
+            <label class="toggle">
+                <input type="checkbox" id="alert-enabled" onchange="updateToggleDesc()">
+                <div class="toggle-track"></div>
+                <div class="toggle-thumb"></div>
+            </label>
+        </div>
+
+        <!-- 알림 시각 -->
+        <div class="section-label">🕘 알림 시각 (KST)</div>
+        <div class="time-row">
+            <select class="time-sel" id="alert-hour" onchange="updateToggleDesc()">
+                    <option value="0">0시</option><option value="1">1시</option>
+                <option value="2">2시</option><option value="3">3시</option>
+                <option value="4">4시</option><option value="5">5시</option>
+                <option value="6">6시</option><option value="7">7시</option>
+                <option value="8">8시</option><option value="9" selected>9시</option>
+                <option value="10">10시</option><option value="11">11시</option>
+                <option value="12">12시</option><option value="13">13시</option>
+                <option value="14">14시</option><option value="15">15시</option>
+                <option value="16">16시</option><option value="17">17시</option>
+                <option value="18">18시</option><option value="19">19시</option>
+                <option value="20">20시</option><option value="21">21시</option>
+                <option value="22">22시</option><option value="23">23시</option>
+            </select>
+            <select class="time-sel" id="alert-min">
+                <option value="0"  selected>00분</option>
+                <option value="30">30분</option>
+            </select>
+            <span style="font-size:13px; color:var(--muted);">에 스캔 후 발송</span>
+        </div>
+        <div class="time-hint">
+            💡 Vercel Cron은 매시 정각 기준으로 실행됩니다. 설정한 시각과 가장 가까운 Cron 주기에 발송됩니다.
+        </div>
+
+        <!-- 스캔 범위 -->
+        <div class="section-label">스캔 범위</div>
+        <div class="scope-row">
+            <select class="scope-sel" id="alert-exchange">
+                <option value="upbit">업비트</option>
+                <option value="bithumb">빗썸</option>
+            </select>
+            <select class="scope-sel" id="alert-vol">
+                <option value="30">거래대금 상위 30개</option>
+                <option value="50">거래대금 상위 50개</option>
+                <option value="100" selected>거래대금 상위 100개</option>
+                <option value="200">거래대금 상위 200개</option>
+                <option value="0">전체 코인</option>
+            </select>
+        </div>
+
+        <!-- 텔레그램 상태 -->
+        <div class="tg-row">
+            <div class="tg-head">
+                <div class="tg-title">✈️ 텔레그램</div>
+                <div id="tg-status"></div>
+            </div>
+        </div>
+
+        <!-- 저장 시 테스트 발송 -->
+        <div class="check-row">
+            <input type="checkbox" id="alert-test" name="send_test">
+            <label for="alert-test">
+                저장 시 테스트 발송
+                <span class="check-desc">저장과 동시에 텔레그램 테스트 메시지를 1회 발송합니다</span>
+            </label>
+        </div>
+
+        <!-- 저장 -->
+        <button class="btn-save" id="alert-save-btn" onclick="saveAlert()">🚀 저장</button>
+    </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── 현재 열려있는 전략 ID ── */
+let currentAlertId = null;
+
+/* ── 검색 실행 ── */
+function runSearch(id) {
+    const ex  = document.getElementById('ex-val-'  + id).value;
+    const vol = document.getElementById('vol-val-' + id).value;
+    document.getElementById('spinner-' + id).style.display = 'block';
+    window.location.href = `/strategy/${id}/search/?exchange=${ex}&vol_limit=${vol}`;
+}
+
+/* ── 전략 검색 필터 ── */
+function filterStrategies() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    document.querySelectorAll('.strategy-card').forEach(card => {
+        card.style.display = card.dataset.name.includes(q) ? '' : 'none';
+    });
+}
+
+/* ── 삭제 모드 ── */
+let delMode = false;
+function toggleDelMode() {
+    delMode = !delMode;
+    document.querySelectorAll('.del-chk').forEach(c => c.classList.toggle('visible', delMode));
+    document.getElementById('del-submit').style.display = delMode ? 'inline-block' : 'none';
+    document.getElementById('del-mode-btn').textContent = delMode ? '취소' : '삭제 모드';
+}
+
+/* ── 드롭다운 공통 토글 ── */
+function toggleMenu(e, menuId) {
+    e.stopPropagation();
+    const menu = document.getElementById(menuId);
+    const isOpen = menu.classList.contains('open');
+    // 모든 메뉴 닫기
+    document.querySelectorAll('.ex-menu, .vol-menu').forEach(m => m.classList.remove('open'));
+    if (!isOpen) menu.classList.add('open');
+}
+document.addEventListener('click', () => {
+    document.querySelectorAll('.ex-menu, .vol-menu').forEach(m => m.classList.remove('open'));
+});
+
+/* ── 거래소 선택 ── */
+function selectEx(id, val, label, el) {
+    document.getElementById('ex-val-'   + id).value     = val;
+    document.getElementById('ex-label-' + id).textContent = label;
+    el.closest('.ex-menu').querySelectorAll('.ex-opt').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    el.closest('.ex-menu').classList.remove('open');
+}
+
+/* ── 거래대금 선택 ── */
+function selectVol(id, el) {
+    const val = el.dataset.val;
+    document.getElementById('vol-val-'   + id).value = val;
+    document.getElementById('vol-label-' + id).textContent = el.textContent;
+    el.closest('.vol-menu').querySelectorAll('.vol-opt').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    el.closest('.vol-menu').classList.remove('open');
+}
+
+/* ── 전략 추가 모달 ── */
+function openAddModal() {
+    document.getElementById('add-modal').classList.add('open');
+}
+function closeAddModal() {
+    document.getElementById('add-modal').classList.remove('open');
+}
+document.getElementById('add-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeAddModal();
+});
+
+/* ── 알림 모달 ── */
+async function openAlert(id, name) {
+    currentAlertId = id;
+    document.getElementById('alert-modal-sub').textContent = name;
+    document.getElementById('alert-modal').classList.add('open');
+
+    // 기존 설정 불러오기
+    try {
+        const res  = await fetch(`/strategy/${id}/alert/`);
+        const data = await res.json();
+
+        document.getElementById('alert-enabled').checked = data.enabled;
+        document.getElementById('alert-hour').value      = data.alert_hour;
+        document.getElementById('alert-min').value       = data.alert_min;
+        document.getElementById('alert-exchange').value  = data.exchange;
+        document.getElementById('alert-vol').value       = data.vol_limit;
+
+        // 텔레그램 상태
+        const tgEl = document.getElementById('tg-status');
+        if (data.tg_configured) {
+            tgEl.innerHTML = '<span class="tg-status-ok">✅ 봇 연결 완료 — 서버에 토큰이 설정되어 있습니다</span>';
+        } else {
+            tgEl.innerHTML = '<span class="tg-status-fail">❌ 환경변수 미설정 (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)</span>';
+        }
+        updateToggleDesc();
+    } catch(e) {
+        showToast('설정을 불러오지 못했습니다.', 'err');
+    }
+}
+function closeAlert() {
+    document.getElementById('alert-modal').classList.remove('open');
+    currentAlertId = null;
+}
+document.getElementById('alert-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeAlert();
+});
+
+function updateToggleDesc() {
+    const h = document.getElementById('alert-hour').value;
+    const m = parseInt(document.getElementById('alert-min').value);
+    const mStr = m === 0 ? '00' : m;
+    document.getElementById('alert-toggle-desc').textContent =
+        `매일 오전 ${h}:${mStr} 자동 스캔 후 알림 발송`;
+}
+
+async function saveAlert() {
+    if (!currentAlertId) return;
+    const btn = document.getElementById('alert-save-btn');
+    btn.disabled = true;
+    btn.textContent = '저장 중...';
+
+    const body = {
+        enabled:    document.getElementById('alert-enabled').checked,
+        alert_hour: parseInt(document.getElementById('alert-hour').value),
+        alert_min:  parseInt(document.getElementById('alert-min').value),
+        exchange:   document.getElementById('alert-exchange').value,
+        vol_limit:  parseInt(document.getElementById('alert-vol').value),
+        send_test:  document.getElementById('alert-test').checked,
+    };
+
+    try {
+        const res  = await fetch(`/strategy/${currentAlertId}/alert/save/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('✅ 저장되었습니다.', 'ok');
+            updateBellUI(currentAlertId, body.enabled);
+            closeAlert();
+        } else {
+            showToast('❌ ' + (data.error || '저장 실패'), 'err');
+        }
+    } catch(e) {
+        showToast('❌ 네트워크 오류', 'err');
+    }
+    btn.disabled = false;
+    btn.textContent = '🚀 저장';
+}
+
+/* ── 벨 UI 업데이트 ── */
+function updateBellUI(id, enabled) {
+    const wrap = document.getElementById('bell-wrap-' + id);
+    if (enabled) {
+        wrap.innerHTML = `
+            <div class="bell-on" onclick="openAlert(${id}, document.querySelector('[data-name]').dataset.name)">
+                🔔 <span class="dot"></span> ON
+            </div>`;
+    } else {
+        wrap.innerHTML = `
+            <button type="button" class="btn-bell"
+                    onclick="openAlert(${id}, '${id}')">🔔</button>`;
+    }
+}
+
+/* ── 페이지 로드 시 각 전략 알림 상태 반영 ── */
+(async function loadAllAlerts() {
+    {% for strategy in strategies %}
+    (async () => {
+        try {
+            const res  = await fetch(`/strategy/{{ strategy.id }}/alert/`);
+            const data = await res.json();
+            if (data.enabled) {
+                const wrap = document.getElementById('bell-wrap-{{ strategy.id }}');
+                wrap.innerHTML = `
+                    <div class="bell-on" onclick="openAlert({{ strategy.id }}, '{{ strategy.name|escapejs }}')">
+                        🔔 <span class="dot"></span> ON
+                    </div>`;
+            }
+        } catch(e) {}
+    })();
+    {% endfor %}
+})();
+
+/* ── 토스트 ── */
+let toastTimer;
+function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + (type || '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+</script>
 </body>
 </html>

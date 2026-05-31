@@ -1,0 +1,44 @@
+"""텔레그램 봇 유틸리티"""
+import os
+import requests
+
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID', '')
+
+
+def is_configured():
+    return bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+
+
+def send_message(text: str) -> dict:
+    """텔레그램 메시지 발송. 성공 시 {'ok': True}, 실패 시 {'ok': False, 'error': ...}"""
+    if not is_configured():
+        return {'ok': False, 'error': '환경변수 TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID 미설정'}
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        r = requests.post(url, json={
+            'chat_id':    TELEGRAM_CHAT_ID,
+            'text':       text,
+            'parse_mode': 'HTML',
+        }, timeout=10)
+        data = r.json()
+        if data.get('ok'):
+            return {'ok': True}
+        return {'ok': False, 'error': data.get('description', '알 수 없는 오류')}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+
+def send_alert(strategy_name: str, results: list) -> dict:
+    """스크리닝 결과 알림 발송"""
+    if not results:
+        text = f"📊 <b>{strategy_name}</b>\n조건에 맞는 코인이 없습니다."
+    else:
+        lines = [f"📊 <b>{strategy_name}</b> — {len(results)}개 매칭\n"]
+        for r in results[:20]:   # 최대 20개
+            vol = r.get('volume_display', '')
+            lines.append(f"• <b>{r['symbol']}</b>  {r['price']:,.0f}원  거래대금 {vol}")
+        if len(results) > 20:
+            lines.append(f"... 외 {len(results)-20}개")
+        text = "\n".join(lines)
+    return send_message(text)

@@ -7,6 +7,7 @@ class Strategy(models.Model):
     def __str__(self):
         return self.name
 
+
 class Condition(models.Model):
     TIMEFRAME_CHOICES = [
         ('minute1',   '1분봉'),
@@ -21,7 +22,6 @@ class Condition(models.Model):
         ('week',      '주봉'),
         ('month',     '월봉'),
     ]
-
     INDICATOR_CHOICES = [
         ('MA',        '단순이동평균(SMA)'),
         ('EMA',       '지수이동평균(EMA)'),
@@ -33,7 +33,6 @@ class Condition(models.Model):
         ('VAL',       '고정값'),
         ('CLOSE',     '종가'),
     ]
-
     OPERATOR_CHOICES = [
         ('gt',  '크다 (>)'),
         ('lt',  '작다 (<)'),
@@ -41,24 +40,30 @@ class Condition(models.Model):
         ('lte', '이하 (<=)'),
     ]
 
-    strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='conditions')
-
-    timeframe   = models.CharField(max_length=20, choices=TIMEFRAME_CHOICES, default='day')
-    offset      = models.IntegerField(default=0, verbose_name="n봉 전")
-    offset_mode = models.CharField(max_length=20, null=True, blank=True)  # DB에 존재, nullable 처리
-
-    left_indicator = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
-    left_param     = models.IntegerField(default=5, verbose_name="좌변 기간/값")
-
-    operator = models.CharField(max_length=5, choices=OPERATOR_CHOICES, default='gte')
-
+    strategy        = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='conditions')
+    timeframe       = models.CharField(max_length=20, choices=TIMEFRAME_CHOICES, default='day')
+    offset          = models.IntegerField(default=0, verbose_name="n봉 전")
+    offset_mode     = models.CharField(max_length=20, null=True, blank=True)
+    left_indicator  = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
+    left_param      = models.IntegerField(default=5)
+    operator        = models.CharField(max_length=5, choices=OPERATOR_CHOICES, default='gte')
     right_indicator = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
-    right_param     = models.IntegerField(default=20, verbose_name="우변 기간/값")
-
-    bb_std = models.FloatField(null=True, blank=True)  # DB에 존재, nullable 처리
+    right_param     = models.IntegerField(default=20)
+    bb_std          = models.FloatField(null=True, blank=True)
 
     def __str__(self):
-        return (f"{self.offset}봉전 "
-                f"{self.left_indicator}({self.left_param}) "
-                f"{self.operator} "
-                f"{self.right_indicator}({self.right_param})")
+        return f"{self.offset}봉전 {self.left_indicator}({self.left_param}) {self.operator} {self.right_indicator}({self.right_param})"
+
+
+class AlertSetting(models.Model):
+    """전략별 텔레그램 자동 알림 설정"""
+    strategy    = models.OneToOneField(Strategy, on_delete=models.CASCADE, related_name='alert')
+    enabled     = models.BooleanField(default=False, verbose_name="자동 알림 활성화")
+    alert_hour  = models.IntegerField(default=9,  verbose_name="알림 시각 (시)")
+    alert_min   = models.IntegerField(default=0,  verbose_name="알림 시각 (분)")
+    exchange    = models.CharField(max_length=20, default='upbit')
+    vol_limit   = models.IntegerField(default=100)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.strategy.name} 알림"

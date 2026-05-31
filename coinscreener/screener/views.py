@@ -336,3 +336,120 @@ def coin_search_results(request, strategy_id):
         'is_cached':          False,
         'last_updated':       cached_data.get('last_updated'),
     })
+
+
+# ──────────────────────────────────────────
+# 4. 알림 설정 API
+# ──────────────────────────────────────────
+
+from .models import AlertSetting
+from . import telegram as tg
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.csrf import csrf_exempt
+import json as _json
+
+
+@require_GET
+def alert_get(request, strategy_id):
+    """GET: 전략의 알림 설정 반환"""
+    strategy = get_object_or_404(Strategy, id=strategy_id)
+    try:
+        a = strategy.alert
+        data = {
+            'enabled':    a.enabled,
+            'alert_hour': a.alert_hour,
+            'alert_min':  a.alert_min,
+            'exchange':   a.exchange,
+            'vol_limit':  a.vol_limit,
+        }
+    except AlertSetting.DoesNotExist:
+        data = {'enabled': False, 'alert_hour': 9, 'alert_min': 0,
+                'exchange': 'upbit', 'vol_limit': 100}
+    data['tg_configured'] = tg.is_configured()
+    return JsonResponse(data)
+
+
+@csrf_exempt
+@require_POST
+def alert_save(request, strategy_id):
+    """POST: 알림 설정 저장"""
+    strategy = get_object_or_404(Strategy, id=strategy_id)
+    try:
+        body = _json.loads(request.body)
+    except Exception:
+        return JsonResponse({'ok': False, 'error': '잘못된 요청'}, status=400)
+
+    enabled    = bool(body.get('enabled', False))
+    alert_hour = int(body.get('alert_hour', 9))
+    alert_min  = int(body.get('alert_min',  0))
+    exchange   = body.get('exchange', 'upbit')
+    vol_limit  = int(body.get('vol_limit', 100))
+    send_test  = bool(body.get('send_test', False))
+
+    alert, _ = AlertSetting.objects.update_or_create(
+        strategy=strategy,
+        defaults={
+            'enabled':    enabled,
+            'alert_hour': alert_hour,
+            'alert_min':  alert_min,
+            'exchange':   exchange,
+            'vol_limit':  vol_limit,
+        }
+    )
+
+    if send_test:
+        res = tg.send_message(f"🔔 [{strategy.name}] 텔레그램 알림 연결 테스트 메시지입니다.")
+        if not res['ok']:
+            return JsonResponse({'ok': False, 'error': res['error']})
+
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+@require_POST
+def alert_send_now(request, strategy_id):
+    """POST: 즉시 스캔 후 텔레그램 발송"""
+    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    conditions = list(strategy.conditions.all())
+
+    if not conditions:
+        return JsonResponse({'ok': False, 'error': '조건이 없습니다.'})
+    if not tg.is_configured():
+        return JsonResponse({'ok': False, 'error': '텔레그램 환경변수가 설정되지 않았습니다.'})
+
+    try:
+        body      = _json.loads(request.body)
+        exchange  = body.get('exchange', 'upbit')
+        vol_limit = int(body.get('vol_limit', 100))
+    except Exception:
+        exchange, vol_limit = 'upbit', 100
+
+    tickers = _get_tickers(exchange, vol_limit)
+    results = []
+
+    def _proc(ticker):
+        try:
+            is_match, details, price, volume = check_strategy(ticker, conditions)
+            if is_match and price:
+                return {
+                    'symbol':         ticker,
+                    'price':          price,
+                    'volume':         volume,
+                    'volume_display': f"{volume/100_000_000:.1f}억",
+                    'details':        ", ".join(list(dict.fromkeys(details))),
+                }
+        except Exception:
+            pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
+        for r in ex.map(_proc, tickers):
+            if r:
+                results.append(r)
+
+    results.sort(key=lambda x: x.get('volume', 0), reverse=True)
+    res = tg.send_alert(strategy.name, results)
+    if res['ok']:
+        return JsonResponse({'ok': True, 'matched': len(results)})
+    return JsonResponse({'ok': False, 'error': res['error']})
