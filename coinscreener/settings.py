@@ -2,7 +2,7 @@
 Django settings for coinscreener project.
 Django 4.2.0
 """
-
+import dj_database_url
 from pathlib import Path
 import os
 
@@ -64,21 +64,13 @@ WSGI_APPLICATION = 'coinscreener.wsgi.application'
 # ────────────────────────────────────────────
 DATABASE_URL = os.environ.get('DATABASE_URL')
  
-if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=DATABASE_URL,
-            conn_max_age=600,
-            ssl_require=True,
-        )
-    }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+DATABASES = {
+    'default': dj_database_url.parse(
+        os.environ.get('DATABASE_URL'),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+}
  
 
 AUTH_PASSWORD_VALIDATORS = [

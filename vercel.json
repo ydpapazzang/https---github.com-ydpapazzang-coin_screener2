@@ -3,8 +3,7 @@
   "builds": [
     {
       "src": "coinscreener/wsgi.py",
-      "use": "@vercel/python",
-      "config": { "maxDuration": 90 }
+      "use": "@vercel/python"
     }
   ],
   "routes": [
@@ -12,5 +11,10 @@
       "src": "/(.*)",
       "dest": "coinscreener/wsgi.py"
     }
-  ]
+  ],
+  "build": {
+    "env": {
+      "python manage.py migrate": "true"
+    }
+  }
 }

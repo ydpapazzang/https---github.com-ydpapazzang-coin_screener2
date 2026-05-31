@@ -3,6 +3,5 @@ pyupbit==0.2.34
 pandas==2.0.0
 numpy==1.24.0
 python-dotenv==1.0.0
-dj-database-url==2.1.0
-psycopg2-binary==2.9.9
- 
+dj-database-url
+psycopg2-binary
