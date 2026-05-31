@@ -1,6 +1,7 @@
 import pyupbit
 import pandas as pd
 import time
+import numpy as np
 
 
 def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3):
@@ -31,6 +32,24 @@ def calculate_rsi(ohlc: pd.DataFrame, period: int = 14):
     RS = au / ad.replace(0, float('nan'))
     rsi = 100 - (100 / (1 + RS))
     return pd.Series(rsi, name="RSI")
+
+
+def calculate_wma(series: pd.Series, period: int):
+    """가중이동평균(WMA) 계산"""
+    if len(series) < period:
+        return pd.Series([np.nan] * len(series), index=series.index)
+    weights = np.arange(1, period + 1)
+    wma = series.rolling(window=period).apply(lambda prices: np.dot(prices, weights) / weights.sum(), raw=True)
+    return wma
+
+
+def calculate_bollinger(series: pd.Series, period: int = 20, std: float = 2.0):
+    """볼린저 밴드 계산. 상단, 중간, 하단 밴드를 포함하는 DataFrame 반환"""
+    ma = series.rolling(window=period).mean()
+    mstd = series.rolling(window=period).std()
+    upper = ma + (mstd * std)
+    lower = ma - (mstd * std)
+    return pd.DataFrame({'BB_UPPER': upper, 'BB_MIDDLE': ma, 'BB_LOWER': lower}, index=series.index)
 
 
 def check_strategy(ticker, conditions, current_price=None):
@@ -130,17 +149,35 @@ def get_indicator_value(df, indicator_type, param, offset):
         return None
 
     if indicator_type == 'MA':
-        if param < 1:
-            return None
+        if param < 1: return None
         ma = df['close'].rolling(window=param).mean()
         val = ma.iloc[target_idx]
         return None if pd.isna(val) else float(val)
 
+    elif indicator_type == 'EMA':
+        if param < 1: return None
+        ema = df['close'].ewm(span=param, adjust=False).mean()
+        val = ema.iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'WMA':
+        if param < 1: return None
+        wma = calculate_wma(df['close'], period=param)
+        val = wma.iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
     elif indicator_type == 'RSI':
-        if param < 1:
-            return None
+        if param < 1: return None
         rsi = calculate_rsi(df, period=param)
         val = rsi.iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type in ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER'):
+        if param < 1: return None
+        # TODO: Condition 모델의 bb_std 필드를 활용하도록 개선 가능
+        std = 2.0
+        bb = calculate_bollinger(df['close'], period=param, std=std)
+        val = bb[indicator_type].iloc[target_idx]
         return None if pd.isna(val) else float(val)
 
     elif indicator_type == 'VAL':
