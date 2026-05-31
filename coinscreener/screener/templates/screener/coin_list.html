@@ -57,6 +57,14 @@
         .result-table .symbol { font-weight: 700; color: #fff; }
         .result-table .price { text-align: right; }
         .result-table .volume { text-align: right; color: var(--muted); }
+        .result-table .symbol a {
+            color: inherit;
+            text-decoration: none;
+        }
+        .result-table .symbol a:hover {
+            color: var(--blue);
+            text-decoration: underline;
+        }
 
         /* STATUS BADGE */
         .status-badge {
@@ -115,7 +123,9 @@
             <tr>
                 <td class="num">{{ forloop.counter }}</td>
                 <td class="symbol">
-                    {{ r.symbol }}
+                    <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}" target="_blank" title="업비트 차트 보기">
+                        {{ r.symbol }}
+                    </a>
                     {% if r.status == 'new' %}
                         <span class="status-badge new">신규</span>
                     {% elif r.status == 'maintained' %}
