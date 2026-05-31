@@ -58,7 +58,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'coinscreener.wsgi.application'
 
 # ────────────────────────────────────────────
-# DB 설정 (오류 수정 버전)ㅍ 
+# DB 설정 (오류 수정 버전)
 # ────────────────────────────────────────────
 # Vercel 환경변수(DATABASE_URL)를 체크하고, 있으면 Neon 연동 / 없으면 로컬 SQLite fallback
 DATABASE_URL = os.environ.get('DATABASE_URL')
