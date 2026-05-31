@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>검색 중... — {{ strategy.name }}</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:      #131722;
+            --surface: #1e222d;
+            --border:  #363a45;
+            --blue:    #2962ff;
+            --text:    #d1d4dc;
+            --muted:   #868993;
+            --green:   #26a69a;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ── BLUR OVERLAY ── */
+        .overlay {
+            position: fixed; inset: 0;
+            background: rgba(13, 16, 25, 0.75);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            z-index: 10;
+            pointer-events: all; /* 클릭 차단 */
+        }
+
+        /* ── MODAL CARD ── */
+        .modal {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 20;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px 48px;
+            width: min(480px, 92vw);
+            text-align: center;
+            box-shadow: 0 24px 60px rgba(0,0,0,.5);
+        }
+
+        /* spinner */
+        .spinner {
+            width: 52px; height: 52px;
+            border: 3px solid var(--border);
+            border-top-color: var(--blue);
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
+            margin: 0 auto 24px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+        .modal-sub {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 28px;
+        }
+
+        /* ── PROGRESS BAR ── */
+        .bar-wrap {
+            background: var(--border);
+            border-radius: 99px;
+            height: 8px;
+            overflow: hidden;
+            margin-bottom: 14px;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 99px;
+            background: linear-gradient(90deg, var(--blue) 0%, #5c8aff 100%);
+            width: 0%;
+            transition: width .3s ease;
+        }
+
+        /* ── STATS ROW ── */
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 22px;
+        }
+        .stats .hit { color: var(--green); font-weight: 700; }
+
+        /* ── TICKER SCROLL ── */
+        .ticker-list {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            height: 110px;
+            overflow: hidden;
+            position: relative;
+        }
+        .ticker-inner {
+            padding: 8px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: transform .2s ease;
+        }
+        .ticker-item {
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .ticker-item.match {
+            color: var(--green);
+            font-weight: 700;
+        }
+        .ticker-item.match::before { content: '✓ '; }
+        /* fade top/bottom */
+        .ticker-list::before, .ticker-list::after {
+            content: '';
+            position: absolute;
+            left: 0; right: 0;
+            height: 28px;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .ticker-list::before { top: 0;    background: linear-gradient(to bottom, var(--bg), transparent); }
+        .ticker-list::after  { bottom: 0; background: linear-gradient(to top,   var(--bg), transparent); }
+
+        /* ── CANCEL BUTTON ── */
+        .btn-cancel {
+            margin-top: 20px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            padding: 9px 24px;
+            border-radius: 8px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: border-color .15s, color .15s;
+        }
+        .btn-cancel:hover { border-color: var(--text); color: var(--text); }
+    </style>
+</head>
+<body>
+
+<div class="overlay"></div>
+
+<div class="modal">
+    <div class="spinner"></div>
+    <div class="modal-title">코인 스크리닝 중...</div>
+    <div class="modal-sub" id="sub-text">업비트 전체 코인을 분석하고 있습니다</div>
+
+    <div class="bar-wrap">
+        <div class="bar-fill" id="bar"></div>
+    </div>
+
+    <div class="stats">
+        <span id="stat-left">0 / 0 코인 검사 중</span>
+        <span class="hit" id="stat-right">✓ 0개 매칭</span>
+    </div>
+
+    <div class="ticker-list">
+        <div class="ticker-inner" id="ticker-inner"></div>
+    </div>
+
+    <button class="btn-cancel" onclick="cancel()">취소</button>
+</div>
+
+<script>
+    const strategyId = {{ strategy.id }};
+    const streamUrl  = `/strategy/${strategyId}/search-stream/`;
+    const resultUrl  = `/strategy/${strategyId}/results/`;
+
+    const bar        = document.getElementById('bar');
+    const statLeft   = document.getElementById('stat-left');
+    const statRight  = document.getElementById('stat-right');
+    const subText    = document.getElementById('sub-text');
+    const tickerWrap = document.getElementById('ticker-inner');
+
+    let es;
+    const MAX_TICKERS = 30;
+    const tickerItems = [];
+
+    function addTicker(symbol, isMatch) {
+        const el = document.createElement('div');
+        el.className = 'ticker-item' + (isMatch ? ' match' : '');
+        el.textContent = symbol;
+        tickerItems.push(el);
+        tickerWrap.appendChild(el);
+
+        if (tickerItems.length > MAX_TICKERS) {
+            tickerItems.shift().remove();
+        }
+    }
+
+    function cancel() {
+        if (es) es.close();
+        history.back();
+    }
+
+    es = new EventSource(streamUrl);
+
+    es.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+
+        if (data.type === 'progress') {
+            const pct = data.pct;
+            bar.style.width = pct + '%';
+            statLeft.textContent  = `${data.done.toLocaleString()} / ${data.total.toLocaleString()} 코인 검사 중`;
+            statRight.textContent = `✓ ${data.matched}개 매칭`;
+
+            if (pct < 30)       subText.textContent = '업비트 전체 코인을 분석하고 있습니다';
+            else if (pct < 70)  subText.textContent = '절반 넘었어요, 조금만 기다려 주세요 ☕';
+            else if (pct < 95)  subText.textContent = '거의 다 왔습니다!';
+            else                subText.textContent = '마무리 중...';
+
+            // 최근 검사 코인 표시 (matched일 때만 / 샘플)
+            if (data.matched > (tickerItems.filter(t => t.classList.contains('match')).length)) {
+                addTicker('매칭됨', true);
+            }
+        }
+
+        if (data.type === 'done') {
+            es.close();
+            bar.style.width = '100%';
+            subText.textContent = '완료! 결과 페이지로 이동합니다...';
+            setTimeout(() => { window.location.href = resultUrl; }, 400);
+        }
+
+        if (data.type === 'error') {
+            es.close();
+            alert(data.msg);
+            history.back();
+        }
+    };
+
+    es.onerror = function() {
+        es.close();
+        // SSE 연결 실패 시 결과 페이지로 그냥 이동 시도
+        window.location.href = resultUrl;
+    };
+</script>
+</body>
+</html>

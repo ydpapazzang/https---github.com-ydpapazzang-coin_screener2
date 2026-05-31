@@ -6,6 +6,7 @@ import concurrent.futures
 from django.utils import timezone
 from django.contrib import messages
 from django.core.cache import cache
+import json
 
 
 # ──────────────────────────────────────────
@@ -71,11 +72,10 @@ def condition_add(request, strategy_id):
         return redirect('strategy_detail', strategy_id=strategy_id)
 
     if cond_type == 'MA':
-        ma_type_a    = request.POST.get('ma_type_a', 'MA')   # MA/EMA/WMA
+        ma_type_a    = request.POST.get('ma_type_a', 'MA')
         ma_type_b    = request.POST.get('ma_type_b', 'MA')
-        price_a_type = request.POST.get('ma_price_a_type', 'MA')  # MA계열 or CLOSE
+        price_a_type = request.POST.get('ma_price_a_type', 'MA')
 
-        # ma_type_a 유효성
         valid_ma = ('MA', 'EMA', 'WMA')
         if ma_type_a not in valid_ma: ma_type_a = 'MA'
         if ma_type_b not in valid_ma: ma_type_b = 'MA'
@@ -121,7 +121,7 @@ def condition_add(request, strategy_id):
     elif cond_type == 'BB':
         try:
             bb_period = int(request.POST.get('bb_period', 20))
-            bb_target = request.POST.get('bb_target', 'BB_UPPER')  # BB_UPPER/BB_MIDDLE/BB_LOWER
+            bb_target = request.POST.get('bb_target', 'BB_UPPER')
         except ValueError:
             messages.error(request, "볼린저밴드 기간 값이 올바르지 않습니다.")
             return redirect('strategy_detail', strategy_id=strategy_id)
@@ -163,10 +163,15 @@ def condition_delete(request, strategy_id, condition_id):
 
 
 # ──────────────────────────────────────────
-# 3. 코인 검색
+# 3. 코인 검색 — SSE 스트리밍 버전
 # ──────────────────────────────────────────
 
 def coin_search(request, strategy_id):
+    """
+    일반 GET: 캐시 있으면 바로 결과 페이지 렌더.
+    캐시 없으면 로딩 페이지(search_loading.html)를 먼저 띄우고,
+    JS가 /strategy/<id>/search-stream/ SSE 엔드포인트를 구독해 진행률을 받는다.
+    """
     strategy   = get_object_or_404(Strategy, id=strategy_id)
     conditions = list(strategy.conditions.all())
 
@@ -179,56 +184,112 @@ def coin_search(request, strategy_id):
 
     if cached_data and request.GET.get('refresh') != '1':
         return render(request, 'screener/coin_list.html', {
-            'results':             cached_data['results'],
-            'strategy':            strategy,
-            'rate_limit_warning':  cached_data['rate_limit_warning'],
-            'is_cached':           True,
-            'last_updated':        cached_data.get('last_updated'),
+            'results':            cached_data['results'],
+            'strategy':           strategy,
+            'rate_limit_warning': cached_data['rate_limit_warning'],
+            'is_cached':          True,
+            'last_updated':       cached_data.get('last_updated'),
         })
 
-    tickers = pyupbit.get_tickers(fiat="KRW")
-    results = []
+    # 캐시 없음 → 로딩 페이지 반환 (JS가 SSE로 진행)
+    return render(request, 'screener/search_loading.html', {'strategy': strategy})
 
-    def process_ticker(ticker):
-        try:
-            is_match, details, price, volume = check_strategy(ticker, conditions)
-            if price is None:
-                return "API_ERROR"
-            if is_match:
-                unique_details = list(dict.fromkeys(details))
-                return {
-                    'symbol':         ticker,
-                    'price':          price,
-                    'details':        ", ".join(unique_details),
-                    'volume':         volume,
-                    'volume_display': f"{volume / 100_000_000:.1f}억",
-                }
-        except Exception:
-            pass
-        return None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures       = {executor.submit(process_ticker, t): t for t in tickers}
+def coin_search_stream(request, strategy_id):
+    """SSE: 검색 진행률 + 최종 결과를 스트리밍으로 전송"""
+    from django.http import StreamingHttpResponse
+    import time
+
+    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    conditions = list(strategy.conditions.all())
+
+    def event_stream():
+        if not conditions:
+            yield "data: " + json.dumps({"type": "error", "msg": "조건이 없습니다."}) + "\n\n"
+            return
+
+        tickers = pyupbit.get_tickers(fiat="KRW") or []
+        total   = len(tickers)
+        results = []
+        done    = 0
         error_occurred = False
-        for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            if result == "API_ERROR":
-                error_occurred = True
-            elif result:
-                results.append(result)
 
-    results.sort(key=lambda x: x.get('volume', 0), reverse=True)
-    last_updated = timezone.now()
+        def process_ticker(ticker):
+            try:
+                is_match, details, price, volume = check_strategy(ticker, conditions)
+                if price is None:
+                    return "API_ERROR"
+                if is_match:
+                    unique_details = list(dict.fromkeys(details))
+                    return {
+                        'symbol':         ticker,
+                        'price':          price,
+                        'details':        ", ".join(unique_details),
+                        'volume':         volume,
+                        'volume_display': f"{volume / 100_000_000:.1f}억",
+                    }
+            except Exception:
+                pass
+            return None
 
-    cache.set(cache_key, {
-        'results':            results,
-        'rate_limit_warning': error_occurred,
-        'last_updated':       last_updated,
-    }, timeout=300)
+        # max_workers=20 으로 4배 병렬화
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            futures = {executor.submit(process_ticker, t): t for t in tickers}
+
+            last_sent_pct = -1
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                done  += 1
+                if result == "API_ERROR":
+                    error_occurred = True
+                elif result:
+                    results.append(result)
+
+                pct = int(done / total * 100) if total else 100
+                # 진행률은 2% 단위로만 전송 (너무 잦은 전송 방지)
+                if pct >= last_sent_pct + 2 or done == total:
+                    last_sent_pct = pct
+                    yield "data: " + json.dumps({
+                        "type":    "progress",
+                        "done":    done,
+                        "total":   total,
+                        "pct":     pct,
+                        "matched": len(results),
+                    }) + "\n\n"
+
+        results.sort(key=lambda x: x.get('volume', 0), reverse=True)
+        last_updated = timezone.now()
+
+        cache.set(f"strategy_results_{strategy_id}", {
+            'results':            results,
+            'rate_limit_warning': error_occurred,
+            'last_updated':       last_updated,
+        }, timeout=300)
+
+        yield "data: " + json.dumps({
+            "type":    "done",
+            "redirect": f"/strategy/{strategy_id}/results/",
+        }) + "\n\n"
+
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'
+    return response
+
+
+def coin_search_results(request, strategy_id):
+    """SSE 완료 후 결과 페이지 렌더 (캐시에서 읽음)"""
+    strategy    = get_object_or_404(Strategy, id=strategy_id)
+    cache_key   = f"strategy_results_{strategy_id}"
+    cached_data = cache.get(cache_key)
+
+    if not cached_data:
+        return redirect('coin_search', strategy_id=strategy_id)
 
     return render(request, 'screener/coin_list.html', {
-        'results':            results,
+        'results':            cached_data['results'],
         'strategy':           strategy,
-        'rate_limit_warning': error_occurred,
-        'last_updated':       last_updated,
+        'rate_limit_warning': cached_data['rate_limit_warning'],
+        'is_cached':          False,
+        'last_updated':       cached_data.get('last_updated'),
     })
