@@ -23,35 +23,39 @@ class Condition(models.Model):
     ]
     
     INDICATOR_CHOICES = [
-        ('MA', '이동평균(MA)'),
+        ('MA',  '단순이동평균(SMA)'),
+        ('EMA', '지수이동평균(EMA)'),
+        ('WMA', '가중이동평균(WMA)'),
         ('RSI', 'RSI'),
-        ('VAL', '고정값'), # 비교 대상이 숫자인 경우
+        ('BB_UPPER', '볼린저 상단'),
+        ('BB_MIDDLE', '볼린저 중단'),
+        ('BB_LOWER', '볼린저 하단'),
+        ('VAL', '고정값'),
         ('CLOSE', '종가'),
     ]
 
     OPERATOR_CHOICES = [
-        ('gt', '크다 (>)'),
-        ('lt', '작다 (<)'),
+        ('gt',  '크다 (>)'),
+        ('lt',  '작다 (<)'),
         ('gte', '이상 (>=)'),
         ('lte', '이하 (<=)'),
     ]
 
     strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='conditions')
     
-    # 공통 조건
     timeframe = models.CharField(max_length=20, choices=TIMEFRAME_CHOICES, default='day')
-    offset = models.IntegerField(default=0, verbose_name="n봉 전") # 0이면 현재봉, 1이면 전봉
+    offset = models.IntegerField(default=0, verbose_name="n봉 전")
 
-    # 좌변 (예: 5MA)
-    left_indicator = models.CharField(max_length=10, choices=INDICATOR_CHOICES, default='MA')
-    left_param = models.IntegerField(default=5, verbose_name="좌변 기간/값") # MA일 경우 기간, RSI일 경우 기간
+    left_indicator  = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
+    left_param      = models.IntegerField(default=5, verbose_name="좌변 기간/값")
 
-    # 비교 연산자
-    operator = models.CharField(max_length=5, choices=OPERATOR_CHOICES, default='gt')
+    operator = models.CharField(max_length=5, choices=OPERATOR_CHOICES, default='gte')
 
-    # 우변 (예: 10MA 또는 30)
-    right_indicator = models.CharField(max_length=10, choices=INDICATOR_CHOICES, default='MA')
-    right_param = models.IntegerField(default=20, verbose_name="우변 기간/값")
+    right_indicator = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
+    right_param     = models.IntegerField(default=20, verbose_name="우변 기간/값")
 
     def __str__(self):
-        return f"{self.offset}봉전 {self.left_indicator}({self.left_param}) {self.operator} {self.right_indicator}({self.right_param})"
+        return (f"{self.offset}봉전 "
+                f"{self.left_indicator}({self.left_param}) "
+                f"{self.operator} "
+                f"{self.right_indicator}({self.right_param})")

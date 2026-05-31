@@ -29,7 +29,6 @@ def strategy_create(request):
 
 
 def strategy_delete(request):
-    # POST 메서드만 허용 (GET 요청으로 삭제되는 것 방지)
     if request.method == 'POST':
         strategy_ids = request.POST.getlist('strategy_ids')
         for s_id in strategy_ids:
@@ -43,10 +42,10 @@ def strategy_delete(request):
 # ──────────────────────────────────────────
 
 def strategy_detail(request, strategy_id):
-    strategy = get_object_or_404(Strategy, id=strategy_id)
+    strategy   = get_object_or_404(Strategy, id=strategy_id)
     conditions = strategy.conditions.all()
     return render(request, 'screener/strategy_detail.html', {
-        'strategy': strategy,
+        'strategy':   strategy,
         'conditions': conditions,
     })
 
@@ -54,15 +53,13 @@ def strategy_detail(request, strategy_id):
 def condition_add(request, strategy_id):
     strategy = get_object_or_404(Strategy, id=strategy_id)
 
-    # POST 메서드만 허용
     if request.method != 'POST':
         return redirect('strategy_detail', strategy_id=strategy_id)
 
     cond_type = request.POST.get('cond_type', '').upper()
     timeframe = request.POST.get('timeframe', 'day')
-    operator = request.POST.get('operator', 'gte')
+    operator  = request.POST.get('operator', 'gte')
 
-    # offset 파싱 및 검증
     try:
         offset = int(request.POST.get('offset', 0))
     except ValueError:
@@ -73,9 +70,15 @@ def condition_add(request, strategy_id):
         messages.error(request, "n봉 전은 0 이상의 숫자여야 합니다.")
         return redirect('strategy_detail', strategy_id=strategy_id)
 
-    # cond_type별 처리
     if cond_type == 'MA':
-        price_a_type = request.POST.get('ma_price_a_type', 'MA')
+        ma_type_a    = request.POST.get('ma_type_a', 'MA')   # MA/EMA/WMA
+        ma_type_b    = request.POST.get('ma_type_b', 'MA')
+        price_a_type = request.POST.get('ma_price_a_type', 'MA')  # MA계열 or CLOSE
+
+        # ma_type_a 유효성
+        valid_ma = ('MA', 'EMA', 'WMA')
+        if ma_type_a not in valid_ma: ma_type_a = 'MA'
+        if ma_type_b not in valid_ma: ma_type_b = 'MA'
 
         try:
             ma_a_val = int(request.POST.get('ma_price_a_val', 5))
@@ -88,18 +91,18 @@ def condition_add(request, strategy_id):
             left_indicator, left_param = 'CLOSE', 0
         else:
             if ma_a_val < 1:
-                messages.error(request, "이동평균가격A 기간은 1 이상이어야 합니다.")
+                messages.error(request, "이동평균A 기간은 1 이상이어야 합니다.")
                 return redirect('strategy_detail', strategy_id=strategy_id)
-            left_indicator, left_param = 'MA', ma_a_val
+            left_indicator, left_param = ma_type_a, ma_a_val
 
         if ma_b_val < 1:
-            messages.error(request, "이동평균가격B 기간은 1 이상이어야 합니다.")
+            messages.error(request, "이동평균B 기간은 1 이상이어야 합니다.")
             return redirect('strategy_detail', strategy_id=strategy_id)
-        right_indicator, right_param = 'MA', ma_b_val
+        right_indicator, right_param = ma_type_b, ma_b_val
 
     elif cond_type == 'RSI':
         try:
-            rsi_period = int(request.POST.get('rsi_period', 14))
+            rsi_period    = int(request.POST.get('rsi_period', 14))
             rsi_threshold = int(request.POST.get('rsi_threshold', 30))
         except ValueError:
             messages.error(request, "RSI 기간 또는 기준값이 올바르지 않습니다.")
@@ -112,11 +115,28 @@ def condition_add(request, strategy_id):
             messages.error(request, "RSI 기준값은 0에서 100 사이여야 합니다.")
             return redirect('strategy_detail', strategy_id=strategy_id)
 
-        left_indicator, left_param = 'RSI', rsi_period
+        left_indicator, left_param   = 'RSI', rsi_period
         right_indicator, right_param = 'VAL', rsi_threshold
 
+    elif cond_type == 'BB':
+        try:
+            bb_period = int(request.POST.get('bb_period', 20))
+            bb_target = request.POST.get('bb_target', 'BB_UPPER')  # BB_UPPER/BB_MIDDLE/BB_LOWER
+        except ValueError:
+            messages.error(request, "볼린저밴드 기간 값이 올바르지 않습니다.")
+            return redirect('strategy_detail', strategy_id=strategy_id)
+
+        valid_bb = ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER')
+        if bb_target not in valid_bb: bb_target = 'BB_UPPER'
+
+        if bb_period < 1:
+            messages.error(request, "볼린저밴드 기간은 1 이상이어야 합니다.")
+            return redirect('strategy_detail', strategy_id=strategy_id)
+
+        left_indicator, left_param   = 'CLOSE', 0
+        right_indicator, right_param = bb_target, bb_period
+
     else:
-        # 알 수 없는 cond_type → UnboundLocalError 방지
         messages.error(request, f"알 수 없는 조건 유형입니다: {cond_type}")
         return redirect('strategy_detail', strategy_id=strategy_id)
 
@@ -135,7 +155,6 @@ def condition_add(request, strategy_id):
 
 
 def condition_delete(request, strategy_id, condition_id):
-    # POST 메서드만 허용 (GET으로 삭제되는 CSRF 우회 방지)
     if request.method == 'POST':
         condition = get_object_or_404(Condition, id=condition_id)
         condition.delete()
@@ -144,29 +163,27 @@ def condition_delete(request, strategy_id, condition_id):
 
 
 # ──────────────────────────────────────────
-# 3. 코인 검색 (스크리닝 실행)
+# 3. 코인 검색
 # ──────────────────────────────────────────
 
 def coin_search(request, strategy_id):
-    strategy = get_object_or_404(Strategy, id=strategy_id)
+    strategy   = get_object_or_404(Strategy, id=strategy_id)
     conditions = list(strategy.conditions.all())
 
-    # 조건 없이 실행하면 전체 코인이 히트되는 버그 방지
     if not conditions:
         messages.warning(request, "조건을 먼저 추가해주세요.")
         return redirect('strategy_detail', strategy_id=strategy_id)
 
-    # 캐시 확인 (?refresh=1 이면 강제 새로고침)
-    cache_key = f"strategy_results_{strategy_id}"
+    cache_key   = f"strategy_results_{strategy_id}"
     cached_data = cache.get(cache_key)
 
     if cached_data and request.GET.get('refresh') != '1':
         return render(request, 'screener/coin_list.html', {
-            'results': cached_data['results'],
-            'strategy': strategy,
-            'rate_limit_warning': cached_data['rate_limit_warning'],
-            'is_cached': True,
-            'last_updated': cached_data.get('last_updated'),
+            'results':             cached_data['results'],
+            'strategy':            strategy,
+            'rate_limit_warning':  cached_data['rate_limit_warning'],
+            'is_cached':           True,
+            'last_updated':        cached_data.get('last_updated'),
         })
 
     tickers = pyupbit.get_tickers(fiat="KRW")
@@ -180,10 +197,10 @@ def coin_search(request, strategy_id):
             if is_match:
                 unique_details = list(dict.fromkeys(details))
                 return {
-                    'symbol': ticker,
-                    'price': price,
-                    'details': ", ".join(unique_details),
-                    'volume': volume,
+                    'symbol':         ticker,
+                    'price':          price,
+                    'details':        ", ".join(unique_details),
+                    'volume':         volume,
                     'volume_display': f"{volume / 100_000_000:.1f}억",
                 }
         except Exception:
@@ -191,7 +208,7 @@ def coin_search(request, strategy_id):
         return None
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(process_ticker, t): t for t in tickers}
+        futures       = {executor.submit(process_ticker, t): t for t in tickers}
         error_occurred = False
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
@@ -204,14 +221,14 @@ def coin_search(request, strategy_id):
     last_updated = timezone.now()
 
     cache.set(cache_key, {
-        'results': results,
+        'results':            results,
         'rate_limit_warning': error_occurred,
-        'last_updated': last_updated,
+        'last_updated':       last_updated,
     }, timeout=300)
 
     return render(request, 'screener/coin_list.html', {
-        'results': results,
-        'strategy': strategy,
+        'results':            results,
+        'strategy':           strategy,
         'rate_limit_warning': error_occurred,
-        'last_updated': last_updated,
+        'last_updated':       last_updated,
     })
