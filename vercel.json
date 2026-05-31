@@ -11,10 +11,5 @@
       "src": "/(.*)",
       "dest": "coinscreener/wsgi.py"
     }
-  ],
-  "build": {
-    "env": {
-      "python manage.py migrate": "true"
-    }
-  }
+  ]
 }
