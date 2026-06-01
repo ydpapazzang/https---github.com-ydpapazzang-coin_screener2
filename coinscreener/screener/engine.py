@@ -52,6 +52,92 @@ def calculate_bollinger(series: pd.Series, period: int = 20, std: float = 2.0):
     return pd.DataFrame({'BB_UPPER': upper, 'BB_MIDDLE': ma, 'BB_LOWER': lower}, index=series.index)
 
 
+
+
+def calculate_heikin_ashi(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    하이킨아시 캔들 계산.
+    HA_close  = (open + high + low + close) / 4
+    HA_open   = (prev_HA_open + prev_HA_close) / 2  (첫 봉은 (open+close)/2)
+    HA_high   = max(high, HA_open, HA_close)
+    HA_low    = min(low,  HA_open, HA_close)
+    """
+    ha_close = (df['open'] + df['high'] + df['low'] + df['close']) / 4
+
+    ha_open = ha_close.copy()
+    ha_open.iloc[0] = (df['open'].iloc[0] + df['close'].iloc[0]) / 2
+    for i in range(1, len(df)):
+        ha_open.iloc[i] = (ha_open.iloc[i - 1] + ha_close.iloc[i - 1]) / 2
+
+    ha_high = pd.concat([df['high'], ha_open, ha_close], axis=1).max(axis=1)
+    ha_low  = pd.concat([df['low'],  ha_open, ha_close], axis=1).min(axis=1)
+
+    return pd.DataFrame({
+        'ha_open':  ha_open,
+        'ha_high':  ha_high,
+        'ha_low':   ha_low,
+        'ha_close': ha_close,
+    }, index=df.index)
+
+
+def check_ha_pattern(df: pd.DataFrame, pattern: str, param: int, offset: int) -> bool:
+    """
+    하이킨아시 패턴 충족 여부 반환.
+    pattern: HA_BULL / HA_BEAR / HA_BULL_N / HA_BEAR_N / HA_NO_LOWER / HA_NO_UPPER
+    param  : HA_BULL_N / HA_BEAR_N 의 연속 N봉 수
+    offset : 0 = 현재봉, 1 = 1봉 전 ...
+    """
+    ha = calculate_heikin_ashi(df)
+    target = -1 - offset
+
+    if abs(target) > len(ha):
+        return False
+
+    if pattern == 'HA_BULL':
+        return float(ha['ha_close'].iloc[target]) >= float(ha['ha_open'].iloc[target])
+
+    if pattern == 'HA_BEAR':
+        return float(ha['ha_close'].iloc[target]) < float(ha['ha_open'].iloc[target])
+
+    if pattern == 'HA_BULL_N':
+        n = max(1, param)
+        if len(ha) < n + abs(offset):
+            return False
+        for i in range(n):
+            idx = target - i
+            if abs(idx) > len(ha):
+                return False
+            if float(ha['ha_close'].iloc[idx]) < float(ha['ha_open'].iloc[idx]):
+                return False
+        return True
+
+    if pattern == 'HA_BEAR_N':
+        n = max(1, param)
+        if len(ha) < n + abs(offset):
+            return False
+        for i in range(n):
+            idx = target - i
+            if abs(idx) > len(ha):
+                return False
+            if float(ha['ha_close'].iloc[idx]) >= float(ha['ha_open'].iloc[idx]):
+                return False
+        return True
+
+    if pattern == 'HA_NO_LOWER':
+        # 아랫꼬리 없음: HA저가 ≈ HA시가 (오차 0.01% 허용)
+        ha_o = float(ha['ha_open'].iloc[target])
+        ha_l = float(ha['ha_low'].iloc[target])
+        return abs(ha_l - ha_o) / (ha_o + 1e-10) < 0.0001
+
+    if pattern == 'HA_NO_UPPER':
+        # 윗꼬리 없음: HA고가 ≈ HA종가 (오차 0.01% 허용)
+        ha_c = float(ha['ha_close'].iloc[target])
+        ha_h = float(ha['ha_high'].iloc[target])
+        return abs(ha_h - ha_c) / (ha_c + 1e-10) < 0.0001
+
+    return False
+
+
 def check_strategy(ticker, conditions, current_price=None):
     """
     특정 코인이 주어진 전략(조건 리스트)을 모두 만족하는지 확인.
@@ -90,6 +176,15 @@ def check_strategy(ticker, conditions, current_price=None):
 
                 if len(df) < required_len: return False
 
+                # ── 하이킨아시 패턴 조건 ──
+                ha_patterns = ('HA_BULL','HA_BEAR','HA_BULL_N','HA_BEAR_N','HA_NO_LOWER','HA_NO_UPPER')
+                if cond.left_indicator in ha_patterns:
+                    pattern = cond.left_indicator
+                    param   = cond.left_param
+                    if not check_ha_pattern(df, pattern, param, total_offset):
+                        return False
+                    continue
+
                 left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, total_offset)
                 right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, total_offset)
 
@@ -119,8 +214,20 @@ def check_strategy(ticker, conditions, current_price=None):
         status = 'maintained' if is_match_previous else 'new'
 
         # 3. 현재 봉 기준 details 수집
+        ha_patterns = ('HA_BULL','HA_BEAR','HA_BULL_N','HA_BEAR_N','HA_NO_LOWER','HA_NO_UPPER')
+        HA_LABEL = {
+            'HA_BULL': 'HA 양봉', 'HA_BEAR': 'HA 음봉',
+            'HA_BULL_N': f'HA 연속 양봉', 'HA_BEAR_N': f'HA 연속 음봉',
+            'HA_NO_LOWER': 'HA 아랫꼬리 없음', 'HA_NO_UPPER': 'HA 윗꼬리 없음',
+        }
         for cond in conditions:
             df = data_cache[cond.timeframe]
+            if cond.left_indicator in ha_patterns:
+                label = HA_LABEL.get(cond.left_indicator, cond.left_indicator)
+                if 'N' in cond.left_indicator:
+                    label = label.replace('연속', f'연속{cond.left_param}봉')
+                details.append(label)
+                continue
             left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, cond.offset)
             right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, cond.offset)
 

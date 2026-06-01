@@ -284,6 +284,34 @@
 
         /* BB band selector */
         .bb-group { display: flex; gap: 8px; }
+
+        /* ── HEIKIN-ASHI pattern selector ── */
+        .ha-opt {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 10px 16px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all .15s;
+            min-width: 100px;
+            line-height: 1.3;
+        }
+        .ha-opt:hover { border-color: var(--text); color: var(--text); }
+        .ha-opt.selected { background: var(--blue); border-color: var(--blue); color: #fff; }
+        .ha-opt.selected .ha-desc { color: rgba(255,255,255,.75); }
+        .ha-desc {
+            font-size: 10px;
+            font-weight: 400;
+            color: var(--muted);
+            text-align: center;
+        }
         .bb-opt {
             padding: 7px 14px;
             background: var(--bg);
@@ -475,6 +503,7 @@
             <button class="tab-btn active" onclick="switchTab(event,'MA')">이동평균(MA)</button>
             <button class="tab-btn" onclick="switchTab(event,'RSI')">RSI</button>
             <button class="tab-btn" onclick="switchTab(event,'BB')">볼린저밴드</button>
+            <button class="tab-btn" onclick="switchTab(event,'HA')">하이킨아시</button>
         </div>
 
         <!-- ═══ MA FORM ═══ -->
@@ -704,6 +733,106 @@
             <button type="submit" class="btn-add-cond">＋ 볼린저 조건 추가</button>
         </form>
 
+
+        <!-- ═══ HEIKIN-ASHI FORM ═══ -->
+        <form id="form-HA" class="cond-form"
+              action="{% url 'condition_add' strategy.id %}" method="post"
+              onsubmit="return validateHA()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="HA">
+            <input type="hidden" name="offset" id="ha_offset" value="0">
+            <input type="hidden" name="ha_pattern" id="ha_pattern_val" value="HA_BULL">
+
+            <div class="form-grid">
+
+                <!-- ① 캔들 단위 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe">
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+
+                <!-- ② 기간 선택 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기간 선택</div>
+                    <select onchange="syncOffsetType('HA')" id="ha_offset_type">
+                        <option value="current">현재봉</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="ha_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="ha_offset_slider" min="0" max="20" value="0"
+                               oninput="syncSlider('ha_offset','ha_offset_slider')">
+                        <span class="slider-val" id="ha_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+
+                <!-- ③ 패턴 선택 -->
+                <div class="field-row" style="flex-wrap:wrap; gap:10px;">
+                    <div class="field-label"><span class="num">③</span>패턴 선택</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; flex:1;">
+                        <button type="button" class="ha-opt selected"
+                                data-val="HA_BULL"
+                                onclick="selectHA('HA_BULL',this)">
+                            <span style="color:#26a69a;">▲</span> 양봉
+                            <span class="ha-desc">HA종가 ≥ HA시가</span>
+                        </button>
+                        <button type="button" class="ha-opt"
+                                data-val="HA_BEAR"
+                                onclick="selectHA('HA_BEAR',this)">
+                            <span style="color:#f23645;">▼</span> 음봉
+                            <span class="ha-desc">HA종가 &lt; HA시가</span>
+                        </button>
+                        <button type="button" class="ha-opt"
+                                data-val="HA_BULL_N"
+                                onclick="selectHA('HA_BULL_N',this)">
+                            <span style="color:#26a69a;">▲▲▲</span> 연속 양봉
+                            <span class="ha-desc">N봉 연속 양봉</span>
+                        </button>
+                        <button type="button" class="ha-opt"
+                                data-val="HA_BEAR_N"
+                                onclick="selectHA('HA_BEAR_N',this)">
+                            <span style="color:#f23645;">▼▼▼</span> 연속 음봉
+                            <span class="ha-desc">N봉 연속 음봉</span>
+                        </button>
+                        <button type="button" class="ha-opt"
+                                data-val="HA_NO_LOWER"
+                                onclick="selectHA('HA_NO_LOWER',this)">
+                            ▬ 아랫꼬리 없음
+                            <span class="ha-desc">강한 상승 신호</span>
+                        </button>
+                        <button type="button" class="ha-opt"
+                                data-val="HA_NO_UPPER"
+                                onclick="selectHA('HA_NO_UPPER',this)">
+                            ▬ 윗꼬리 없음
+                            <span class="ha-desc">강한 하락 신호</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ④ 연속 N봉 설정 (연속 양봉/음봉 선택 시만 표시) -->
+                <div class="field-row" id="ha_n_wrap" style="display:none;">
+                    <div class="field-label"><span class="num">④</span>연속 N봉</div>
+                    <div class="slider-wrap">
+                        <input type="range" class="slider" id="ha_n_slider" min="2" max="10" value="3"
+                               oninput="syncHaN(this.value)">
+                        <span class="slider-val" id="ha_n_display">3</span>
+                        <span class="slider-unit">봉</span>
+                    </div>
+                    <input type="number" name="ha_n" id="ha_n_input" value="3" min="2" max="20" style="width:70px;"
+                           oninput="syncHaNInput(this.value)">
+                </div>
+
+            </div><!-- /form-grid -->
+
+            <button type="submit" class="btn-add-cond">＋ 하이킨아시 조건 추가</button>
+        </form>
+
     </div><!-- /card -->
 
     <!-- ── 하단 액션 바 ── -->
@@ -882,6 +1011,35 @@ function validateBB() {
     const period = parseInt(form.bb_period.value);
     if (isNaN(period) || period < 1) { alert("볼린저밴드 기간은 1 이상이어야 합니다."); return false; }
     return true;
+}
+function validateHA() {
+    const pattern = document.getElementById('ha_pattern_val').value;
+    if (['HA_BULL_N','HA_BEAR_N'].includes(pattern)) {
+        const n = parseInt(document.getElementById('ha_n_input').value);
+        if (isNaN(n) || n < 2) { alert("연속 봉 수는 2 이상이어야 합니다."); return false; }
+    }
+    return true;
+}
+
+/* ── HA 패턴 선택 ── */
+function selectHA(val, btn) {
+    document.querySelectorAll('.ha-opt').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('ha_pattern_val').value = val;
+    // 연속 봉 수 입력란 표시/숨김
+    const showN = ['HA_BULL_N', 'HA_BEAR_N'].includes(val);
+    document.getElementById('ha_n_wrap').style.display = showN ? 'flex' : 'none';
+}
+
+/* ── HA 연속 N봉 슬라이더 동기화 ── */
+function syncHaN(val) {
+    document.getElementById('ha_n_display').textContent = val;
+    document.getElementById('ha_n_input').value = val;
+}
+function syncHaNInput(val) {
+    const v = Math.max(2, Math.min(20, parseInt(val) || 2));
+    document.getElementById('ha_n_slider').value = v;
+    document.getElementById('ha_n_display').textContent = v;
 }
 </script>
 </body>

@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class Strategy(models.Model):
     name = models.CharField(max_length=100, verbose_name="전략명")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -30,6 +31,13 @@ class Condition(models.Model):
         ('BB_UPPER',  '볼린저 상단'),
         ('BB_MIDDLE', '볼린저 중단'),
         ('BB_LOWER',  '볼린저 하단'),
+        # 하이킨아시 전용 지표 (right_indicator에 사용)
+        ('HA_BULL',        'HA 양봉'),
+        ('HA_BEAR',        'HA 음봉'),
+        ('HA_BULL_N',      'HA 연속 양봉'),
+        ('HA_BEAR_N',      'HA 연속 음봉'),
+        ('HA_NO_LOWER',    'HA 아랫꼬리 없음'),
+        ('HA_NO_UPPER',    'HA 윗꼬리 없음'),
         ('VAL',       '고정값'),
         ('CLOSE',     '종가'),
     ]
@@ -38,6 +46,8 @@ class Condition(models.Model):
         ('lt',  '작다 (<)'),
         ('gte', '이상 (>=)'),
         ('lte', '이하 (<=)'),
+        # 하이킨아시 패턴 전용
+        ('is',  '조건 충족'),
     ]
 
     strategy        = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='conditions')

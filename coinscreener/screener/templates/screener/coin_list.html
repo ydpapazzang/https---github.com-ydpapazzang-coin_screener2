@@ -165,31 +165,31 @@
 
 <script>
 function triggerBacktest(ticker, tickerLabel) {
-    const strategyId = {{ strategy.id }};
+    const strategyId   = {{ strategy.id }};
     const strategyName = '{{ strategy.name|escapejs }}';
 
-    // 백테스팅 모달의 코인 목록에 해당 티커가 있는지 확인
     const tickerSelect = document.getElementById('bt-ticker');
+
+    // 드롭다운에 해당 티커가 없으면 동적으로 추가
     let optionExists = false;
-    if (tickerSelect) {
-        for (let i = 0; i < tickerSelect.options.length; i++) {
-            if (tickerSelect.options[i].value === ticker) {
-                optionExists = true;
-                break;
-            }
+    for (let i = 0; i < tickerSelect.options.length; i++) {
+        if (tickerSelect.options[i].value === ticker) {
+            optionExists = true;
+            break;
         }
     }
-
     if (!optionExists) {
-        alert(tickerLabel + ' 코인은 백테스팅 지원 목록에 없습니다. (주요 코인만 지원)');
-        return;
+        const opt = document.createElement('option');
+        opt.value       = ticker;
+        opt.textContent = tickerLabel;
+        opt.dataset.dynamic = '1';   // 나중에 정리할 수 있도록 표시
+        // 맨 앞에 삽입해서 선택이 잘 되도록
+        tickerSelect.insertBefore(opt, tickerSelect.firstChild);
     }
 
-    // 모달 열기
+    // 모달 열기 → 코인 선택 → 바로 실행
     openBT(strategyId, strategyName);
-    // 해당 코인으로 드롭다운 설정
     tickerSelect.value = ticker;
-    // 즉시 백테스트 실행
     runBT();
 }
 </script>

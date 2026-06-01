@@ -136,6 +136,24 @@ def condition_add(request, strategy_id):
         left_indicator, left_param   = 'CLOSE', 0
         right_indicator, right_param = bb_target, bb_period
 
+    elif cond_type == 'HA':
+        ha_pattern = request.POST.get('ha_pattern', 'HA_BULL')
+        valid_ha = ('HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')
+        if ha_pattern not in valid_ha:
+            messages.error(request, "올바르지 않은 하이킨아시 패턴입니다.")
+            return redirect('strategy_detail', strategy_id=strategy_id)
+
+        try:
+            ha_n = int(request.POST.get('ha_n', 3))
+        except ValueError:
+            ha_n = 3
+        ha_n = max(1, min(ha_n, 20))
+
+        # 하이킨아시는 left_indicator에 패턴, operator='is', right는 더미
+        left_indicator,  left_param   = ha_pattern, ha_n
+        operator                      = 'is'
+        right_indicator, right_param  = 'VAL', 0
+
     else:
         messages.error(request, f"알 수 없는 조건 유형입니다: {cond_type}")
         return redirect('strategy_detail', strategy_id=strategy_id)
@@ -516,12 +534,14 @@ def backtest_run(request, strategy_id):
     except Exception:
         return JsonResponse({'error': '잘못된 요청'}, status=400)
 
-    # 허용 값 검증
-    allowed_tickers = [c[0] for c in MAJOR_COINS]
-    if ticker not in allowed_tickers:
-        return JsonResponse({'error': '허용되지 않은 티커'}, status=400)
+    # candle_count 범위 고정
     if candle_count not in (50, 100, 200, 500):
         candle_count = 200
+
+    # 티커 형식 기본 검증 (KRW-XXX 형태인지만 확인)
+    import re as _re
+    if not _re.match(r'^KRW-[A-Z0-9]{1,20}$', ticker):
+        return JsonResponse({'error': '올바르지 않은 티커 형식'}, status=400)
 
     result = run_backtest(ticker, conditions, candle_count, sell_mode, sell_param)
     if 'error' in result:
