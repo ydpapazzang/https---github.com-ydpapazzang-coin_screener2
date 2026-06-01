@@ -531,6 +531,7 @@ def backtest_run(request, strategy_id):
         candle_count = int(body.get('candle_count', 200))
         sell_mode    = body.get('sell_mode', 'cond_exit')
         sell_param   = float(body.get('sell_param', 5))
+        fee_pct      = float(body.get('fee', 0.05))
     except Exception:
         return JsonResponse({'error': '잘못된 요청'}, status=400)
 
@@ -543,7 +544,7 @@ def backtest_run(request, strategy_id):
     if not _re.match(r'^KRW-[A-Z0-9]{1,20}$', ticker):
         return JsonResponse({'error': '올바르지 않은 티커 형식'}, status=400)
 
-    result = run_backtest(ticker, conditions, candle_count, sell_mode, sell_param)
+    result = run_backtest(ticker, conditions, candle_count, sell_mode, sell_param, fee_pct)
     if 'error' in result:
         return JsonResponse(result, status=400)
     return JsonResponse(result)

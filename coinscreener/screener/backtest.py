@@ -6,7 +6,7 @@
 import pyupbit
 import pandas as pd
 import numpy as np
-from .engine import get_indicator_value, calculate_bollinger, calculate_rsi, calculate_wma
+from .engine import get_indicator_value, check_ha_pattern
 
 
 MAJOR_COINS = [
@@ -29,7 +29,19 @@ def _check_conditions_at(df_map, conditions, idx: int) -> bool:
         df = df_map.get(cond.timeframe)
         if df is None or idx >= len(df):
             return False
-        offset = (len(df) - 1) - idx   # idx를 offset으로 변환
+
+        # 백테스팅에서는 항상 현재 봉(i)을 기준으로 조건을 검사하므로,
+        # DB에 저장된 cond.offset은 무시하고, 현재 인덱스(idx)를 offset으로 변환하여 사용합니다.
+        offset = (len(df) - 1) - idx
+
+        # ── 하이킨아시 패턴 조건 처리 ──
+        ha_patterns = ('HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')
+        if cond.left_indicator in ha_patterns:
+            if not check_ha_pattern(df, cond.left_indicator, cond.left_param, offset):
+                return False
+            continue  # 조건 만족, 다음 조건으로
+
+        # ── 일반 지표 조건 처리 ──
         lv = get_indicator_value(df, cond.left_indicator,  cond.left_param,  offset)
         rv = get_indicator_value(df, cond.right_indicator, cond.right_param, offset)
         if lv is None or rv is None:
@@ -41,7 +53,7 @@ def _check_conditions_at(df_map, conditions, idx: int) -> bool:
 
 
 def run_backtest(ticker: str, conditions: list, candle_count: int,
-                 sell_mode: str, sell_param: float) -> dict:
+                 sell_mode: str, sell_param: float, fee_pct: float = 0.05) -> dict:
     """
     Parameters
     ----------
@@ -52,6 +64,7 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
                    'tp_sl'   → 익절/손절 % (sell_param = % 값, 예: 5.0)
                    'cond_exit' → 조건 이탈 시 매도
     sell_param   : 각 모드에 맞는 숫자 파라미터
+    fee_pct      : 편도 매매 수수료 (%)
 
     Returns
     -------
@@ -92,6 +105,10 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
 
     start_idx = max(warmup, n - candle_count)
 
+    # 백테스팅 시작 인덱스가 데이터 길이를 초과하면 실행 불가
+    if start_idx >= n:
+        return {'error': f'데이터가 부족하여 백테스팅을 실행할 수 없습니다. (필요: {warmup}봉, 보유: {n}봉). 더 긴 기간을 선택하거나 지표 기간을 줄여주세요.'}
+
     for i in range(start_idx, n):
         price = float(primary_df['close'].iloc[i])
         date  = str(primary_df['date'].iloc[i])[:10]
@@ -115,8 +132,15 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
                 sell = not _check_conditions_at(df_map, conditions, i)
 
             if sell or i == n - 1:
-                ret    = (price - entry_price) / entry_price * 100
-                equity = equity * (1 + ret / 100)
+                # 수익률 계산 시 매매 수수료(fee_pct)를 양방향(매수, 매도)으로 적용
+                fee_ratio = fee_pct / 100.0
+                gross_ratio = price / entry_price
+                # (1 - fee_ratio)가 두 번 곱해지는 것은 매수/매도 시 각각 수수료가 발생하기 때문
+                net_ratio = gross_ratio * ((1 - fee_ratio) ** 2)
+                ret = (net_ratio - 1) * 100
+
+                # 자산(equity)은 순수익률(net_ratio)을 곱하여 업데이트
+                equity = equity * net_ratio
                 trades.append({
                     'entry_date':  entry_date,
                     'exit_date':   date,

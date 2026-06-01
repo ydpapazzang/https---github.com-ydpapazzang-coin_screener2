@@ -85,6 +85,22 @@
 .bt-ret.pos { color:#26a69a; font-weight:700; }
 .bt-ret.neg { color:#f23645; font-weight:700; }
 .bt-empty { text-align:center; padding:30px; color:#5d606b; font-size:13px; }
+.bt-empty.error {
+    text-align: left;
+    padding: 20px;
+    background: rgba(242,54,69,.05);
+    border-radius: 8px;
+}
+.bt-empty.error b {
+    font-size: 14px;
+    color: var(--red);
+}
+.bt-empty.error p {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 10px;
+    line-height: 1.6;
+}
 .bt-loading {
     display:none; position:absolute; inset:0;
     background:rgba(19,23,34,.85); border-radius:14px;
@@ -140,6 +156,10 @@
                     <option value="tp_sl">익절/손절 %</option>
                     <option value="cond_exit" selected>조건 이탈 시 매도</option>
                 </select>
+            </div>
+            <div class="bt-field">
+                <div class="bt-label">매매 수수료 (%)</div>
+                <input type="number" class="bt-sel" id="bt-fee" value="0.05" min="0" step="0.01" style="width:90px;">
             </div>
             <div class="bt-field" id="bt-param-wrap" style="display:none;">
                 <div class="bt-label" id="bt-param-label">N봉</div>
@@ -219,6 +239,22 @@ function btSellModeChange() {
     }
 }
 
+function showBTError(title, message) {
+    const resultsDiv = document.getElementById('bt-results');
+    const tbody = document.getElementById('bt-tbody');
+
+    document.getElementById('bt-stats').style.display = 'none';
+    document.getElementById('bt-chart-wrap').style.display = 'none';
+    document.querySelector('.bt-table-title').style.display = 'none';
+
+    tbody.innerHTML = `<tr><td colspan="5" class="bt-empty error">
+        <b>⚠️ ${title}</b>
+        <p>${message}</p>
+    </td></tr>`;
+
+    resultsDiv.style.display = 'block';
+}
+
 async function runBT() {
     if (!btStrategyId) return;
     const btn = document.getElementById('bt-run-btn');
@@ -230,6 +266,7 @@ async function runBT() {
     const count    = parseInt(document.getElementById('bt-count').value);
     const sellMode = document.getElementById('bt-sell-mode').value;
     const param    = parseFloat(document.getElementById('bt-param').value) || 5;
+    const fee      = parseFloat(document.getElementById('bt-fee').value) || 0;
     const sub      = document.getElementById('bt-sub');
     sub.textContent = `${ticker.replace('KRW-','')} · 최근 ${count}봉 · ${document.getElementById('bt-sell-mode').selectedOptions[0].text}`;
 
@@ -237,13 +274,16 @@ async function runBT() {
         const res  = await fetch(`/strategy/${btStrategyId}/backtest/run/`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ticker, candle_count: count, sell_mode: sellMode, sell_param: param}),
+            body: JSON.stringify({ticker, candle_count: count, sell_mode: sellMode, sell_param: param, fee: fee}),
         });
         const data = await res.json();
-        if (data.error) { alert('오류: ' + data.error); return; }
+        if (!res.ok) {
+            showBTError('백테스팅 실패', data.error || '알 수 없는 오류가 발생했습니다.');
+            return;
+        }
         renderBT(data);
     } catch(e) {
-        alert('네트워크 오류가 발생했습니다.');
+        showBTError('네트워크 오류', '백테스팅 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
     } finally {
         btn.disabled = false;
         document.getElementById('bt-loading').style.display = 'none';
@@ -251,6 +291,11 @@ async function runBT() {
 }
 
 function renderBT(d) {
+    // Restore display for successful runs
+    document.getElementById('bt-stats').style.display = 'grid';
+    document.getElementById('bt-chart-wrap').style.display = 'block';
+    document.querySelector('.bt-table-title').style.display = 'block';
+
     // stats
     const setVal = (id, val, prefix='') => {
         const el = document.getElementById(id);
