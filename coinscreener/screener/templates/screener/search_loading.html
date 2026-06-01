@@ -229,9 +229,12 @@
             else if (pct < 95)  subText.textContent = '거의 다 왔습니다!';
             else                subText.textContent = '마무리 중...';
 
-            // 최근 검사 코인 표시 (matched일 때만 / 샘플)
-            if (data.matched > (tickerItems.filter(t => t.classList.contains('match')).length)) {
-                addTicker('매칭됨', true);
+            // 실제 매칭된 코인명 표시
+            if (data.last_match) {
+                const prevMatched = tickerItems.filter(t => t.classList.contains('match')).length;
+                if (data.matched > prevMatched) {
+                    addTicker(data.last_match, true);
+                }
             }
         }
 

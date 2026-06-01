@@ -446,6 +446,13 @@
             </label>
         </div>
 
+        <!-- 지금 바로 발송 -->
+        <button class="btn-save" id="alert-sendnow-btn"
+                onclick="sendNow()"
+                style="margin-bottom:10px; background:var(--green);">
+            📤 지금 바로 스캔 &amp; 발송
+        </button>
+
         <!-- 저장 -->
         <button class="btn-save" id="alert-save-btn" onclick="saveAlert()">🚀 저장</button>
     </div>
@@ -609,24 +616,58 @@ async function saveAlert() {
     btn.textContent = '🚀 저장';
 }
 
+async function sendNow() {
+    if (!currentAlertId) return;
+    const btn = document.getElementById('alert-sendnow-btn');
+    btn.disabled = true;
+    btn.textContent = '발송 중...';
+
+    const body = {
+        exchange:  document.getElementById('alert-exchange').value,
+        vol_limit: parseInt(document.getElementById('alert-vol').value),
+    };
+
+    try {
+        const res  = await fetch(`/strategy/${currentAlertId}/alert/send-now/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(`✅ 발송 완료 — ${data.matched}개 코인 매칭`, 'ok');
+        } else {
+            showToast('❌ ' + (data.error || '발송 실패'), 'err');
+        }
+    } catch(e) {
+        showToast('❌ 네트워크 오류', 'err');
+    }
+    btn.disabled = false;
+    btn.textContent = '📤 지금 바로 스캔 & 발송';
+}
+
 /* ── 벨 UI 업데이트 ── */
+const _strategyNames = {};  // id → name 캐시
 function updateBellUI(id, enabled) {
     const wrap = document.getElementById('bell-wrap-' + id);
+    const name = _strategyNames[id] || String(id);
+    const escapedName = name.replace(/'/g, "\'");
     if (enabled) {
         wrap.innerHTML = `
-            <div class="bell-on" onclick="openAlert(${id}, document.querySelector('[data-name]').dataset.name)">
+            <div class="bell-on" onclick="openAlert(${id}, '${escapedName}')">
                 🔔 <span class="dot"></span> ON
             </div>`;
     } else {
         wrap.innerHTML = `
             <button type="button" class="btn-bell"
-                    onclick="openAlert(${id}, '${id}')">🔔</button>`;
+                    onclick="openAlert(${id}, '${escapedName}')">🔔</button>`;
     }
 }
 
 /* ── 페이지 로드 시 각 전략 알림 상태 반영 ── */
 (async function loadAllAlerts() {
     {% for strategy in strategies %}
+    _strategyNames[{{ strategy.id }}] = '{{ strategy.name|escapejs }}';
     (async () => {
         try {
             const res  = await fetch(`/strategy/{{ strategy.id }}/alert/`);

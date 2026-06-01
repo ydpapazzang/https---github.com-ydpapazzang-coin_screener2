@@ -172,13 +172,18 @@ def _get_tickers(exchange, vol_limit):
         import requests as req
         try:
             r = req.get('https://api.bithumb.com/public/ticker/ALL_KRW', timeout=5)
-            data = r.json().get('data', {})
-            tickers = [f"KRW-{k}" for k in data if k != 'date']
+            r.raise_for_status()
+            body = r.json()
+            # 빗썸 응답: {"status":"0000", "data":{"BTC":{...}, "date":"..."}}
+            raw = body.get('data', {})
+            tickers = [f"KRW-{k}" for k in raw if k != 'date']
             if vol_limit:
-                # 빗썸은 acc_trade_value_24H 필드로 정렬
-                def trade_val(k):
-                    try: return float(data[k.replace('KRW-','')].get('acc_trade_value_24H', 0))
-                    except: return 0
+                def trade_val(ticker):
+                    coin = ticker.replace('KRW-', '')
+                    try:
+                        return float(raw.get(coin, {}).get('acc_trade_value_24H') or 0)
+                    except (TypeError, ValueError):
+                        return 0.0
                 tickers.sort(key=trade_val, reverse=True)
                 tickers = tickers[:vol_limit]
         except Exception:
@@ -290,12 +295,15 @@ def coin_search_stream(request, strategy_id):
                 pct = int(done / total * 100) if total else 100
                 if pct >= last_sent_pct + 2 or done == total:
                     last_sent_pct = pct
+                    # 마지막 매칭 코인 심볼 전송 (로딩 화면 ticker 표시용)
+                    last_match = results[-1]['symbol'] if results else None
                     yield "data: " + json.dumps({
                         "type":    "progress",
                         "done":    done,
                         "total":   total,
                         "pct":     pct,
                         "matched": len(results),
+                        "last_match": last_match,
                     }) + "\n\n"
 
         results.sort(key=lambda x: x.get('volume', 0), reverse=True)
@@ -364,7 +372,9 @@ def alert_get(request, strategy_id):
             'exchange':   a.exchange,
             'vol_limit':  a.vol_limit,
         }
-    except AlertSetting.DoesNotExist:
+    except Exception:
+        # RelatedObjectDoesNotExist (AlertSetting.DoesNotExist의 서브클래스)를 포함한
+        # 모든 "alert 없음" 예외를 안전하게 처리
         data = {'enabled': False, 'alert_hour': 9, 'alert_min': 0,
                 'exchange': 'upbit', 'vol_limit': 100}
     data['tg_configured'] = tg.is_configured()
@@ -381,14 +391,24 @@ def alert_save(request, strategy_id):
     except Exception:
         return JsonResponse({'ok': False, 'error': '잘못된 요청'}, status=400)
 
-    enabled    = bool(body.get('enabled', False))
-    alert_hour = int(body.get('alert_hour', 9))
-    alert_min  = int(body.get('alert_min',  0))
-    exchange   = body.get('exchange', 'upbit')
-    vol_limit  = int(body.get('vol_limit', 100))
-    send_test  = bool(body.get('send_test', False))
+    try:
+        alert_hour = int(body.get('alert_hour', 9))
+        alert_min  = int(body.get('alert_min',  0))
+        vol_limit  = int(body.get('vol_limit', 100))
+    except (ValueError, TypeError) as e:
+        return JsonResponse({'ok': False, 'error': f'숫자 형식 오류: {e}'}, status=400)
 
-    alert, _ = AlertSetting.objects.update_or_create(
+    # 범위 검증
+    if not (0 <= alert_hour <= 23):
+        return JsonResponse({'ok': False, 'error': '알림 시각(시)은 0~23 사이여야 합니다.'}, status=400)
+    if alert_min not in (0, 30):
+        return JsonResponse({'ok': False, 'error': '알림 시각(분)은 0 또는 30이어야 합니다.'}, status=400)
+
+    enabled   = bool(body.get('enabled', False))
+    exchange  = body.get('exchange', 'upbit')
+    send_test = bool(body.get('send_test', False))
+
+    AlertSetting.objects.update_or_create(
         strategy=strategy,
         defaults={
             'enabled':    enabled,
@@ -400,6 +420,8 @@ def alert_save(request, strategy_id):
     )
 
     if send_test:
+        if not tg.is_configured():
+            return JsonResponse({'ok': False, 'error': '텔레그램 환경변수가 설정되지 않았습니다. (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)'})
         res = tg.send_message(f"🔔 [{strategy.name}] 텔레그램 알림 연결 테스트 메시지입니다.")
         if not res['ok']:
             return JsonResponse({'ok': False, 'error': res['error']})
@@ -417,14 +439,19 @@ def alert_send_now(request, strategy_id):
     if not conditions:
         return JsonResponse({'ok': False, 'error': '조건이 없습니다.'})
     if not tg.is_configured():
-        return JsonResponse({'ok': False, 'error': '텔레그램 환경변수가 설정되지 않았습니다.'})
+        return JsonResponse({'ok': False, 'error': '텔레그램 환경변수가 설정되지 않았습니다. (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)'})
 
     try:
-        body      = _json.loads(request.body)
-        exchange  = body.get('exchange', 'upbit')
-        vol_limit = int(body.get('vol_limit', 100))
+        body = _json.loads(request.body)
     except Exception:
-        exchange, vol_limit = 'upbit', 100
+        body = {}
+
+    # body 파싱 실패해도 안전하게 기본값 사용
+    exchange  = body.get('exchange', 'upbit') or 'upbit'
+    try:
+        vol_limit = int(body.get('vol_limit') or 100)
+    except (ValueError, TypeError):
+        vol_limit = 100
 
     tickers = _get_tickers(exchange, vol_limit)
     results = []
@@ -437,7 +464,7 @@ def alert_send_now(request, strategy_id):
                     'symbol':         ticker,
                     'price':          price,
                     'volume':         volume,
-                    'volume_display': f"{volume/100_000_000:.1f}억",
+                    'volume_display': f"{volume / 100_000_000:.1f}억",
                     'status':         status,
                     'details':        ", ".join(list(dict.fromkeys(details))),
                 }
