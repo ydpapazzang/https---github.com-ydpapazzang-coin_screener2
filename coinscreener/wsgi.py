@@ -8,12 +8,18 @@ https://docs.djangoproject.com/en/6.0/howto/deployment/wsgi/
 """
 
 import os
-
 from django.core.wsgi import get_wsgi_application
+from django.core.management import call_command
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'coinscreener.settings')
 
 application = get_wsgi_application()
 
-# 기존 코드 아래에 추가
+try:
+    print("Running automatic database migrations...")
+    call_command('migrate', interactive=False)
+    print("Migrations completed successfully.")
+except Exception as e:
+    print(f"Error running automatic migrations: {e}")
+
 app = application
