@@ -566,9 +566,28 @@ def db_debug(request):
     from django.db import connection
     
     output = []
-    output.append("=== Django DB Debugger ===")
+    output.append("=== Django DB Debugger & Self-Healer ===")
     
-    # 1. Show migrations
+    # 1. SQL Alter columns size to 15 (preventing 10 char truncation errors on Postgres)
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("ALTER TABLE screener_condition ALTER COLUMN left_indicator TYPE varchar(15);")
+            cursor.execute("ALTER TABLE screener_condition ALTER COLUMN right_indicator TYPE varchar(15);")
+            output.append("\n[SQL Alter success]: Column left_indicator & right_indicator altered to varchar(15).")
+    except Exception as sqle:
+        output.append(f"\n[SQL Alter error/skipped]: {sqle}")
+        
+    # 2. Run migrate --fake
+    try:
+        from io import StringIO
+        out = StringIO()
+        call_command('migrate', '--fake', interactive=False, stdout=out)
+        output.append("\n[Migrate --fake output]:")
+        output.append(out.getvalue())
+    except Exception as e:
+        output.append(f"\n[Migrate --fake Error]:\n{traceback.format_exc()}")
+        
+    # 3. Show migrations
     try:
         from io import StringIO
         out = StringIO()
@@ -578,17 +597,7 @@ def db_debug(request):
     except Exception as e:
         output.append(f"\n[Showmigrations Error]:\n{traceback.format_exc()}")
         
-    # 2. Run migrate
-    try:
-        from io import StringIO
-        out = StringIO()
-        call_command('migrate', interactive=False, stdout=out)
-        output.append("\n[Migrate output]:")
-        output.append(out.getvalue())
-    except Exception as e:
-        output.append(f"\n[Migrate Error]:\n{traceback.format_exc()}")
-        
-    # 3. Check Table schema
+    # 4. Check Table schema
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
