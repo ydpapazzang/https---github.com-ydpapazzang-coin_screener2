@@ -1016,9 +1016,21 @@ async function sendAIPrompt() {
 }
 
 function extractStrategyJSON(text) {
-    const startIndex = text.indexOf('{"create_strategy"');
+    const keywordIndex = text.indexOf('"create_strategy"');
+    if (keywordIndex === -1) return null;
+    
+    // Find the opening brace '{' preceding '"create_strategy"'
+    let startIndex = -1;
+    for (let i = keywordIndex; i >= 0; i--) {
+        if (text[i] === '{') {
+            startIndex = i;
+            break;
+        }
+    }
+    
     if (startIndex === -1) return null;
     
+    // Find the closing brace by counting braces
     let braceCount = 0;
     let endIndex = -1;
     for (let i = startIndex; i < text.length; i++) {
@@ -1037,10 +1049,25 @@ function extractStrategyJSON(text) {
     const jsonStr = text.substring(startIndex, endIndex + 1);
     try {
         const parsed = JSON.parse(jsonStr);
+        
+        // Clean text and remove surrounding code block backticks (```json or ``json or ``` or ``)
+        let cleanText = text.substring(0, startIndex).trim();
+        let afterText = text.substring(endIndex + 1).trim();
+        
+        // Clean ending backticks/code fences from cleanText
+        cleanText = cleanText.replace(/```[a-z]*\s*$/, '').trim();
+        cleanText = cleanText.replace(/``[a-z]*\s*$/, '').trim();
+        cleanText = cleanText.replace(/`[a-z]*\s*$/, '').trim();
+        
+        // Clean starting backticks/code fences from afterText
+        afterText = afterText.replace(/^\s*```/, '').trim();
+        afterText = afterText.replace(/^\s*``/, '').trim();
+        afterText = afterText.replace(/^\s*`/, '').trim();
+        
         return {
             raw: jsonStr,
             parsed: parsed,
-            cleanText: text.substring(0, startIndex).trim() + text.substring(endIndex + 1).trim()
+            cleanText: (cleanText + '\n\n' + afterText).trim()
         };
     } catch (e) {
         console.error("Failed to parse extracted strategy JSON:", e);
