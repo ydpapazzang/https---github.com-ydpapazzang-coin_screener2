@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>gg — 전략 리스트</title>
+    <title>wonii -screener — 전략 리스트</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
@@ -255,14 +255,16 @@
 
 <!-- NAV -->
 <nav class="topnav">
-    <div class="logo">gg<span>.</span></div>
+    <a href="{% url 'strategy_list' %}" style="text-decoration: none;">
+        <div class="logo">wonii -screener<span>.</span></div>
+    </a>
 </nav>
 
 <div class="page">
 
     <!-- TOP BAR -->
     <div class="topbar">
-        <input class="search-input" id="search-input" placeholder="gg" oninput="filterStrategies()">
+        <input class="search-input" id="search-input" placeholder="전략 이름 검색..." oninput="filterStrategies()">
         <button class="btn btn-blue" onclick="openAddModal()">＋ 추가</button>
         <button class="btn btn-outline" id="del-mode-btn" onclick="toggleDelMode()">삭제 모드</button>
     </div>
