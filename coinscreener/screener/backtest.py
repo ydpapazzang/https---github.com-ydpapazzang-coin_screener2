@@ -155,9 +155,16 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
                 in_position = False
                 equity_curve.append({'date': date, 'equity': round(equity, 4)})
 
+    # 안전하게 시작 날짜 추출 (IndexError 방지용 방어 코드)
+    if len(primary_df) > 0:
+        safe_idx = max(0, min(start_idx, len(primary_df) - 1))
+        start_date = str(primary_df['date'].iloc[safe_idx])[:10]
+    else:
+        start_date = '2026-06-01'
+
     if not trades:
         return {
-            'trades': [], 'equity_curve': [{'date': str(primary_df['date'].iloc[start_idx])[:10], 'equity': 100}],
+            'trades': [], 'equity_curve': [{'date': start_date, 'equity': 100}],
             'total_trades': 0, 'win_rate': 0,
             'avg_return': 0, 'total_return': 0,
             'max_profit': 0, 'max_loss': 0,
@@ -172,7 +179,6 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
     max_loss   = round(min(rets), 2)
 
     # equity_curve 시작점 추가
-    start_date = str(primary_df['date'].iloc[start_idx])[:10]
     equity_curve = [{'date': start_date, 'equity': 100}] + equity_curve
 
     return {
