@@ -608,8 +608,42 @@ def ai_ask(request):
                     "content": (
                         "당신은 코인 스크리너 및 트레이딩 전략 전문가 'wonii AI 비서'입니다. "
                         "사용자의 질문에 친절하고 전문적으로 답해 주세요. "
-                        "답변은 가독성이 좋게 마크다운(Markdown) 서식과 이모티콘을 활용해 서술해 주세요. "
-                        "트레이딩 및 기술적 분석(이동평균선, RSI, 볼린저 밴드, 하이킨아시 등)에 최적화된 명쾌한 대답을 제공하세요."
+                        "답변은 가독성이 좋게 마크다운(Markdown) 서식과 이모티콘을 활용해 서술해 주세요.\n\n"
+                        "★ [중요 규칙: 실시간 전략 생성 지원] ★\n"
+                        "사용자가 전략 추천, 전략 생성, 단타 전략 기법, 혹은 특정 기술적 지표 활용법을 물어볼 때(예: '단타 전략 만들어줘', '단타 전략 추천', '골든크로스 전략 알려줘', 'RSI 30 이하 조건 추가' 등)에는, 상세한 텍스트 설명에 이어 **답변의 맨 마지막 줄에 사용자가 클릭 한 번으로 실제 전략과 검색조건들을 데이터베이스에 즉시 생성하고 연동할 수 있는 순수한 구조화 JSON 블록**을 무조건! 반드시! 포함해야 합니다. 단순 일반적인 안부 인사 등을 제외하고는 전략 관련 대화 시 100%의 확률로 JSON을 포함시키세요.\n\n"
+                        "JSON 데이터 작성 규칙:\n"
+                        "1. 주석(예: // 또는 #)을 JSON 본문에 절대로 포함하지 마십시오. 순수한 표준 JSON 규격이어야 자바스크립트의 JSON.parse가 에러 없이 작동합니다.\n"
+                        "2. 사용 가능한 timeframe: 'minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month'. 단타(스캘핑) 전략 요청 시 5분봉('minute5') 이나 15분봉('minute15')을 활용하십시오.\n"
+                        "3. 사용 가능한 지표(indicator): 'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'HA_BULL', 'HA_BEAR', 'VAL', 'CLOSE'.\n"
+                        "4. 사용 가능한 연산자(operator): 'gt', 'lt', 'gte', 'lte', 'is'.\n"
+                        "5. 볼린저 밴드(BB) 조건식 설정 시: left_indicator='CLOSE', left_param=0, operator='gt'/'lt', right_indicator='BB_UPPER'/'BB_LOWER' 형태로 작성하세요 (예: 종가가 볼린저 밴드 상단을 돌파하는 조건).\n"
+                        "6. 고정값 비교(예: RSI 30 이하) 설정 시: left_indicator='RSI', left_param=14, operator='lte', right_indicator='VAL', right_param=30 형태로 작성하세요.\n\n"
+                        "JSON 데이터 형식 예시:\n"
+                        "{\n"
+                        "  \"create_strategy\": {\n"
+                        "    \"name\": \"단타 EMA 크로스 전략\",\n"
+                        "    \"conditions\": [\n"
+                        "      {\n"
+                        "        \"timeframe\": \"minute15\",\n"
+                        "        \"offset\": 0,\n"
+                        "        \"left_indicator\": \"CLOSE\",\n"
+                        "        \"left_param\": 0,\n"
+                        "        \"operator\": \"gte\",\n"
+                        "        \"right_indicator\": \"EMA\",\n"
+                        "        \"right_param\": 20\n"
+                        "      },\n"
+                        "      {\n"
+                        "        \"timeframe\": \"minute15\",\n"
+                        "        \"offset\": 0,\n"
+                        "        \"left_indicator\": \"RSI\",\n"
+                        "        \"left_param\": 14,\n"
+                        "        \"operator\": \"lte\",\n"
+                        "        \"right_indicator\": \"VAL\",\n"
+                        "        \"right_param\": 30\n"
+                        "      }\n"
+                        "    ]\n"
+                        "  }\n"
+                        "}"
                     )
                 },
                 {"role": "user", "content": prompt}
@@ -638,5 +672,98 @@ def ai_ask(request):
         return JsonResponse({
             'response': f"⚠️ **Groq AI 호출 중 알 수 없는 예외가 발생했습니다.**\n\n오류 내용: `{str(e)}`"
         })
+
+
+@csrf_exempt
+def ai_strategy_create(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST 요청만 가능합니다.'}, status=405)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        strategy_data = data.get('create_strategy')
+        if not strategy_data:
+            return JsonResponse({'error': '유효한 전략 생성 데이터가 없습니다.'}, status=400)
+        
+        name = strategy_data.get('name', '').strip()
+        if not name:
+            name = "AI 추천 전략"
+            
+        # Create Strategy
+        strategy = Strategy.objects.create(name=name)
+        
+        # Create Conditions
+        conditions_data = strategy_data.get('conditions', [])
+        valid_timeframes = ['minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month']
+        valid_indicators = ['MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER', 'VAL', 'CLOSE']
+        valid_operators = ['gt', 'lt', 'gte', 'lte', 'is']
+        
+        for c in conditions_data:
+            timeframe = c.get('timeframe', 'day')
+            if timeframe not in valid_timeframes:
+                timeframe = 'day'
+                
+            try:
+                offset = int(c.get('offset', 0))
+            except (ValueError, TypeError):
+                offset = 0
+            if offset < 0:
+                offset = 0
+                
+            left_indicator = c.get('left_indicator', 'MA')
+            if left_indicator not in valid_indicators:
+                left_indicator = 'MA'
+                
+            try:
+                left_param = int(c.get('left_param', 5))
+            except (ValueError, TypeError):
+                left_param = 5
+                
+            operator = c.get('operator', 'gte')
+            if operator not in valid_operators:
+                operator = 'gte'
+                
+            right_indicator = c.get('right_indicator', 'MA')
+            if right_indicator not in valid_indicators:
+                right_indicator = 'MA'
+                
+            try:
+                right_param = int(c.get('right_param', 20))
+            except (ValueError, TypeError):
+                right_param = 20
+                
+            bb_std = c.get('bb_std')
+            if bb_std is not None:
+                try:
+                    bb_std = float(bb_std)
+                except (ValueError, TypeError):
+                    bb_std = None
+            
+            Condition.objects.create(
+                strategy=strategy,
+                timeframe=timeframe,
+                offset=offset,
+                left_indicator=left_indicator,
+                left_param=left_param,
+                operator=operator,
+                right_indicator=right_indicator,
+                right_param=right_param,
+                bb_std=bb_std
+            )
+            
+        cache.delete(f"strategy_results_{strategy.id}")
+        
+        # Return success with the URL to redirect to
+        redirect_url = f"/strategy/{strategy.id}/"
+        return JsonResponse({
+            'ok': True,
+            'strategy_id': strategy.id,
+            'redirect_url': redirect_url
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': f'서버 내부 오류: {str(e)}'}, status=500)
+
 
 

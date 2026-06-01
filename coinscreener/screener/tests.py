@@ -256,3 +256,84 @@ class BacktestOffsetTestCase(TestCase):
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertIn('error', data)
+
+    def test_ai_strategy_create_success(self):
+        """AI로 파싱한 JSON 데이터를 통해 실제 전략 및 조건식을 생성하는 API 검증"""
+        import json
+        payload = {
+            "create_strategy": {
+                "name": "골든크로스 전략",
+                "conditions": [
+                    {
+                        "timeframe": "day",
+                        "offset": 0,
+                        "left_indicator": "CLOSE",
+                        "left_param": 0,
+                        "operator": "gt",
+                        "right_indicator": "MA",
+                        "right_param": 20
+                    },
+                    {
+                        "timeframe": "minute60",
+                        "offset": 1,
+                        "left_indicator": "RSI",
+                        "left_param": 14,
+                        "operator": "lt",
+                        "right_indicator": "VAL",
+                        "right_param": 30
+                    }
+                ]
+            }
+        }
+        
+        response = self.client.post(
+            '/ai/strategy/create/',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+        self.assertIn('strategy_id', data)
+        self.assertIn('redirect_url', data)
+        
+        # 데이터베이스 생성 확인
+        strategy = Strategy.objects.get(id=data['strategy_id'])
+        self.assertEqual(strategy.name, "골든크로스 전략")
+        
+        conditions = strategy.conditions.all().order_by('id')
+        self.assertEqual(len(conditions), 2)
+        
+        c1 = conditions[0]
+        self.assertEqual(c1.timeframe, "day")
+        self.assertEqual(c1.offset, 0)
+        self.assertEqual(c1.left_indicator, "CLOSE")
+        self.assertEqual(c1.left_param, 0)
+        self.assertEqual(c1.operator, "gt")
+        self.assertEqual(c1.right_indicator, "MA")
+        self.assertEqual(c1.right_param, 20)
+        
+        c2 = conditions[1]
+        self.assertEqual(c2.timeframe, "minute60")
+        self.assertEqual(c2.offset, 1)
+        self.assertEqual(c2.left_indicator, "RSI")
+        self.assertEqual(c2.left_param, 14)
+        self.assertEqual(c2.operator, "lt")
+        self.assertEqual(c2.right_indicator, "VAL")
+        self.assertEqual(c2.right_param, 30)
+
+    def test_ai_strategy_create_invalid_methods(self):
+        """GET 요청 등 부적절한 메소드로 전략 생성 API 접근 시 405 차단 확인"""
+        response = self.client.get('/ai/strategy/create/')
+        self.assertEqual(response.status_code, 405)
+        
+    def test_ai_strategy_create_invalid_data(self):
+        """빈 데이터 또는 잘못된 구조의 JSON 전송 시 400 반환 검증"""
+        import json
+        response = self.client.post(
+            '/ai/strategy/create/',
+            data=json.dumps({"invalid_key": "dummy"}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)

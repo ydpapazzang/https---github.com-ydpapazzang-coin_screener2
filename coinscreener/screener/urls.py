@@ -23,4 +23,5 @@ urlpatterns = [
     path('backtest/coins/',                          views.backtest_coins, name='backtest_coins'),
     path('strategy/<int:strategy_id>/backtest/run/', views.backtest_run,   name='backtest_run'),
     path('ai/ask/',                                  views.ai_ask,         name='ai_ask'),
+    path('ai/strategy/create/',                      views.ai_strategy_create, name='ai_strategy_create'),
 ]
