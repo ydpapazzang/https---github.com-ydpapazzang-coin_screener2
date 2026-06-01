@@ -240,3 +240,19 @@ class BacktestOffsetTestCase(TestCase):
         response = self.client.get(f'/strategy/{self.strategy.id}/search/?exchange=upbit&vol_limit=50')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['vol_limit'], 50)
+
+    def test_ai_ask_fallback_when_no_api_key(self):
+        """GROQ_API_KEY 환경변수가 없을 때 예시 폴백 응답이 반환되는지 확인"""
+        with patch.dict('os.environ', {'GROQ_API_KEY': ''}):
+            response = self.client.post('/ai/ask/', data={'prompt': '골든크로스 전략 알려줘'})
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertIn('response', data)
+            self.assertIn('API 키가 로컬 .env 또는 Vercel 환경 변수에 설정되어 있지 않습니다', data['response'])
+
+    def test_ai_ask_empty_prompt(self):
+        """빈 프롬프트 요청 시 400 에러를 반환하는지 확인"""
+        response = self.client.post('/ai/ask/', data={'prompt': ''})
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn('error', data)

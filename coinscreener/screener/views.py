@@ -557,4 +557,86 @@ def backtest_run(request, strategy_id):
     if 'error' in result:
         return JsonResponse(result, status=400)
     return JsonResponse(result)
+
+
+@csrf_exempt
+@require_POST
+def ai_ask(request):
+    import json
+    import requests
+    import os
+    
+    prompt = ""
+    try:
+        if request.content_type == 'application/json':
+            body = json.loads(request.body)
+            prompt = body.get('prompt', '')
+        else:
+            prompt = request.POST.get('prompt', '')
+    except Exception:
+        return JsonResponse({'error': '잘못된 요청 형식입니다.'}, status=400)
+        
+    if not prompt.strip():
+        return JsonResponse({'error': '질문을 입력해 주세요.'}, status=400)
+        
+    api_key = os.environ.get('GROQ_API_KEY', '').strip()
+    
+    if not api_key:
+        fallback_msg = (
+            "⚠️ **Groq API 키가 로컬 .env 또는 Vercel 환경 변수에 설정되어 있지 않습니다.**\n\n"
+            "**[설정 가이드]**\n"
+            "1. 프로젝트 루트 폴더의 `.env` 파일을 열어주세요.\n"
+            "2. `GROQ_API_KEY=\"발급받은키\"` 형태로 키를 입력하고 저장해 주세요.\n"
+            "3. Vercel 배포 시에는 Vercel 대시보드 Settings -> Environment Variables에 `GROQ_API_KEY`를 등록하시면 정상 작동합니다.\n\n"
+            "**[트레이딩 추천 전략 맛보기]**\n"
+            "임시로 예시 답변을 안내해 드립니다:\n"
+            "* **골든크로스 전략**: 5일 이동평균선(MA5)이 20일 이동평균선(MA20)을 상향 돌파할 때 강력한 매수 신호가 발생합니다. 본 코인 스크리너에서 캔들 단위를 '일봉'으로 설정하고 조건 'MA(5) >= MA(20)'을 추가하여 필터링해 보세요!"
+        )
+        return JsonResponse({'response': fallback_msg})
+
+    try:
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "llama3-8b-8192",
+            "messages": [
+                {
+                    "role": "system", 
+                    "content": (
+                        "당신은 코인 스크리너 및 트레이딩 전략 전문가 'wonii AI 비서'입니다. "
+                        "사용자의 질문에 친절하고 전문적으로 답해 주세요. "
+                        "답변은 가독성이 좋게 마크다운(Markdown) 서식과 이모티콘을 활용해 서술해 주세요. "
+                        "트레이딩 및 기술적 분석(이동평균선, RSI, 볼린저 밴드, 하이킨아시 등)에 최적화된 명쾌한 대답을 제공하세요."
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 1024
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=12)
+        if response.status_code == 200:
+            res_data = response.json()
+            ai_response = res_data['choices'][0]['message']['content']
+            return JsonResponse({'response': ai_response})
+        else:
+            err_msg = f"Groq API 오류 (상태 코드: {response.status_code}): {response.text}"
+            print(err_msg)
+            return JsonResponse({
+                'response': f"⚠️ **Groq AI 호출 중 서버 오류가 발생했습니다.**\n\n디버그 메시지: `{response.text[:200]}`"
+            })
+            
+    except requests.exceptions.Timeout:
+        return JsonResponse({
+            'response': "⚠️ **Groq AI API 호출 시간이 초과되었습니다 (Timeout).** 다시 시도해 주세요."
+        })
+    except Exception as e:
+        return JsonResponse({
+            'response': f"⚠️ **Groq AI 호출 중 알 수 없는 예외가 발생했습니다.**\n\n오류 내용: `{str(e)}`"
+        })
+
 
