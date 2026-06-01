@@ -13,6 +13,15 @@ import json
 # 1. 전략 리스트
 # ──────────────────────────────────────────
 
+def clear_strategy_cache(strategy_id):
+    exchanges = ['upbit', 'bithumb']
+    vol_limits = [0, 30, 50, 80, 100, 200]
+    cache.delete(f"strategy_results_{strategy_id}")
+    for ex in exchanges:
+        for vol in vol_limits:
+            cache.delete(f"strategy_results_{strategy_id}_{ex}_{vol}")
+
+
 def strategy_list(request):
     strategies = Strategy.objects.all().order_by('-created_at')
     return render(request, 'screener/strategy_list.html', {'strategies': strategies})
@@ -33,7 +42,7 @@ def strategy_delete(request):
     if request.method == 'POST':
         strategy_ids = request.POST.getlist('strategy_ids')
         for s_id in strategy_ids:
-            cache.delete(f"strategy_results_{s_id}")
+            clear_strategy_cache(s_id)
         Strategy.objects.filter(id__in=strategy_ids).delete()
     return redirect('strategy_list')
 
@@ -168,7 +177,7 @@ def condition_add(request, strategy_id):
         right_indicator=right_indicator,
         right_param=right_param,
     )
-    cache.delete(f"strategy_results_{strategy_id}")
+    clear_strategy_cache(strategy_id)
     return redirect('strategy_detail', strategy_id=strategy_id)
 
 
@@ -176,7 +185,7 @@ def condition_delete(request, strategy_id, condition_id):
     if request.method == 'POST':
         condition = get_object_or_404(Condition, id=condition_id)
         condition.delete()
-        cache.delete(f"strategy_results_{strategy_id}")
+        clear_strategy_cache(strategy_id)
     return redirect('strategy_detail', strategy_id=strategy_id)
 
 
@@ -762,7 +771,7 @@ def ai_strategy_create(request):
                 bb_std=bb_std
             )
             
-        cache.delete(f"strategy_results_{strategy.id}")
+        clear_strategy_cache(strategy.id)
         
         # Return success with the URL to redirect to
         redirect_url = f"/strategy/{strategy.id}/"
