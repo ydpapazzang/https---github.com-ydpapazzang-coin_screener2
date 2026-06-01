@@ -88,6 +88,140 @@
         /* EMPTY */
         .empty { text-align:center; padding:60px 20px; color:var(--muted); font-size:15px;
                  background:var(--surface); border:1px solid var(--border); border-radius:10px; }
+
+        /* ── AUTO SCAN PANEL ── */
+        .auto-scan-panel {
+            background: rgba(30, 34, 45, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 12px;
+        }
+        .pulse-icon {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--blue);
+            box-shadow: 0 0 0 0 rgba(41, 98, 255, 0.7);
+            animation: pulse-blue 1.5s infinite;
+        }
+        @keyframes pulse-blue {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(41, 98, 255, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(41, 98, 255, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(41, 98, 255, 0); }
+        }
+        .pulse-icon.active {
+            background: var(--green);
+            box-shadow: 0 0 0 0 rgba(38, 166, 154, 0.7);
+            animation: pulse-green 1.5s infinite;
+        }
+        @keyframes pulse-green {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(38, 166, 154, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(38, 166, 154, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(38, 166, 154, 0); }
+        }
+        .panel-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: #fff;
+        }
+        .panel-body {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .ctrl-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .ctrl-group label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--muted);
+        }
+        .ctrl-group select {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 9px 16px;
+            border-radius: 6px;
+            font-size: 13.5px;
+            font-weight: 700;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+        .ctrl-group select:focus {
+            border-color: var(--blue);
+        }
+        .checkbox-group {
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+            max-width: 350px;
+        }
+        .checkbox-group input {
+            accent-color: var(--blue);
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .checkbox-group label {
+            font-size: 13.5px;
+            color: #fff;
+            cursor: pointer;
+            user-select: none;
+        }
+        .ctrl-desc {
+            display: block;
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 3px;
+            font-weight: 500;
+        }
+        .timer-display {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(41, 98, 255, 0.08);
+            border: 1px solid rgba(41, 98, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 30px;
+        }
+        .timer-display.running {
+            background: rgba(38, 166, 154, 0.08);
+            border-color: rgba(38, 166, 154, 0.25);
+        }
+        .timer-circle {
+            background: var(--blue);
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-family: monospace;
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+        .timer-display.running .timer-circle {
+            background: var(--green);
+        }
+        .timer-status {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text);
+        }
     </style>
 </head>
 <body>
@@ -111,6 +245,46 @@
         {% else %}
             ({{ last_updated|date:"Y-m-d H:i" }} 기준)
         {% endif %}
+    </div>
+
+    <!-- ── 실시간 반복 스캔 & 텔레그램 알림 컨트롤러 ── -->
+    <div class="auto-scan-panel">
+        <div class="panel-header">
+            <div class="pulse-icon"></div>
+            <span class="panel-title">🔄 실시간 주기적 반복 스캔 및 알림 (단타 전용)</span>
+        </div>
+        
+        <div class="panel-body">
+            <!-- 반복 주기 설정 -->
+            <div class="ctrl-group">
+                <label for="scan-interval">자동 스캔 주기</label>
+                <select id="scan-interval" onchange="changeInterval()">
+                    <option value="0">비활성화</option>
+                    <option value="1">1분마다</option>
+                    <option value="3">3분마다</option>
+                    <option value="5">5분마다</option>
+                    <option value="10">10분마다</option>
+                    <option value="30">30분마다</option>
+                </select>
+            </div>
+            
+            <!-- 텔레그램 전송 토글 -->
+            <div class="ctrl-group checkbox-group">
+                <input type="checkbox" id="telegram-alert" onchange="toggleTelegramCheckbox()">
+                <label for="telegram-alert">
+                    조회 건 발생 시 텔레그램 알림
+                    <span class="ctrl-desc">매칭되는 코인이 1개 이상 검색되면 즉시 텔레그램 발송</span>
+                </label>
+            </div>
+            
+            <!-- 타이머 카운트다운 표시 -->
+            <div class="timer-display" id="timer-box" style="display: none;">
+                <div class="timer-circle">
+                    <span class="timer-time" id="countdown-text">05:00</span>
+                </div>
+                <div class="timer-status">다음 자동 스캔 대기 중...</div>
+            </div>
+        </div>
     </div>
 
     {% if rate_limit_warning %}
@@ -191,6 +365,102 @@ function triggerBacktest(ticker, tickerLabel) {
     openBT(strategyId, strategyName);
     tickerSelect.value = ticker;
     runBT();
+}
+
+/* ── 주기적 반복 스캔 및 텔레그램 발송 클라이언트 로직 ── */
+const strategyId = {{ strategy.id }};
+let autoScanTimer = null;
+let remainingSeconds = 0;
+
+// LocalStorage 키 정의
+const STORAGE_INTERVAL = `auto_scan_interval_${strategyId}`;
+const STORAGE_TELEGRAM = `auto_scan_telegram_${strategyId}`;
+
+window.addEventListener('DOMContentLoaded', () => {
+    // 1. 기존 설정 복구
+    const savedInterval = localStorage.getItem(STORAGE_INTERVAL) || "0";
+    const savedTelegram = localStorage.getItem(STORAGE_TELEGRAM) === "true";
+    
+    document.getElementById('scan-interval').value = savedInterval;
+    document.getElementById('telegram-alert').checked = savedTelegram;
+    
+    // 2. 이전에 실행 중인 타이머가 있었다면 복구
+    if (savedInterval !== "0") {
+        startTimer(parseInt(savedInterval, 10));
+    }
+});
+
+function changeInterval() {
+    const val = document.getElementById('scan-interval').value;
+    localStorage.setItem(STORAGE_INTERVAL, val);
+    
+    if (val === "0") {
+        stopTimer();
+    } else {
+        startTimer(parseInt(val, 10));
+    }
+}
+
+function toggleTelegramCheckbox() {
+    const isChecked = document.getElementById('telegram-alert').checked;
+    localStorage.setItem(STORAGE_TELEGRAM, isChecked);
+}
+
+function startTimer(minutes) {
+    stopTimer();
+    
+    const panelHeader = document.querySelector('.pulse-icon');
+    const timerBox = document.getElementById('timer-box');
+    const timerDisplay = document.querySelector('.timer-display');
+    
+    if (panelHeader) panelHeader.classList.add('active');
+    if (timerBox) timerBox.style.display = 'flex';
+    if (timerDisplay) timerDisplay.classList.add('running');
+    
+    remainingSeconds = minutes * 60;
+    updateTimerText();
+    
+    autoScanTimer = setInterval(() => {
+        remainingSeconds--;
+        if (remainingSeconds <= 0) {
+            clearInterval(autoScanTimer);
+            executeAutoScan();
+        } else {
+            updateTimerText();
+        }
+    }, 1000);
+}
+
+function stopTimer() {
+    if (autoScanTimer) {
+        clearInterval(autoScanTimer);
+        autoScanTimer = null;
+    }
+    
+    const panelHeader = document.querySelector('.pulse-icon');
+    const timerBox = document.getElementById('timer-box');
+    const timerDisplay = document.querySelector('.timer-display');
+    
+    if (panelHeader) panelHeader.classList.remove('active');
+    if (timerBox) timerBox.style.display = 'none';
+    if (timerDisplay) timerDisplay.classList.remove('running');
+}
+
+function updateTimerText() {
+    const m = Math.floor(remainingSeconds / 60);
+    const s = remainingSeconds % 60;
+    const mStr = String(m).padStart(2, '0');
+    const sStr = String(s).padStart(2, '0');
+    document.getElementById('countdown-text').textContent = `${mStr}:${sStr}`;
+}
+
+function executeAutoScan() {
+    const exchange = "{{ request.GET.exchange }}" || "upbit";
+    const volLimit = "{{ request.GET.vol_limit }}" || "80";
+    const telegramAlert = document.getElementById('telegram-alert').checked ? "1" : "0";
+    
+    // 만약 텔레그램 전송이 켜져있고 결과가 존재하면 발송하도록 파라미터 세팅하며 강제 새로고침
+    window.location.href = `/strategy/${strategyId}/search/?exchange=${exchange}&vol_limit=${volLimit}&send_telegram=${telegramAlert}&refresh=1`;
 }
 </script>
 </body>

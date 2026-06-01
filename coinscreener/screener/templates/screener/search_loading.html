@@ -183,7 +183,8 @@
     const strategyId = {{ strategy.id }};
     const exchange   = "{{ exchange }}";
     const volLimit   = "{{ vol_limit }}";
-    const streamUrl  = `/strategy/${strategyId}/search-stream/?exchange=${exchange}&vol_limit=${volLimit}`;
+    const sendTelegram = "{{ send_telegram|default:'0' }}";
+    const streamUrl  = `/strategy/${strategyId}/search-stream/?exchange=${exchange}&vol_limit=${volLimit}&send_telegram=${sendTelegram}`;
     const resultUrl  = `/strategy/${strategyId}/results/?exchange=${exchange}&vol_limit=${volLimit}`;
 
     const bar        = document.getElementById('bar');

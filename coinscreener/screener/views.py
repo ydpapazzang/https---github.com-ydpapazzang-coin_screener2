@@ -256,10 +256,12 @@ def coin_search(request, strategy_id):
         })
 
     # 캐시 없음 → 로딩 페이지 (JS가 SSE로 진행)
+    send_telegram = request.GET.get('send_telegram', '0')
     return render(request, 'screener/search_loading.html', {
         'strategy':  strategy,
         'exchange':  exchange,
         'vol_limit': vol_limit,
+        'send_telegram': send_telegram,
     })
 
 
@@ -271,6 +273,7 @@ def coin_search_stream(request, strategy_id):
     conditions = list(strategy.conditions.all())
     exchange   = request.GET.get('exchange', 'upbit')
     vol_limit  = int(request.GET.get('vol_limit', 0) or 0)
+    send_telegram = request.GET.get('send_telegram') == '1'
     if vol_limit == 0 or vol_limit > 80:
         vol_limit = 80
 
@@ -339,6 +342,13 @@ def coin_search_stream(request, strategy_id):
             'rate_limit_warning': error_occurred,
             'last_updated':       last_updated,
         }, timeout=300)
+
+        # 만약 자동 반복 스캔에서 텔레그램 전송이 활성화되었고, 조회된 건이 있으면 즉시 발송
+        if send_telegram and results and tg.is_configured():
+            try:
+                tg.send_alert(strategy.name, results, strategy_id=strategy.id)
+            except Exception as e:
+                print(f"자동 반복 스캔 중 텔레그램 발송 실패: {e}")
 
         yield "data: " + json.dumps({
             "type":     "done",
