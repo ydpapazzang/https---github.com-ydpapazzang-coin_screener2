@@ -24,15 +24,16 @@ MAJOR_COINS = [
 
 
 def _check_conditions_at(df_map, conditions, idx: int) -> bool:
-    """df_map의 idx 시점에서 조건 충족 여부 확인 (offset 무시, 항상 idx 기준)"""
+    """df_map의 idx 시점에서 조건 충족 여부 확인 (cond.offset 반영)"""
     for cond in conditions:
         df = df_map.get(cond.timeframe)
         if df is None or idx >= len(df):
             return False
 
-        # 백테스팅에서는 항상 현재 봉(i)을 기준으로 조건을 검사하므로,
-        # DB에 저장된 cond.offset은 무시하고, 현재 인덱스(idx)를 offset으로 변환하여 사용합니다.
-        offset = (len(df) - 1) - idx
+        # 백테스팅 시점 idx 기준으로 cond.offset(n봉 전)을 적용하여 offset을 구합니다.
+        # (len(df) - 1) - idx 는 현재 백테스팅 대상 봉(idx)의 최신 기준 오프셋이며,
+        # 여기에 cond.offset을 더해주면 idx 기준으로 지정된 과거 봉을 참조하게 됩니다.
+        offset = (len(df) - 1) - idx + cond.offset
 
         # ── 하이킨아시 패턴 조건 처리 ──
         ha_patterns = ('HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')
@@ -42,8 +43,9 @@ def _check_conditions_at(df_map, conditions, idx: int) -> bool:
             continue  # 조건 만족, 다음 조건으로
 
         # ── 일반 지표 조건 처리 ──
-        lv = get_indicator_value(df, cond.left_indicator,  cond.left_param,  offset)
-        rv = get_indicator_value(df, cond.right_indicator, cond.right_param, offset)
+        bb_std = cond.bb_std if cond.bb_std is not None else 2.0
+        lv = get_indicator_value(df, cond.left_indicator,  cond.left_param,  offset, bb_std=bb_std)
+        rv = get_indicator_value(df, cond.right_indicator, cond.right_param, offset, bb_std=bb_std)
         if lv is None or rv is None:
             return False
         ops = {'gt': lv>rv, 'lt': lv<rv, 'gte': lv>=rv, 'lte': lv<=rv}
@@ -97,10 +99,12 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
     entry_idx    = 0
     entry_date   = None
 
-    # 워밍업: 최소 조건 계산에 필요한 봉 수
+    # 워밍업: 최소 조건 계산에 필요한 봉 수 + offset 최대값
+    max_offset = max((c.offset for c in conditions), default=0)
     warmup = max(
-        max((c.left_param  for c in conditions if c.left_indicator  not in ('VAL','CLOSE')), default=0),
-        max((c.right_param for c in conditions if c.right_indicator not in ('VAL','CLOSE')), default=0),
+        max((c.left_param + c.offset for c in conditions if c.left_indicator not in ('VAL','CLOSE')), default=0),
+        max((c.right_param + c.offset for c in conditions if c.right_indicator not in ('VAL','CLOSE')), default=0),
+        max_offset,
     ) + 5
 
     start_idx = max(warmup, n - candle_count)

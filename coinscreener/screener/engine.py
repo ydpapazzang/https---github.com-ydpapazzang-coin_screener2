@@ -185,8 +185,9 @@ def check_strategy(ticker, conditions, current_price=None):
                         return False
                     continue
 
-                left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, total_offset)
-                right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, total_offset)
+                bb_std = cond.bb_std if cond.bb_std is not None else 2.0
+                left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, total_offset, bb_std=bb_std)
+                right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, total_offset, bb_std=bb_std)
 
                 if left_val is None or right_val is None or pd.isna(left_val) or pd.isna(right_val):
                     return False
@@ -228,8 +229,9 @@ def check_strategy(ticker, conditions, current_price=None):
                     label = label.replace('연속', f'연속{cond.left_param}봉')
                 details.append(label)
                 continue
-            left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, cond.offset)
-            right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, cond.offset)
+            bb_std = cond.bb_std if cond.bb_std is not None else 2.0
+            left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, cond.offset, bb_std=bb_std)
+            right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, cond.offset, bb_std=bb_std)
 
             if cond.left_indicator != 'VAL':
                 if left_val is not None and not pd.isna(left_val):
@@ -245,7 +247,7 @@ def check_strategy(ticker, conditions, current_price=None):
         return False, [], None, 0, None
 
 
-def get_indicator_value(df, indicator_type, param, offset):
+def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
     """
     DataFrame에서 특정 시점(offset)의 지표값을 반환.
     offset=0: 가장 최근 봉, offset=1: 1봉 전
@@ -281,8 +283,7 @@ def get_indicator_value(df, indicator_type, param, offset):
 
     elif indicator_type in ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER'):
         if param < 1: return None
-        # TODO: Condition 모델의 bb_std 필드를 활용하도록 개선 가능
-        std = 2.0
+        std = bb_std if bb_std is not None else 2.0
         bb = calculate_bollinger(df['close'], period=param, std=std)
         val = bb[indicator_type].iloc[target_idx]
         return None if pd.isna(val) else float(val)

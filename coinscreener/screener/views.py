@@ -238,7 +238,10 @@ def coin_search(request, strategy_id):
         return redirect('strategy_detail', strategy_id=strategy_id)
 
     exchange  = request.GET.get('exchange', 'upbit')
+    # Vercel 10초 타임아웃 및 업비트 API 429 방어를 위해 최대 스캔 대상을 80개로 자동 캡핑(Capping)합니다.
     vol_limit = int(request.GET.get('vol_limit', 0) or 0)
+    if vol_limit == 0 or vol_limit > 80:
+        vol_limit = 80
 
     cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
     cached_data = cache.get(cache_key)
@@ -268,6 +271,8 @@ def coin_search_stream(request, strategy_id):
     conditions = list(strategy.conditions.all())
     exchange   = request.GET.get('exchange', 'upbit')
     vol_limit  = int(request.GET.get('vol_limit', 0) or 0)
+    if vol_limit == 0 or vol_limit > 80:
+        vol_limit = 80
 
     def event_stream():
         if not conditions:
@@ -299,7 +304,8 @@ def coin_search_stream(request, strategy_id):
                 pass
             return None
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        # 스레드 개수를 10개로 조절하여 업비트 API 호출의 순간 폭주(Burst)를 완화하고 Rate Limit를 방어합니다.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(process_ticker, t): t for t in tickers}
             last_sent_pct = -1
             for future in concurrent.futures.as_completed(futures):
@@ -467,9 +473,12 @@ def alert_send_now(request, strategy_id):
     # body 파싱 실패해도 안전하게 기본값 사용
     exchange  = body.get('exchange', 'upbit') or 'upbit'
     try:
-        vol_limit = int(body.get('vol_limit') or 100)
+        vol_limit = int(body.get('vol_limit') or 80)
     except (ValueError, TypeError):
-        vol_limit = 100
+        vol_limit = 80
+
+    if vol_limit == 0 or vol_limit > 80:
+        vol_limit = 80
 
     tickers = _get_tickers(exchange, vol_limit)
     results = []
