@@ -557,3 +557,59 @@ def backtest_run(request, strategy_id):
     if 'error' in result:
         return JsonResponse(result, status=400)
     return JsonResponse(result)
+
+
+def db_debug(request):
+    import sys, traceback
+    from django.http import HttpResponse
+    from django.core.management import call_command
+    from django.db import connection
+    
+    output = []
+    output.append("=== Django DB Debugger ===")
+    
+    # 1. Show migrations
+    try:
+        from io import StringIO
+        out = StringIO()
+        call_command('showmigrations', stdout=out)
+        output.append("\n[Showmigrations]:")
+        output.append(out.getvalue())
+    except Exception as e:
+        output.append(f"\n[Showmigrations Error]:\n{traceback.format_exc()}")
+        
+    # 2. Run migrate
+    try:
+        from io import StringIO
+        out = StringIO()
+        call_command('migrate', interactive=False, stdout=out)
+        output.append("\n[Migrate output]:")
+        output.append(out.getvalue())
+    except Exception as e:
+        output.append(f"\n[Migrate Error]:\n{traceback.format_exc()}")
+        
+    # 3. Check Table schema
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT column_name, data_type, character_maximum_length 
+                FROM information_schema.columns 
+                WHERE table_name = 'screener_condition';
+            """)
+            cols = cursor.fetchall()
+            output.append("\n[Table columns in Neon PostgreSQL]:")
+            for col in cols:
+                output.append(f" - {col[0]}: {col[1]} (len={col[2]})")
+    except Exception as e:
+        output.append(f"\n[Postgres Schema Check Error (maybe SQLite)]: {e}")
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("PRAGMA table_info(screener_condition);")
+                cols = cursor.fetchall()
+                output.append("\n[Table columns in SQLite]:")
+                for col in cols:
+                    output.append(f" - {col[1]}: {col[2]}")
+        except Exception as sqle:
+            output.append(f"\n[SQLite Schema Check Error]: {sqle}")
+            
+    return HttpResponse("\n".join(output), content_type="text/plain; charset=utf-8")
