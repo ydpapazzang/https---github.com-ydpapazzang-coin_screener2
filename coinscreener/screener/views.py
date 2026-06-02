@@ -785,4 +785,100 @@ def ai_strategy_create(request):
         return JsonResponse({'error': f'서버 내부 오류: {str(e)}'}, status=500)
 
 
+@csrf_exempt
+def cron_scan(request):
+    """Vercel Cron: 30분 주기로 한국 표준시(KST)를 계산하여, 예약된 활성 알림 스캔 및 텔레그램 발송"""
+    from django.http import HttpResponseForbidden
+    
+    # 보안 검증: Vercel Cron이거나 디버그 시크릿이 있는 경우만 허용
+    is_vercel_cron = request.headers.get('x-vercel-cron') == '1'
+    is_debug = request.GET.get('secret') == 'wonii_cron_debug'
+    
+    if not is_vercel_cron and not is_debug:
+        return HttpResponseForbidden("권한이 없습니다.")
+        
+    try:
+        from django.utils import timezone
+        import datetime
+        
+        # 한국 표준시(KST)로 현재 시각 계산 (UTC + 9)
+        now_kst = timezone.now() + datetime.timedelta(hours=9)
+        current_hour = now_kst.hour
+        current_minute = now_kst.minute
+        
+        # 30분 단위 버킷 계산 (0분 또는 30분)
+        current_bucket = 0 if current_minute < 30 else 30
+        
+        # 활성화된 해당 시각 알림 설정 조회
+        active_settings = AlertSetting.objects.filter(
+            enabled=True,
+            alert_hour=current_hour,
+            alert_min=current_bucket
+        )
+        
+        processed_count = 0
+        sent_count = 0
+        results_summary = []
+        
+        for setting in active_settings:
+            strategy = setting.strategy
+            conditions = list(strategy.conditions.all())
+            if not conditions:
+                continue
+                
+            processed_count += 1
+            
+            # 티커 수집 (Vercel 타임아웃 방지를 위해 스캔 범위 최대 80 제한)
+            vol_limit = setting.vol_limit
+            if vol_limit == 0 or vol_limit > 80:
+                vol_limit = 80
+                
+            tickers = _get_tickers(setting.exchange, vol_limit)
+            
+            results = []
+            def _proc(ticker):
+                try:
+                    is_match, details, price, volume, status = check_strategy(ticker, conditions)
+                    if is_match and price:
+                        return {
+                            'symbol':         ticker,
+                            'price':          price,
+                            'volume':         volume,
+                            'volume_display': f"{volume / 100_000_000:.1f}억",
+                            'status':         status,
+                            'details':        ", ".join(list(dict.fromkeys(details))),
+                        }
+                except Exception:
+                    pass
+                return None
+                
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                for r in executor.map(_proc, tickers):
+                    if r:
+                        results.append(r)
+                        
+            results.sort(key=lambda x: x.get('volume', 0), reverse=True)
+            
+            # 조회 결과가 있는 경우 텔레그램 발송
+            if results and tg.is_configured():
+                tg.send_alert(strategy.name, results, strategy_id=strategy.id)
+                sent_count += 1
+                results_summary.append({
+                    'strategy': strategy.name,
+                    'matched_count': len(results)
+                })
+                
+        return JsonResponse({
+            'ok': True,
+            'time': now_kst.strftime('%Y-%m-%d %H:%M:%S KST'),
+            'processed': processed_count,
+            'sent_alerts': sent_count,
+            'details': results_summary
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': f'크론 수행 중 서버 오류: {str(e)}'}, status=500)
+
+
+
 

@@ -337,3 +337,22 @@ class BacktestOffsetTestCase(TestCase):
             content_type='application/json'
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_cron_scan_forbidden(self):
+        """보안 토큰 또는 크론 헤더 없이 크론 경로 진입 시 403 차단 검증"""
+        response = self.client.get('/cron/scan/')
+        self.assertEqual(response.status_code, 403)
+
+    def test_cron_scan_success(self):
+        """디버그 토큰을 전달하거나 Vercel Cron 헤더를 전달했을 때 크론 스캔이 성공적으로 수행되는지 검증"""
+        # 1. 헤더 전달을 통한 성공 검증
+        response = self.client.get('/cron/scan/', HTTP_X_VERCEL_CRON='1')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+        
+        # 2. 디버그 쿼리 토큰을 통한 성공 검증
+        response = self.client.get('/cron/scan/?secret=wonii_cron_debug')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
