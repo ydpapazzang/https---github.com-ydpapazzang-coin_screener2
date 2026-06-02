@@ -45,6 +45,19 @@ def send_message(text: str) -> dict:
         return {'ok': False, 'error': str(e)}
 
 
+def shorten_url(url: str) -> str:
+    """TinyURL API를 사용해 긴 웹사이트 주소를 짧은 단축 URL로 변환 (실패 시 원본 URL로 안전 폴백)"""
+    try:
+        r = requests.get(f"https://tinyurl.com/api-create.php?url={url}", timeout=5)
+        if r.status_code == 200:
+            shorturl = r.text.strip()
+            if shorturl.startswith("http"):
+                return shorturl
+    except Exception:
+        pass
+    return url
+
+
 def send_alert(strategy_name: str, results: list, strategy_id: int = None) -> dict:
     """스크리닝 결과 알림 발송"""
     if not results:
@@ -60,10 +73,11 @@ def send_alert(strategy_name: str, results: list, strategy_id: int = None) -> di
             lines.append(f"... 외 {len(results) - 20}개")
         text = "\n".join(lines)
 
-    # SITE_URL 환경변수가 설정되어 있으면 웹사이트 링크 추가
+    # SITE_URL 환경변수가 설정되어 있으면 웹사이트 링크 추가 (단축 URL 변환 적용)
     site_url = os.environ.get('SITE_URL', '').rstrip('/')
     if strategy_id and site_url:
         link  = f'{site_url}/strategy/{strategy_id}/'
-        text += f'\n\n<a href="{link}">🔗 웹에서 보기</a>'
+        short_link = shorten_url(link)
+        text += f'\n\n<a href="{short_link}">🔗 웹에서 보기</a>'
 
     return send_message(text)

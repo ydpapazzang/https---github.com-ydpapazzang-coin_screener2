@@ -356,3 +356,20 @@ class BacktestOffsetTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])
+
+    def test_url_shortening(self):
+        """TinyURL API 모킹을 통한 단축 URL 생성 및 실패 시 원본 안전 폴백 기능 검증"""
+        from .telegram import shorten_url
+        
+        # 1. 모킹을 이용한 정상 단축 URL 반환 검증
+        with patch('requests.get') as mock_get:
+            mock_get.return_value.status_code = 200
+            mock_get.return_value.text = "https://tinyurl.com/mocked_short"
+            
+            result = shorten_url("https://my-screener-site.com/strategy/19/")
+            self.assertEqual(result, "https://tinyurl.com/mocked_short")
+            
+        # 2. 타임아웃/오류 발생 시 원본으로 안전하게 폴백하는지 검증
+        with patch('requests.get', side_effect=Exception("API Timeout")):
+            result = shorten_url("https://my-screener-site.com/strategy/19/")
+            self.assertEqual(result, "https://my-screener-site.com/strategy/19/")
