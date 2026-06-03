@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ strategy.name }} - 검색 결과</title>
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
@@ -74,6 +75,86 @@
         .btn-bt-small:hover {
             border-color: var(--text);
             color: var(--text);
+        }
+
+        .btn-tv-chart {
+            background: rgba(41, 98, 255, 0.1); border: 1px solid rgba(41, 98, 255, 0.3); color: #82b1ff;
+            border-radius: 6px; padding: 6px 10px; font-size: 13px;
+            cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+            transition: all 0.2s ease;
+        }
+        .btn-tv-chart:hover {
+            background: var(--blue);
+            border-color: var(--blue);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(41, 98, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        /* TRADINGVIEW MODAL OVERLAY */
+        .tv-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 12, 18, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            z-index: 2000;
+            display: none; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        .tv-modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+        .tv-modal-container {
+            width: 90%; max-width: 1000px;
+            background: rgba(30, 34, 45, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(41, 98, 255, 0.15);
+            border-radius: 16px;
+            overflow: hidden;
+            display: flex; flex-direction: column;
+            transform: scale(0.9); transition: transform 0.3s ease;
+        }
+        .tv-modal-overlay.active .tv-modal-container {
+            transform: scale(1);
+        }
+        .tv-modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(19, 23, 34, 0.5);
+        }
+        .tv-modal-title-wrap {
+            display: flex; align-items: center; gap: 10px;
+        }
+        .tv-modal-title {
+            font-size: 16px; font-weight: 800; color: #fff;
+        }
+        .tv-modal-badge {
+            font-size: 11px; font-weight: 700; padding: 3px 8px;
+            border-radius: 12px; background: rgba(38, 166, 154, 0.15);
+            color: var(--green); border: 1px solid rgba(38, 166, 154, 0.3);
+        }
+        .tv-modal-badge.upbit {
+            background: rgba(41, 98, 255, 0.15);
+            color: #82b1ff; border: 1px solid rgba(41, 98, 255, 0.3);
+        }
+        .tv-modal-close {
+            background: transparent; border: none; color: var(--muted);
+            font-size: 24px; cursor: pointer; transition: all 0.2s ease;
+            width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+            border-radius: 50%;
+        }
+        .tv-modal-close:hover {
+            color: #fff; background: rgba(255, 255, 255, 0.1);
+            transform: rotate(90deg);
+        }
+        .tv-modal-body {
+            position: relative; width: 100%; height: 550px;
+            background: #131722;
+        }
+        #tv-chart-container {
+            width: 100%; height: 100%;
         }
 
         /* STATUS BADGE */
@@ -302,7 +383,8 @@
                 <th class="price">현재가</th>
                 <th class="volume">거래대금</th>
                 <th>관련 지표</th>
-                <th></th>
+                <th style="text-align: center;">실시간 차트</th>
+                <th style="text-align: center;">백테스트</th>
             </tr>
         </thead>
         <tbody>
@@ -322,8 +404,11 @@
                 <td class="price">{{ r.price|floatformat:0 }}</td>
                 <td class="volume">{{ r.volume_display }}</td>
                 <td>{{ r.details }}</td>
-                <td>
-                    <button class="btn-bt-small" onclick="triggerBacktest('{{ r.symbol }}', '{{ r.symbol|slice:'4:' }}')" title="백테스팅">📈</button>
+                <td style="text-align: center;">
+                    <button class="btn-tv-chart" onclick="openTradingViewChart('{{ r.symbol }}')" title="실시간 차트 보기">📊 차트</button>
+                </td>
+                <td style="text-align: center;">
+                    <button class="btn-bt-small" style="display: inline-flex;" onclick="triggerBacktest('{{ r.symbol }}', '{{ r.symbol|slice:'4:' }}')" title="백테스팅">📈 백테스트</button>
                 </td>
             </tr>
             {% endfor %}
@@ -333,6 +418,22 @@
     <div class="empty">조건에 맞는 코인이 없습니다.</div>
     {% endif %}
 
+</div>
+
+<!-- TRADINGVIEW CHART MODAL -->
+<div class="tv-modal-overlay" id="tv-chart-modal" onclick="closeTradingViewChart(event)">
+    <div class="tv-modal-container" onclick="event.stopPropagation()">
+        <div class="tv-modal-header">
+            <div class="tv-modal-title-wrap">
+                <span class="tv-modal-title" id="tv-modal-title">BTC/KRW 실시간 차트</span>
+                <span class="tv-modal-badge" id="tv-modal-exchange-badge">Upbit</span>
+            </div>
+            <button class="tv-modal-close" onclick="closeTradingViewChart()" title="닫기">&times;</button>
+        </div>
+        <div class="tv-modal-body">
+            <div id="tv-chart-container"></div>
+        </div>
+    </div>
 </div>
 
 {% include "screener/backtest_modal.html" %}
@@ -461,6 +562,67 @@ function executeAutoScan() {
     
     // 만약 텔레그램 전송이 켜져있고 결과가 존재하면 발송하도록 파라미터 세팅하며 강제 새로고침
     window.location.href = `/strategy/${strategyId}/search/?exchange=${exchange}&vol_limit=${volLimit}&send_telegram=${telegramAlert}&refresh=1`;
+}
+
+/* ── TRADINGVIEW CHART CONTROLLERS ── */
+function openTradingViewChart(symbol) {
+    const modal = document.getElementById('tv-chart-modal');
+    modal.style.display = 'flex';
+    // Trigger CSS reflow
+    modal.offsetHeight;
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    // Parse symbol name
+    const coinSymbol = symbol.split('-')[1]; // e.g. BTC
+    document.getElementById('tv-modal-title').textContent = `${coinSymbol}/KRW 실시간 차트`;
+
+    // Resolve exchange
+    const urlParams = new URLSearchParams(window.location.search);
+    const exchange = urlParams.get('exchange') || 'upbit';
+    const isUpbit = exchange.toLowerCase() === 'upbit';
+    
+    const badge = document.getElementById('tv-modal-exchange-badge');
+    badge.textContent = isUpbit ? 'Upbit' : 'Bithumb';
+    if (isUpbit) {
+        badge.className = 'tv-modal-badge upbit';
+    } else {
+        badge.className = 'tv-modal-badge';
+    }
+
+    // Build tradingview code
+    const tvSymbol = (isUpbit ? 'UPBIT:' : 'BITHUMB:') + coinSymbol + 'KRW';
+
+    // Embed TradingView Widget
+    new TradingView.widget({
+        "autosize": true,
+        "symbol": tvSymbol,
+        "interval": "15",
+        "timezone": "Asia/Seoul",
+        "theme": "dark",
+        "style": "1",
+        "locale": "ko",
+        "toolbar_bg": "#1e222d",
+        "enable_publishing": false,
+        "hide_side_toolbar": false,
+        "allow_symbol_change": true,
+        "container_id": "tv-chart-container"
+    });
+}
+
+function closeTradingViewChart(event) {
+    if (event && event.target !== event.currentTarget) return;
+    
+    const modal = document.getElementById('tv-chart-modal');
+    modal.classList.remove('active');
+    
+    setTimeout(() => {
+        if (!modal.classList.contains('active')) {
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+            document.getElementById('tv-chart-container').innerHTML = ''; // Kill Iframe and clean memory
+        }
+    }, 300);
 }
 </script>
 </body>
