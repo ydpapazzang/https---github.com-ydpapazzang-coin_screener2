@@ -25,4 +25,5 @@ urlpatterns = [
     path('ai/ask/',                                  views.ai_ask,         name='ai_ask'),
     path('ai/strategy/create/',                      views.ai_strategy_create, name='ai_strategy_create'),
     path('cron/scan/',                               views.cron_scan,      name='cron_scan'),
+    path('cron/scan-debug/',                         views.cron_scan,      name='cron_scan_debug'),
 ]
