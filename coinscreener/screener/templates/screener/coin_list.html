@@ -557,7 +557,7 @@ function updateTimerText() {
 
 function executeAutoScan() {
     const exchange = "{{ request.GET.exchange }}" || "upbit";
-    const volLimit = "{{ request.GET.vol_limit }}" || "80";
+    const volLimit = "{{ request.GET.vol_limit }}" || "100";
     const telegramAlert = document.getElementById('telegram-alert').checked ? "1" : "0";
     
     // 만약 텔레그램 전송이 켜져있고 결과가 존재하면 발송하도록 파라미터 세팅하며 강제 새로고침

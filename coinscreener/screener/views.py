@@ -247,10 +247,12 @@ def coin_search(request, strategy_id):
         return redirect('strategy_detail', strategy_id=strategy_id)
 
     exchange  = request.GET.get('exchange', 'upbit')
-    # Vercel 10초 타임아웃 및 업비트 API 429 방어를 위해 최대 스캔 대상을 80개로 자동 캡핑(Capping)합니다.
-    vol_limit = int(request.GET.get('vol_limit', 0) or 0)
-    if vol_limit == 0 or vol_limit > 80:
-        vol_limit = 80
+    # 사용자가 선택한 스캔 범위를 그대로 사용합니다. (0인 경우 전체 코인 스캔)
+    try:
+        vol_limit_param = request.GET.get('vol_limit')
+        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 100
+    except (ValueError, TypeError):
+        vol_limit = 100
 
     cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
     cached_data = cache.get(cache_key)
@@ -281,10 +283,12 @@ def coin_search_stream(request, strategy_id):
     strategy   = get_object_or_404(Strategy, id=strategy_id)
     conditions = list(strategy.conditions.all())
     exchange   = request.GET.get('exchange', 'upbit')
-    vol_limit  = int(request.GET.get('vol_limit', 0) or 0)
+    try:
+        vol_limit_param = request.GET.get('vol_limit')
+        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 100
+    except (ValueError, TypeError):
+        vol_limit = 100
     send_telegram = request.GET.get('send_telegram') == '1'
-    if vol_limit == 0 or vol_limit > 80:
-        vol_limit = 80
 
     def event_stream():
         if not conditions:
@@ -490,12 +494,10 @@ def alert_send_now(request, strategy_id):
     # body 파싱 실패해도 안전하게 기본값 사용
     exchange  = body.get('exchange', 'upbit') or 'upbit'
     try:
-        vol_limit = int(body.get('vol_limit') or 80)
+        vol_limit_val = body.get('vol_limit')
+        vol_limit = int(vol_limit_val) if vol_limit_val is not None else 100
     except (ValueError, TypeError):
-        vol_limit = 80
-
-    if vol_limit == 0 or vol_limit > 80:
-        vol_limit = 80
+        vol_limit = 100
 
     tickers = _get_tickers(exchange, vol_limit)
     results = []
@@ -824,10 +826,8 @@ def cron_scan(request):
                 
             processed_count += 1
             
-            # 티커 수집 (Vercel 타임아웃 방지를 위해 스캔 범위 최대 80 제한)
+            # 티커 수집 (설정된 vol_limit 사용, 0인 경우 전체 코인)
             vol_limit = setting.vol_limit
-            if vol_limit == 0 or vol_limit > 80:
-                vol_limit = 80
                 
             tickers = _get_tickers(setting.exchange, vol_limit)
             

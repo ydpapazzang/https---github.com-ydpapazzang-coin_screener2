@@ -226,15 +226,15 @@ class BacktestOffsetTestCase(TestCase):
             right_param=100
         )
         
-        # 2. vol_limit = 0 (제한 없음) 요청 시 -> 80으로 캡핑되어 로딩 화면으로 렌더링되어야 함
+        # 2. vol_limit = 0 (제한 없음) 요청 시 -> 그대로 0으로 유지되어 로딩 화면으로 렌더링되어야 함
         response = self.client.get(f'/strategy/{self.strategy.id}/search/?exchange=upbit&vol_limit=0')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['vol_limit'], 80)
+        self.assertEqual(response.context['vol_limit'], 0)
         
-        # 3. vol_limit = 150 (80 초과 대형 스캔) 요청 시 -> 80으로 캡핑되어야 함
+        # 3. vol_limit = 150 (80 초과 대형 스캔) 요청 시 -> 그대로 150이 유지되어야 함
         response = self.client.get(f'/strategy/{self.strategy.id}/search/?exchange=upbit&vol_limit=150')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['vol_limit'], 80)
+        self.assertEqual(response.context['vol_limit'], 150)
 
         # 4. vol_limit = 50 (80 이하 정상) 요청 시 -> 그대로 50 유지되어야 함
         response = self.client.get(f'/strategy/{self.strategy.id}/search/?exchange=upbit&vol_limit=50')
