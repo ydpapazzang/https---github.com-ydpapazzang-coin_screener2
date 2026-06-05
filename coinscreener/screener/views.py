@@ -163,6 +163,29 @@ def condition_add(request, strategy_id):
         operator                      = 'is'
         right_indicator, right_param  = 'VAL', 0
 
+    elif cond_type == 'IC':
+        ic_comparison = request.POST.get('ic_comparison', 'TENKAN_KIJUN')
+        valid_ic = ('TENKAN_KIJUN', 'CLOSE_SPAN_A', 'CLOSE_SPAN_B', 'SPAN_A_SPAN_B', 'CHIKOU_CLOSE')
+        if ic_comparison not in valid_ic:
+            messages.error(request, "올바르지 않은 일목균형표 비교 유형입니다.")
+            return redirect('strategy_detail', strategy_id=strategy_id)
+
+        if ic_comparison == 'TENKAN_KIJUN':
+            left_indicator, left_param = 'IC_TENKAN', 9
+            right_indicator, right_param = 'IC_KIJUN', 26
+        elif ic_comparison == 'CLOSE_SPAN_A':
+            left_indicator, left_param = 'CLOSE', 0
+            right_indicator, right_param = 'IC_SPAN_A', 26
+        elif ic_comparison == 'CLOSE_SPAN_B':
+            left_indicator, left_param = 'CLOSE', 0
+            right_indicator, right_param = 'IC_SPAN_B', 26
+        elif ic_comparison == 'SPAN_A_SPAN_B':
+            left_indicator, left_param = 'IC_SPAN_A', 26
+            right_indicator, right_param = 'IC_SPAN_B', 26
+        elif ic_comparison == 'CHIKOU_CLOSE':
+            left_indicator, left_param = 'IC_CHIKOU', 0
+            right_indicator, right_param = 'IC_CHIKOU_REF', 26
+
     else:
         messages.error(request, f"알 수 없는 조건 유형입니다: {cond_type}")
         return redirect('strategy_detail', strategy_id=strategy_id)
@@ -633,10 +656,16 @@ def ai_ask(request):
                         "JSON 데이터 작성 규칙:\n"
                         "1. 주석(예: // 또는 #)을 JSON 본문에 절대로 포함하지 마십시오. 순수한 표준 JSON 규격이어야 자바스크립트의 JSON.parse가 에러 없이 작동합니다.\n"
                         "2. 사용 가능한 timeframe: 'minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month'. 단타(스캘핑) 전략 요청 시 5분봉('minute5') 이나 15분봉('minute15')을 활용하십시오.\n"
-                        "3. 사용 가능한 지표(indicator): 'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'HA_BULL', 'HA_BEAR', 'VAL', 'CLOSE'.\n"
+                        "3. 사용 가능한 지표(indicator): 'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER', 'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF', 'VAL', 'CLOSE'.\n"
                         "4. 사용 가능한 연산자(operator): 'gt', 'lt', 'gte', 'lte', 'is'.\n"
                         "5. 볼린저 밴드(BB) 조건식 설정 시: left_indicator='CLOSE', left_param=0, operator='gt'/'lt', right_indicator='BB_UPPER'/'BB_LOWER' 형태로 작성하세요 (예: 종가가 볼린저 밴드 상단을 돌파하는 조건).\n"
-                        "6. 고정값 비교(예: RSI 30 이하) 설정 시: left_indicator='RSI', left_param=14, operator='lte', right_indicator='VAL', right_param=30 형태로 작성하세요.\n\n"
+                        "6. 고정값 비교(예: RSI 30 이하) 설정 시: left_indicator='RSI', left_param=14, operator='lte', right_indicator='VAL', right_param=30 형태로 작성하세요.\n"
+                        "7. 일목균형표(Ichimoku) 조건식 설정 시:\n"
+                        "   - 전환선(Tenkan) vs 기준선(Kijun) : left_indicator='IC_TENKAN', left_param=9, operator='gte'/'lte', right_indicator='IC_KIJUN', right_param=26\n"
+                        "   - 종가(Close) vs 선행스팬1(Span A) : left_indicator='CLOSE', left_param=0, operator='gte'/'lte', right_indicator='IC_SPAN_A', right_param=26\n"
+                        "   - 종가(Close) vs 선행스팬2(Span B) : left_indicator='CLOSE', left_param=0, operator='gte'/'lte', right_indicator='IC_SPAN_B', right_param=26\n"
+                        "   - 선행스팬1(Span A) vs 선행스팬2(Span B) : left_indicator='IC_SPAN_A', left_param=26, operator='gte'/'lte', right_indicator='IC_SPAN_B', right_param=26\n"
+                        "   - 후행스팬(Chikou) vs 26봉 전 종가 : left_indicator='IC_CHIKOU', left_param=0, operator='gte'/'lte', right_indicator='IC_CHIKOU_REF', right_param=26\n\n"
                         "JSON 데이터 형식 예시:\n"
                         "{\n"
                         "  \"create_strategy\": {\n"
@@ -715,7 +744,12 @@ def ai_strategy_create(request):
         # Create Conditions
         conditions_data = strategy_data.get('conditions', [])
         valid_timeframes = ['minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month']
-        valid_indicators = ['MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER', 'VAL', 'CLOSE']
+        valid_indicators = [
+            'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 
+            'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER',
+            'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF',
+            'VAL', 'CLOSE'
+        ]
         valid_operators = ['gt', 'lt', 'gte', 'lte', 'is']
         
         for c in conditions_data:

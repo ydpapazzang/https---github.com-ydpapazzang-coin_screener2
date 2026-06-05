@@ -138,6 +138,25 @@ def check_ha_pattern(df: pd.DataFrame, pattern: str, param: int, offset: int) ->
     return False
 
 
+def get_required_len(indicator_type, param):
+    """지표 계산에 필요한 최소 데이터 길이 반환"""
+    if indicator_type in ('VAL', 'CLOSE'):
+        return 0
+    if indicator_type == 'IC_TENKAN':
+        return param
+    if indicator_type == 'IC_KIJUN':
+        return param
+    if indicator_type == 'IC_SPAN_A':
+        return 52
+    if indicator_type == 'IC_SPAN_B':
+        return 78
+    if indicator_type == 'IC_CHIKOU':
+        return 0
+    if indicator_type == 'IC_CHIKOU_REF':
+        return param
+    return param
+
+
 def check_strategy(ticker, conditions, current_price=None):
     """
     특정 코인이 주어진 전략(조건 리스트)을 모두 만족하는지 확인.
@@ -170,8 +189,8 @@ def check_strategy(ticker, conditions, current_price=None):
 
                 # 지표 계산에 필요한 최소 데이터 길이 검증
                 required_len = max(
-                    cond.left_param if cond.left_indicator not in ('VAL', 'CLOSE') else 0,
-                    cond.right_param if cond.right_indicator not in ('VAL', 'CLOSE') else 0,
+                    get_required_len(cond.left_indicator, cond.left_param),
+                    get_required_len(cond.right_indicator, cond.right_param)
                 ) + total_offset + 1
 
                 if len(df) < required_len: return False
@@ -293,6 +312,50 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
 
     elif indicator_type == 'CLOSE':
         val = df['close'].iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'IC_TENKAN':
+        p = max(1, param)
+        high_val = df['high'].rolling(window=p).max()
+        low_val = df['low'].rolling(window=p).min()
+        val = ((high_val + low_val) / 2).iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'IC_KIJUN':
+        p = max(1, param)
+        high_val = df['high'].rolling(window=p).max()
+        low_val = df['low'].rolling(window=p).min()
+        val = ((high_val + low_val) / 2).iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'IC_SPAN_A':
+        high_9 = df['high'].rolling(window=9).max()
+        low_9 = df['low'].rolling(window=9).min()
+        tenkan = (high_9 + low_9) / 2
+
+        high_26 = df['high'].rolling(window=26).max()
+        low_26 = df['low'].rolling(window=26).min()
+        kijun = (high_26 + low_26) / 2
+
+        span_a = (tenkan + kijun) / 2
+        span_a_shifted = span_a.shift(param)
+        val = span_a_shifted.iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'IC_SPAN_B':
+        high_52 = df['high'].rolling(window=52).max()
+        low_52 = df['low'].rolling(window=52).min()
+        span_b = (high_52 + low_52) / 2
+        span_b_shifted = span_b.shift(param)
+        val = span_b_shifted.iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'IC_CHIKOU':
+        val = df['close'].iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'IC_CHIKOU_REF':
+        val = df['close'].iloc[target_idx - param] if abs(target_idx - param) <= len(df) else None
         return None if pd.isna(val) else float(val)
 
     return None

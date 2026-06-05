@@ -835,6 +835,7 @@ select.op-select {
             <button class="tab-btn" onclick="switchTab(event,'RSI')">RSI</button>
             <button class="tab-btn" onclick="switchTab(event,'BB')">볼린저밴드</button>
             <button class="tab-btn" onclick="switchTab(event,'HA')">하이킨아시</button>
+            <button class="tab-btn" onclick="switchTab(event,'IC')">일목균형표</button>
         </div>
 
         <!-- ═══ MA FORM ═══ -->
@@ -1164,6 +1165,73 @@ select.op-select {
             <button type="submit" class="btn-add-cond">＋ 하이킨아시 조건 추가</button>
         </form>
 
+        <!-- ═══ ICHIMOKU FORM ═══ -->
+        <form id="form-IC" class="cond-form"
+              action="{% url 'condition_add' strategy.id %}" method="post"
+              onsubmit="return validateIC()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="IC">
+            <input type="hidden" name="offset" id="ic_offset" value="0">
+            <input type="hidden" name="ic_comparison" id="ic_comparison_val" value="TENKAN_KIJUN">
+
+            <div class="form-grid">
+
+                <!-- ① 캔들 단위 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe">
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+
+                <!-- ② 기간 선택 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기간 선택</div>
+                    <select onchange="syncOffsetType('IC')" id="ic_offset_type">
+                        <option value="current">현재봉</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="ic_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="ic_offset_slider" min="0" max="100" value="0"
+                               oninput="syncSlider('ic_offset','ic_offset_slider')">
+                        <span class="slider-val" id="ic_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+
+                <!-- ③ 비교 대상 선택 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">③</span>비교 대상</div>
+                    <div class="bb-group">
+                        <button type="button" class="bb-opt selected" onclick="selectIC('TENKAN_KIJUN',this)">전환선 vs 기준선</button>
+                        <button type="button" class="bb-opt" onclick="selectIC('CLOSE_SPAN_A',this)">종가 vs 선행스팬1</button>
+                        <button type="button" class="bb-opt" onclick="selectIC('CLOSE_SPAN_B',this)">종가 vs 선행스팬2</button>
+                        <button type="button" class="bb-opt" onclick="selectIC('SPAN_A_SPAN_B',this)">선행스팬1 vs 선행스팬2</button>
+                        <button type="button" class="bb-opt" onclick="selectIC('CHIKOU_CLOSE',this)">후행스팬 vs 26봉전 종가</button>
+                    </div>
+                </div>
+
+                <!-- ④ 비교 조건 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">④</span>비교 조건</div>
+                    <select name="operator" class="op-select">
+                        <option value="gte">이상 (&gt;=)</option>
+                        <option value="lte">이하 (&lt;=)</option>
+                        <option value="gt">초과 (&gt;)</option>
+                        <option value="lt">미만 (&lt;)</option>
+                    </select>
+                    <span class="helper" style="align-self:center;" id="ic_comparison_helper">전환선(9)이 기준선(26)과 비교됩니다.</span>
+                </div>
+
+            </div>
+
+            <button type="submit" class="btn-add-cond">＋ 일목균형표 조건 추가</button>
+        </form>
+
     </div><!-- /card -->
 
     <!-- ── 하단 액션 바 ── -->
@@ -1371,6 +1439,33 @@ function syncHaNInput(val) {
     const v = Math.max(2, Math.min(20, parseInt(val) || 2));
     document.getElementById('ha_n_slider').value = v;
     document.getElementById('ha_n_display').textContent = v;
+}
+
+/* ── IC 비교 대상 선택 ── */
+function selectIC(val, btn) {
+    btn.parentNode.querySelectorAll('.bb-opt').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('ic_comparison_val').value = val;
+    
+    const helper = document.getElementById('ic_comparison_helper');
+    if (val === 'TENKAN_KIJUN') {
+        helper.textContent = "전환선(9)이 기준선(26)과 비교됩니다.";
+    } else if (val === 'CLOSE_SPAN_A') {
+        helper.textContent = "종가(Close)가 선행스팬1(9, 26)과 비교됩니다.";
+    } else if (val === 'CLOSE_SPAN_B') {
+        helper.textContent = "종가(Close)가 선행스팬2(52)와 비교됩니다.";
+    } else if (val === 'SPAN_A_SPAN_B') {
+        helper.textContent = "선행스팬1(9, 26)이 선행스팬2(52)와 비교됩니다.";
+    } else if (val === 'CHIKOU_CLOSE') {
+        helper.textContent = "후행스팬(Chikou)이 26봉 전 종가와 비교됩니다.";
+    }
+}
+
+function validateIC() {
+    const form   = document.getElementById('form-IC');
+    const offset = parseInt(form.offset.value);
+    if (isNaN(offset) || offset < 0) { alert("n봉 전은 0 이상의 숫자여야 합니다."); return false; }
+    return true;
 }
 </script>
 </body>

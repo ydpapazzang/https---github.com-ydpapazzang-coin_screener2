@@ -212,6 +212,77 @@ class BacktestOffsetTestCase(TestCase):
         self.assertNotIn('error', res_bt5)
         self.assertEqual(len(res_bt5.get('trades', [])), 0)
 
+    @patch('pyupbit.get_ohlcv')
+    def test_ichimoku_indicators(self, mock_get_ohlcv):
+        """일목균형표 지표들(전환선, 기준선, 선행스팬1, 선행스팬2, 후행스팬) 계산 및 스크리닝/백테스트 검증"""
+        # 일목 선행스팬2 계산을 위해 최소 78봉 이상의 데이터가 필요하므로 100개 봉 데이터 생성
+        dates = [datetime(2026, 1, 1) + timedelta(days=i) for i in range(100)]
+        closes = [100.0] * 100
+        opens = [100.0] * 100
+        # 전환선/기준선 돌파 테스트를 위해 특정 구간 고가를 높임
+        highs = [100.0] * 95 + [150.0] * 5
+        lows = [100.0] * 100
+        volumes = [1000.0] * 100
+        values = [100000.0] * 100
+
+        test_df = pd.DataFrame({
+            'open': opens,
+            'high': highs,
+            'low': lows,
+            'close': closes,
+            'volume': volumes,
+            'value': values
+        }, index=dates)
+
+        mock_get_ohlcv.return_value = test_df
+
+        # 1. 전환선 >= 기준선 조건
+        cond_tenkan_kijun = Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            offset=0,
+            left_indicator='IC_TENKAN',
+            left_param=9,
+            operator='gte',
+            right_indicator='IC_KIJUN',
+            right_param=26
+        )
+
+        is_match, _, _, _, _ = check_strategy('KRW-BTC', [cond_tenkan_kijun])
+        self.assertTrue(is_match, "전환선(9)이 기준선(26)보다 크거나 같아야 합니다.")
+
+        # 2. 선행스팬1 vs 선행스팬2 조건
+        cond_span = Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            offset=0,
+            left_indicator='IC_SPAN_A',
+            left_param=26,
+            operator='gte',
+            right_indicator='IC_SPAN_B',
+            right_param=26
+        )
+        is_match_span, _, _, _, _ = check_strategy('KRW-BTC', [cond_span])
+        self.assertTrue(is_match_span)
+
+        # 3. 후행스팬 vs 26봉 전 종가 조건
+        cond_chikou = Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            offset=0,
+            left_indicator='IC_CHIKOU',
+            left_param=0,
+            operator='gte',
+            right_indicator='IC_CHIKOU_REF',
+            right_param=26
+        )
+        is_match_chikou, _, _, _, _ = check_strategy('KRW-BTC', [cond_chikou])
+        self.assertTrue(is_match_chikou)
+
+        # 4. 백테스트 구동 확인
+        res_bt = run_backtest('KRW-BTC', [cond_tenkan_kijun], candle_count=10, sell_mode='exit_n', sell_param=2)
+        self.assertNotIn('error', res_bt)
+
     def test_scan_limit_capping(self):
         """대량 코인 스캔 요청(vol_limit=0 또는 150 등) 시 자동으로 최대 80개로 안전하게 캡핑되는지 검증"""
         # 1. 조건 추가 필요 (조건이 없으면 strategy_detail로 리다이렉트되므로 조건 생성)

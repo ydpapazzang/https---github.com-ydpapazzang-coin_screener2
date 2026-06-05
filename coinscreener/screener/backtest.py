@@ -6,7 +6,7 @@
 import pyupbit
 import pandas as pd
 import numpy as np
-from .engine import get_indicator_value, check_ha_pattern
+from .engine import get_indicator_value, check_ha_pattern, get_required_len
 
 
 MAJOR_COINS = [
@@ -102,8 +102,8 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
     # 워밍업: 최소 조건 계산에 필요한 봉 수 + offset 최대값
     max_offset = max((c.offset for c in conditions), default=0)
     warmup = max(
-        max((c.left_param + c.offset for c in conditions if c.left_indicator not in ('VAL','CLOSE')), default=0),
-        max((c.right_param + c.offset for c in conditions if c.right_indicator not in ('VAL','CLOSE')), default=0),
+        max((get_required_len(c.left_indicator, c.left_param) + c.offset for c in conditions), default=0),
+        max((get_required_len(c.right_indicator, c.right_param) + c.offset for c in conditions), default=0),
         max_offset,
     ) + 5
 

@@ -38,6 +38,13 @@ class Condition(models.Model):
         ('HA_BEAR_N',      'HA 연속 음봉'),
         ('HA_NO_LOWER',    'HA 아랫꼬리 없음'),
         ('HA_NO_UPPER',    'HA 윗꼬리 없음'),
+        # 일목균형표 지표
+        ('IC_TENKAN',      '일목 전환선'),
+        ('IC_KIJUN',       '일목 기준선'),
+        ('IC_SPAN_A',      '일목 선행스팬1'),
+        ('IC_SPAN_B',      '일목 선행스팬2'),
+        ('IC_CHIKOU',      '일목 후행스팬'),
+        ('IC_CHIKOU_REF',  '26봉 전 종가'),
         ('VAL',       '고정값'),
         ('CLOSE',     '종가'),
     ]
