@@ -436,7 +436,7 @@ def alert_save(request, strategy_id):
 
     try:
         alert_hour = int(body.get('alert_hour', 9))
-        alert_min  = int(body.get('alert_min',  0))
+        alert_min  = 0  # 30분 단위 제외, 정각만 사용
         vol_limit  = int(body.get('vol_limit', 100))
     except (ValueError, TypeError) as e:
         return JsonResponse({'ok': False, 'error': f'숫자 형식 오류: {e}'}, status=400)
@@ -444,8 +444,6 @@ def alert_save(request, strategy_id):
     # 범위 검증
     if not (0 <= alert_hour <= 23):
         return JsonResponse({'ok': False, 'error': '알림 시각(시)은 0~23 사이여야 합니다.'}, status=400)
-    if alert_min not in (0, 30):
-        return JsonResponse({'ok': False, 'error': '알림 시각(분)은 0 또는 30이어야 합니다.'}, status=400)
 
     enabled   = bool(body.get('enabled', False))
     exchange  = body.get('exchange', 'upbit')
@@ -801,19 +799,17 @@ def cron_scan(request):
         from django.utils import timezone
         import datetime
         
-        # 한국 표준시(KST)로 현재 시각 계산 (UTC + 9)
-        now_kst = timezone.now() + datetime.timedelta(hours=9)
-        current_hour = now_kst.hour
-        current_minute = now_kst.minute
+        # 한국 표준시(KST) 구하기 (settings.py의 TIME_ZONE='Asia/Seoul' 및 USE_TZ=True 연동)
+        now_kst = timezone.localtime(timezone.now())
         
-        # 30분 단위 버킷 계산 (0분 또는 30분)
-        current_bucket = 0 if current_minute < 30 else 30
+        # 가장 가까운 정각(1시간 단위)으로 반올림 (30분 오차 범위 보정)
+        rounded_time = now_kst + datetime.timedelta(minutes=30)
+        current_hour = rounded_time.hour
         
-        # 활성화된 해당 시각 알림 설정 조회
+        # 활성화된 해당 시간의 알림 설정 조회 (하위 호환성을 위해 alert_min 필터 배제)
         active_settings = AlertSetting.objects.filter(
             enabled=True,
-            alert_hour=current_hour,
-            alert_min=current_bucket
+            alert_hour=current_hour
         )
         
         processed_count = 0
@@ -859,8 +855,8 @@ def cron_scan(request):
                         
             results.sort(key=lambda x: x.get('volume', 0), reverse=True)
             
-            # 조회 결과가 있는 경우 텔레그램 발송
-            if results and tg.is_configured():
+            # 텔레그램 발송 (조건 만족 코인 결과가 없어도 스케줄러 기동 여부를 확인할 수 있도록 무조건 발송)
+            if tg.is_configured():
                 tg.send_alert(strategy.name, results, strategy_id=strategy.id)
                 sent_count += 1
                 results_summary.append({
