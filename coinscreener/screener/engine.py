@@ -2,16 +2,42 @@ import pyupbit
 import pandas as pd
 import time
 import numpy as np
+import threading
+import random
+
+_rate_limit_lock = threading.Lock()
+_last_request_time = 0.0
+_min_interval = 0.12  # 최소 0.12초 간격 (초당 최대 ~8.3회 요청)
 
 
-def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3):
-    """API 호출 제한을 고려하여 재시도 로직이 포함된 OHLCV 조회"""
+def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
+    """API 호출 제한을 고려하여 글로벌 속도 제한 및 지터 재시도가 적용된 OHLCV 조회"""
+    global _last_request_time
+    
     for i in range(retries):
-        time.sleep(0.1)
-        df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
-        if df is not None:
-            return df
-        time.sleep(delay * (i + 1))
+        # 글로벌 요청 간격 조절 (최소 0.12초 간격 보장)
+        with _rate_limit_lock:
+            now = time.time()
+            elapsed = now - _last_request_time
+            if elapsed < _min_interval:
+                sleep_time = _min_interval - elapsed
+            else:
+                sleep_time = 0.0
+            _last_request_time = now + sleep_time
+            
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+            
+        try:
+            df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
+            if df is not None:
+                return df
+        except Exception as e:
+            print(f"pyupbit get_ohlcv error for {ticker}: {e}")
+            
+        # 실패 시 랜덤 지터가 포함된 점진적 백오프 후 재시도
+        time.sleep(delay * (i + 1) + random.uniform(0.1, 0.3))
+        
     return None
 
 
