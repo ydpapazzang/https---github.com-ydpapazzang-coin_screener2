@@ -522,16 +522,8 @@ def process_scan_and_alert(strategy, tickers, conditions):
             if is_match and price:
                 details_str = ", ".join(list(dict.fromkeys(details)))
                 
-                # 중복 알림 방지: 최근 12시간 내 동일 전략, 동일 코인에 대해 'is_notified=True'인 이력이 있는지 확인
-                limit_time = timezone.now() - datetime.timedelta(hours=12)
-                already_notified = AlertHistory.objects.filter(
-                    strategy=strategy,
-                    symbol=ticker,
-                    is_notified=True,
-                    created_at__gte=limit_time
-                ).exists()
-                
-                should_notify = not already_notified
+                # 알림 중복 차단 해제: 중복 차단 없이 항상 발송되도록 설정
+                should_notify = True
                 
                 # DB에 스캔 매칭 이력 기록 (항상 저장하되, 텔레그램 발송 여부 플래그 세팅)
                 AlertHistory.objects.create(
