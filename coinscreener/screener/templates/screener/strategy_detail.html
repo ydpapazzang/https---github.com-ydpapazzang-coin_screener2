@@ -322,6 +322,10 @@ select {
     background-repeat: no-repeat;
     background-position: right 12px center;
 }
+select option {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+}
 input[type="number"] {
     width: 80px;
     cursor: text;
@@ -1266,11 +1270,151 @@ select.op-select {
         </div>
     </div>
 
+    <!-- 🔔 알림 이력 Card -->
+    <div class="card" style="margin-top: 30px;">
+        <div class="card-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <span>🔔 알림 이력 (최근 100건)</span>
+            <div style="display: flex; gap: 8px;">
+                <!-- 필터링 컨트롤 -->
+                <select id="filter-symbol" onchange="filterHistory()" style="padding: 6px 12px; font-size: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; outline: none;">
+                    <option value="">모든 코인</option>
+                    {% regroup histories by symbol as symbol_list %}
+                    {% for item in symbol_list %}
+                        <option value="{{ item.grouper }}">{{ item.grouper }}</option>
+                    {% endfor %}
+                </select>
+                <select id="filter-status" onchange="filterHistory()" style="padding: 6px 12px; font-size: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; outline: none;">
+                    <option value="">모든 상태</option>
+                    <option value="new">신규 (🆕)</option>
+                    <option value="maintained">유지 (🔁)</option>
+                </select>
+                <select id="filter-notified" onchange="filterHistory()" style="padding: 6px 12px; font-size: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); color: var(--text); border-radius: 6px; cursor: pointer; outline: none;">
+                    <option value="">알림 여부 전체</option>
+                    <option value="sent">발송됨</option>
+                    <option value="skipped">중복방지 제외됨</option>
+                </select>
+            </div>
+        </div>
+
+        <div style="overflow-x: auto; max-height: 350px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;" id="history-table">
+                <thead>
+                    <tr style="background: rgba(255, 255, 255, 0.03); border-bottom: 1px solid var(--border); color: var(--muted);">
+                        <th style="padding: 10px 14px; font-weight: 600;">스캔 일시 (KST)</th>
+                        <th style="padding: 10px 14px; font-weight: 600;">코인</th>
+                        <th style="padding: 10px 14px; font-weight: 600;">현재가</th>
+                        <th style="padding: 10px 14px; font-weight: 600;">거래대금</th>
+                        <th style="padding: 10px 14px; font-weight: 600;">상태</th>
+                        <th style="padding: 10px 14px; font-weight: 600;">텔레그램 알림</th>
+                        <th style="padding: 10px 14px; font-weight: 600;">매칭 조건 상세</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in histories %}
+                        <tr class="history-row" data-symbol="{{ h.symbol }}" data-status="{{ h.status }}" data-notified="{% if h.is_notified %}sent{% else %}skipped{% endif %}" style="border-bottom: 1px solid rgba(255, 255, 255, 0.03); transition: var(--transition);">
+                            <td style="padding: 10px 14px; color: var(--muted);">{{ h.created_at|date:"Y-m-d H:i:s" }}</td>
+                            <td style="padding: 10px 14px; font-weight: 700; color: #fff;">{{ h.symbol }}</td>
+                            <td style="padding: 10px 14px;">{{ h.price|floatformat:0 }}원</td>
+                            <td style="padding: 10px 14px; color: var(--muted);" class="history-vol-cell" data-val="{{ h.volume }}">
+                                {{ h.volume }}
+                            </td>
+                            <td style="padding: 10px 14px;">
+                                {% if h.status == 'new' %}
+                                    <span style="color: var(--green); font-weight: 600;">🆕 신규</span>
+                                {% else %}
+                                    <span style="color: var(--muted);">🔁 유지</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 10px 14px;">
+                                {% if h.is_notified %}
+                                    <span style="color: var(--green); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px;">✈️ 발송완료</span>
+                                {% else %}
+                                    <span style="color: var(--gold); background: rgba(245, 166, 35, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px;">🚫 중복차단</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding: 10px 14px; color: var(--muted); font-size: 12px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ h.details }}">{{ h.details }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr id="history-empty-row">
+                            <td colspan="7" style="padding: 30px; text-align: center; color: var(--muted);">알림 이력이 존재하지 않습니다.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
 </div><!-- /page-wrap -->
 
 {% include "screener/backtest_modal.html" %}
 
 <script>
+/* ── ALERT HISTORY FILTER & FORMAT ── */
+document.addEventListener("DOMContentLoaded", () => {
+    // format volume cells
+    document.querySelectorAll(".history-vol-cell").forEach(cell => {
+        const val = parseFloat(cell.dataset.val);
+        if (!isNaN(val)) {
+            if (val >= 100000000) {
+                cell.textContent = (val / 100000000).toFixed(1) + "억";
+            } else {
+                cell.textContent = val.toLocaleString() + "원";
+            }
+        }
+    });
+});
+
+function filterHistory() {
+    const symbolFilter = document.getElementById('filter-symbol').value;
+    const statusFilter = document.getElementById('filter-status').value;
+    const notifiedFilter = document.getElementById('filter-notified').value;
+
+    let visibleCount = 0;
+    const rows = document.querySelectorAll('.history-row');
+    
+    rows.forEach(row => {
+        const symbol = row.dataset.symbol;
+        const status = row.dataset.status;
+        const notified = row.dataset.notified;
+
+        const matchSymbol = !symbolFilter || symbol === symbolFilter;
+        const matchStatus = !statusFilter || status === statusFilter;
+        const matchNotified = !notifiedFilter || notified === notifiedFilter;
+
+        if (matchSymbol && matchStatus && matchNotified) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    const emptyRow = document.getElementById('history-empty-row');
+    if (visibleCount === 0) {
+        if (!emptyRow) {
+            createEmptyRow();
+        } else {
+            emptyRow.style.display = '';
+        }
+    } else {
+        if (emptyRow) {
+            emptyRow.style.display = 'none';
+        }
+    }
+}
+
+function createEmptyRow() {
+    const tbody = document.querySelector('#history-table tbody');
+    if (tbody) {
+        const tr = document.createElement('tr');
+        tr.id = 'history-empty-row';
+        tr.innerHTML = `<td colspan="7" style="padding: 30px; text-align: center; color: var(--muted);">조건에 부합하는 이력이 없습니다.</td>`;
+        tbody.appendChild(tr);
+        return tr;
+    }
+    return null;
+}
+
 /* ── TAB SWITCH ── */
 function switchTab(e, type) {
     document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));

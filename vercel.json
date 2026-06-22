@@ -11,5 +11,11 @@
       "src": "/(.*)",
       "dest": "coinscreener/wsgi.py"
     }
+  ],
+  "crons": [
+    {
+      "path": "/cron/scan",
+      "schedule": "0 0 * * *"
+    }
   ]
 }

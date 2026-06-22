@@ -168,21 +168,48 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
             'total_trades': 0, 'win_rate': 0,
             'avg_return': 0, 'total_return': 0,
             'max_profit': 0, 'max_loss': 0,
+            'mdd': 0.0,
+            'sharpe': 0.0,
+            'expectancy': 0.0,
         }
 
     rets       = [t['return_pct'] for t in trades]
     wins       = [r for r in rets if r > 0]
+    losses     = [r for r in rets if r < 0]
     win_rate   = round(len(wins) / len(trades) * 100, 1)
     avg_return = round(sum(rets) / len(rets), 2)
     total_ret  = round(equity - 100, 2)
     max_profit = round(max(rets), 2)
     max_loss   = round(min(rets), 2)
 
+    # MDD (최대 낙폭) 계산
+    equities = [100.0] + [item['equity'] for item in equity_curve]
+    peak = equities[0]
+    max_dd = 0.0
+    for eq in equities:
+        if eq > peak:
+            peak = eq
+        dd = (peak - eq) / peak * 100
+        if dd > max_dd:
+            max_dd = dd
+    mdd = round(max_dd, 2)
+
+    # 샤프 비율 (Sharpe Ratio) 계산
+    std_ret = np.std(rets, ddof=1) if len(rets) > 1 else 0.0
+    sharpe = round(np.mean(rets) / std_ret, 2) if std_ret > 0.0 else 0.0
+
+    # 기댓값 (Expectancy) 계산
+    win_rate_dec = len(wins) / len(rets)
+    loss_rate_dec = len(losses) / len(rets)
+    avg_win = sum(wins) / len(wins) if wins else 0.0
+    avg_loss = abs(sum(losses) / len(losses)) if losses else 0.0
+    expectancy = round((win_rate_dec * avg_win) - (loss_rate_dec * avg_loss), 2)
+
     # equity_curve 시작점 추가
     equity_curve = [{'date': start_date, 'equity': 100}] + equity_curve
 
     return {
-        'trades':       trades[-20:],    # 최근 20건만 반환
+        'trades':       trades,          # 개별 거래 내역 전체 반환
         'equity_curve': equity_curve,
         'total_trades': len(trades),
         'win_rate':     win_rate,
@@ -190,4 +217,7 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
         'total_return': total_ret,
         'max_profit':   max_profit,
         'max_loss':     max_loss,
+        'mdd':          mdd,
+        'sharpe':       sharpe,
+        'expectancy':   expectancy,
     }

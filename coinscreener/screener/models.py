@@ -84,3 +84,21 @@ class AlertSetting(models.Model):
 
     def __str__(self):
         return f"{self.strategy.name} 알림"
+
+
+class AlertHistory(models.Model):
+    """알림 발송 및 스캔 매칭 이력"""
+    strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='histories')
+    symbol = models.CharField(max_length=20, verbose_name="코인 심볼")
+    price = models.FloatField(verbose_name="진입 가격", null=True, blank=True)
+    volume = models.FloatField(verbose_name="거래대금", default=0)
+    details = models.TextField(verbose_name="매칭 상세", blank=True)
+    status = models.CharField(max_length=20, default='new', verbose_name="매칭 상태")  # 'new', 'maintained'
+    is_notified = models.BooleanField(default=True, verbose_name="텔레그램 발송 여부")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="발송 시각")
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.strategy.name} - {self.symbol} ({self.created_at})"

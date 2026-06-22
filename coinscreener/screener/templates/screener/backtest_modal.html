@@ -40,6 +40,10 @@
     font-weight:600; outline:none; cursor:pointer; min-width:120px;
 }
 .bt-sel:focus { border-color:#2962ff; }
+.bt-sel option {
+    color: #111827 !important;
+    background-color: #ffffff !important;
+}
 .bt-run {
     background:#2962ff; color:#fff; border:none;
     padding:10px 22px; border-radius:8px; font-size:14px;
@@ -184,6 +188,9 @@
                 <div class="bt-stat"><div class="bt-stat-label">누적 수익률</div><div class="bt-stat-val" id="bt-total-ret"></div></div>
                 <div class="bt-stat"><div class="bt-stat-label">최대 수익</div><div class="bt-stat-val pos" id="bt-max-p"></div></div>
                 <div class="bt-stat"><div class="bt-stat-label">최대 손실</div><div class="bt-stat-val neg" id="bt-max-l"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">MDD (최대 낙폭)</div><div class="bt-stat-val neg" id="bt-mdd"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">샤프 비율</div><div class="bt-stat-val" id="bt-sharpe"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">기댓값 (1회 평균)</div><div class="bt-stat-val" id="bt-expectancy"></div></div>
             </div>
 
             <!-- equity chart -->
@@ -192,8 +199,8 @@
             </div>
 
             <!-- trades -->
-            <div class="bt-table-title">최근 거래 내역 (최대 20건)</div>
-            <div style="overflow-x:auto;">
+            <div class="bt-table-title">개별 거래 내역</div>
+            <div style="overflow-x:auto; max-height:280px; overflow-y:auto; border:1px solid #2a2e39; border-radius:6px; margin-bottom:10px;">
                 <table class="bt-table">
                     <thead>
                         <tr>
@@ -299,7 +306,8 @@ function renderBT(d) {
     // stats
     const setVal = (id, val, prefix='') => {
         const el = document.getElementById(id);
-        el.textContent = prefix + val + (id.includes('ret')||id.includes('avg')||id.includes('max')||id.includes('win') ? '%' : '');
+        const isPct = id.includes('ret')||id.includes('avg')||id.includes('max')||id.includes('win')||id.includes('expectancy')||id.includes('mdd');
+        el.textContent = prefix + val + (isPct ? '%' : '');
         el.className = 'bt-stat-val ' + (parseFloat(val) > 0 ? 'pos' : parseFloat(val) < 0 ? 'neg' : 'neu');
     };
     document.getElementById('bt-total').textContent = d.total_trades;
@@ -309,6 +317,19 @@ function renderBT(d) {
     setVal('bt-total-ret', d.total_return, d.total_return > 0 ? '+' : '');
     document.getElementById('bt-max-p').textContent = '+' + d.max_profit + '%';
     document.getElementById('bt-max-l').textContent = d.max_loss + '%';
+
+    // MDD (최대 낙폭) - 음수 표기 및 항상 빨간색(neg) 처리
+    const mddEl = document.getElementById('bt-mdd');
+    mddEl.textContent = '-' + d.mdd + '%';
+    mddEl.className = 'bt-stat-val neg';
+
+    // 샤프 비율 (Sharpe Ratio)
+    const sharpeEl = document.getElementById('bt-sharpe');
+    sharpeEl.textContent = d.sharpe;
+    sharpeEl.className = 'bt-stat-val ' + (d.sharpe >= 1.5 ? 'pos' : d.sharpe >= 0.5 ? 'neu' : 'neg');
+
+    // 기댓값 (Expectancy)
+    setVal('bt-expectancy', d.expectancy, d.expectancy > 0 ? '+' : '');
 
     // equity chart
     drawEquityChart(d.equity_curve);

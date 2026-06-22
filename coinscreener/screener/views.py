@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Strategy, Condition
+from .models import Strategy, Condition, AlertSetting, AlertHistory
 from .engine import check_strategy
 import pyupbit
 import concurrent.futures
@@ -54,9 +54,12 @@ def strategy_delete(request):
 def strategy_detail(request, strategy_id):
     strategy   = get_object_or_404(Strategy, id=strategy_id)
     conditions = strategy.conditions.all()
+    # 최근 100건의 알림 이력 조회
+    histories  = strategy.histories.all().order_by('-created_at')[:100]
     return render(request, 'screener/strategy_detail.html', {
         'strategy':   strategy,
         'conditions': conditions,
+        'histories':  histories,
     })
 
 
@@ -382,6 +385,16 @@ def coin_search_stream(request, strategy_id):
         # 만약 자동 반복 스캔에서 텔레그램 전송이 활성화되었고, 조회된 건이 있으면 즉시 발송
         if send_telegram and results and tg.is_configured():
             try:
+                for r in results:
+                    AlertHistory.objects.create(
+                        strategy=strategy,
+                        symbol=r['symbol'],
+                        price=r['price'],
+                        volume=r['volume'],
+                        details=r['details'],
+                        status=r['status'],
+                        is_notified=True
+                    )
                 tg.send_alert(strategy.name, results, strategy_id=strategy.id)
             except Exception as e:
                 print(f"자동 반복 스캔 중 텔레그램 발송 실패: {e}")
@@ -462,15 +475,11 @@ def alert_save(request, strategy_id):
         return JsonResponse({'ok': False, 'error': '잘못된 요청'}, status=400)
 
     try:
-        alert_hour = int(body.get('alert_hour', 9))
+        alert_hour = 9  # Vercel Hobby 크론 제한(하루 1회)으로 오전 9시 고정
         alert_min  = 0  # 30분 단위 제외, 정각만 사용
         vol_limit  = int(body.get('vol_limit', 100))
     except (ValueError, TypeError) as e:
         return JsonResponse({'ok': False, 'error': f'숫자 형식 오류: {e}'}, status=400)
-
-    # 범위 검증
-    if not (0 <= alert_hour <= 23):
-        return JsonResponse({'ok': False, 'error': '알림 시각(시)은 0~23 사이여야 합니다.'}, status=400)
 
     enabled   = bool(body.get('enabled', False))
     exchange  = body.get('exchange', 'upbit')
@@ -495,6 +504,73 @@ def alert_save(request, strategy_id):
             return JsonResponse({'ok': False, 'error': res['error']})
 
     return JsonResponse({'ok': True})
+
+
+def process_scan_and_alert(strategy, tickers, conditions):
+    """
+    주어진 전략과 티커 목록을 대상으로 스캔하고, 
+    알림 이력 저장 및 12시간 중복 방지 필터링을 거친 결과를 반환합니다.
+    """
+    from django.utils import timezone
+    import datetime
+    
+    results = []
+    
+    def _proc(ticker):
+        try:
+            is_match, details, price, volume, status = check_strategy(ticker, conditions)
+            if is_match and price:
+                details_str = ", ".join(list(dict.fromkeys(details)))
+                
+                # 중복 알림 방지: 최근 12시간 내 동일 전략, 동일 코인에 대해 'is_notified=True'인 이력이 있는지 확인
+                limit_time = timezone.now() - datetime.timedelta(hours=12)
+                already_notified = AlertHistory.objects.filter(
+                    strategy=strategy,
+                    symbol=ticker,
+                    is_notified=True,
+                    created_at__gte=limit_time
+                ).exists()
+                
+                should_notify = not already_notified
+                
+                # DB에 스캔 매칭 이력 기록 (항상 저장하되, 텔레그램 발송 여부 플래그 세팅)
+                AlertHistory.objects.create(
+                    strategy=strategy,
+                    symbol=ticker,
+                    price=price,
+                    volume=volume,
+                    details=details_str,
+                    status=status,
+                    is_notified=should_notify
+                )
+                
+                return {
+                    'symbol':         ticker,
+                    'price':          price,
+                    'volume':         volume,
+                    'volume_display': f"{volume / 100_000_000:.1f}억",
+                    'status':         status,
+                    'details':        details_str,
+                    'should_notify':  should_notify
+                }
+        except Exception as e:
+            print(f"Error scanning {ticker}: {e}")
+        return None
+
+    # 동시성 처리를 위해 ThreadPoolExecutor 사용
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        for r in executor.map(_proc, tickers):
+            if r:
+                results.append(r)
+                
+    # 거래대금 순으로 정렬
+    results.sort(key=lambda x: x.get('volume', 0), reverse=True)
+    
+    # 텔레그램용 결과: 중복 발송 방지 처리된(should_notify=True) 코인들만 선별
+    tg_results = [r for r in results if r['should_notify']]
+    
+    return results, tg_results
 
 
 @csrf_exempt
@@ -523,33 +599,11 @@ def alert_send_now(request, strategy_id):
         vol_limit = 100
 
     tickers = _get_tickers(exchange, vol_limit)
-    results = []
+    results, tg_results = process_scan_and_alert(strategy, tickers, conditions)
 
-    def _proc(ticker):
-        try:
-            is_match, details, price, volume, status = check_strategy(ticker, conditions)
-            if is_match and price:
-                return {
-                    'symbol':         ticker,
-                    'price':          price,
-                    'volume':         volume,
-                    'volume_display': f"{volume / 100_000_000:.1f}억",
-                    'status':         status,
-                    'details':        ", ".join(list(dict.fromkeys(details))),
-                }
-        except Exception:
-            pass
-        return None
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
-        for r in ex.map(_proc, tickers):
-            if r:
-                results.append(r)
-
-    results.sort(key=lambda x: x.get('volume', 0), reverse=True)
-    res = tg.send_alert(strategy.name, results, strategy_id=strategy.id)
+    res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id)
     if res['ok']:
-        return JsonResponse({'ok': True, 'matched': len(results)})
+        return JsonResponse({'ok': True, 'matched': len(results), 'sent': len(tg_results)})
     return JsonResponse({'ok': False, 'error': res['error']})
 
 
@@ -842,10 +896,9 @@ def cron_scan(request):
         rounded_time = now_kst + datetime.timedelta(minutes=30)
         current_hour = rounded_time.hour
         
-        # 활성화된 해당 시간의 알림 설정 조회 (하위 호환성을 위해 alert_min 필터 배제)
+        # Vercel Hobby 요금제 크론 제한(하루 1회 실행)에 대응하여, 시간 필터 없이 활성화된 모든 알림을 스캔 및 발송
         active_settings = AlertSetting.objects.filter(
-            enabled=True,
-            alert_hour=current_hour
+            enabled=True
         )
         
         processed_count = 0
@@ -862,40 +915,18 @@ def cron_scan(request):
             
             # 티커 수집 (설정된 vol_limit 사용, 0인 경우 전체 코인)
             vol_limit = setting.vol_limit
-                
             tickers = _get_tickers(setting.exchange, vol_limit)
             
-            results = []
-            def _proc(ticker):
-                try:
-                    is_match, details, price, volume, status = check_strategy(ticker, conditions)
-                    if is_match and price:
-                        return {
-                            'symbol':         ticker,
-                            'price':          price,
-                            'volume':         volume,
-                            'volume_display': f"{volume / 100_000_000:.1f}억",
-                            'status':         status,
-                            'details':        ", ".join(list(dict.fromkeys(details))),
-                        }
-                except Exception:
-                    pass
-                return None
-                
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                for r in executor.map(_proc, tickers):
-                    if r:
-                        results.append(r)
-                        
-            results.sort(key=lambda x: x.get('volume', 0), reverse=True)
+            results, tg_results = process_scan_and_alert(strategy, tickers, conditions)
             
-            # 텔레그램 발송 (조건 만족 코인 결과가 없어도 스케줄러 기동 여부를 확인할 수 있도록 무조건 발송)
+            # 텔레그램 발송 (중복 방지 처리된 tg_results 사용)
             if tg.is_configured():
-                tg.send_alert(strategy.name, results, strategy_id=strategy.id)
+                tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id)
                 sent_count += 1
                 results_summary.append({
                     'strategy': strategy.name,
-                    'matched_count': len(results)
+                    'matched_count': len(results),
+                    'sent_count': len(tg_results)
                 })
                 
         return JsonResponse({
