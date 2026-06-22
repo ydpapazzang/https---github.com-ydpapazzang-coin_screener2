@@ -81,7 +81,6 @@ def send_alert(strategy_name: str, results: list, strategy_id: int = None) -> di
             site_url = 'https://' + site_url
         site_url = site_url.rstrip('/')
         link  = f'{site_url}/strategy/{strategy_id}/'
-        short_link = shorten_url(link)
-        text += f'\n\n<a href="{short_link}">🔗 웹에서 보기</a>'
+        text += f'\n\n<a href="{link}">🔗 웹에서 보기</a>'
 
     return send_message(text)
