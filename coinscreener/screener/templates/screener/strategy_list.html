@@ -807,7 +807,7 @@ select option, .scope-sel option, .time-sel option {
 
                     <!-- 백테스팅 -->
                     <button type="button" class="btn-bt"
-                            onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}')">
+                            onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}', '{{ strategy.conditions.first.timeframe|default:'day' }}')">
                         ☑ 백테스팅
                     </button>
 

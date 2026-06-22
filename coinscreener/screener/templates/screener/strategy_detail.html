@@ -1266,7 +1266,7 @@ select.op-select {
         <!-- 검색 + 백테스팅 -->
         <div class="action-bar-right">
             <button class="btn btn-primary" onclick="runSearch()">검색 실행</button>
-            <button class="btn btn-gold"    onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}')">📈 백테스팅</button>
+            <button class="btn btn-gold"    onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}', '{{ strategy.conditions.first.timeframe|default:'day' }}')">📈 백테스팅</button>
         </div>
     </div>
 

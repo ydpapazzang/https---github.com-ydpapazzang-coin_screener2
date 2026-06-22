@@ -218,11 +218,91 @@
 <script>
 let btStrategyId = null;
 let btStrategyName = '';
+let currentBTTimeframe = 'day';
 
-function openBT(strategyId, strategyName) {
+function getDurationText(count, timeframe) {
+    if (timeframe.startsWith('minute')) {
+        const m = parseInt(timeframe.replace('minute', '')) || 1;
+        const totalMinutes = count * m;
+        if (totalMinutes < 60) {
+            return `약 ${totalMinutes}분`;
+        } else if (totalMinutes < 1440) {
+            return `약 ${(totalMinutes / 60).toFixed(1)}시간`;
+        } else {
+            const totalDays = totalMinutes / 1440;
+            if (totalDays < 30) {
+                return `약 ${totalDays.toFixed(1)}일`;
+            } else {
+                return `약 ${(totalDays / 30).toFixed(1)}개월`;
+            }
+        }
+    } else if (timeframe === 'day') {
+        if (count < 30) {
+            return `약 ${count}일`;
+        } else if (count < 365) {
+            return `약 ${(count / 30).toFixed(1)}개월`;
+        } else {
+            return `약 ${(count / 365).toFixed(1)}년`;
+        }
+    } else if (timeframe === 'week') {
+        const totalDays = count * 7;
+        if (totalDays < 30) {
+            return `약 ${count}주`;
+        } else if (totalDays < 365) {
+            return `약 ${(totalDays / 30).toFixed(1)}개월`;
+        } else {
+            return `약 ${(totalDays / 365).toFixed(1)}년`;
+        }
+    } else if (timeframe === 'month') {
+        if (count < 12) {
+            return `약 ${count}개월`;
+        } else {
+            return `약 ${(count / 12).toFixed(1)}년`;
+        }
+    }
+    return '';
+}
+
+function updateCandleOptions(timeframe) {
+    const select = document.getElementById('bt-count');
+    if (!select) return;
+    for (let option of select.options) {
+        const count = parseInt(option.value);
+        const durationText = getDurationText(count, timeframe);
+        if (durationText) {
+            option.textContent = `최근 ${count}봉 (${durationText})`;
+        } else {
+            option.textContent = `최근 ${count}봉`;
+        }
+    }
+}
+
+function openBT(strategyId, strategyName, timeframe = 'day') {
     btStrategyId   = strategyId;
     btStrategyName = strategyName;
+    currentBTTimeframe = timeframe;
+
     document.getElementById('bt-title').textContent = `📈 ${strategyName} 백테스팅`;
+    
+    // Map timeframe code to Korean
+    const timeframeNames = {
+        'minute1': '1분봉',
+        'minute3': '3분봉',
+        'minute5': '5분봉',
+        'minute10': '10분봉',
+        'minute15': '15분봉',
+        'minute30': '30분봉',
+        'minute60': '1시간봉',
+        'minute240': '4시간봉',
+        'day': '일봉',
+        'week': '주봉',
+        'month': '월봉'
+    };
+    const tfName = timeframeNames[timeframe] || timeframe;
+    document.getElementById('bt-sub').textContent = `전략 타임프레임: ${tfName} 적용`;
+
+    updateCandleOptions(timeframe);
+
     document.getElementById('bt-results').style.display = 'none';
     document.getElementById('bt-modal-backdrop').classList.add('open');
 }
@@ -275,7 +355,10 @@ async function runBT() {
     const param    = parseFloat(document.getElementById('bt-param').value) || 5;
     const fee      = parseFloat(document.getElementById('bt-fee').value) || 0;
     const sub      = document.getElementById('bt-sub');
-    sub.textContent = `${ticker.replace('KRW-','')} · 최근 ${count}봉 · ${document.getElementById('bt-sell-mode').selectedOptions[0].text}`;
+    
+    const durationText = getDurationText(count, currentBTTimeframe);
+    const durationPart = durationText ? ` (${durationText})` : '';
+    sub.textContent = `${ticker.replace('KRW-','')} · 최근 ${count}봉${durationPart} · ${document.getElementById('bt-sell-mode').selectedOptions[0].text}`;
 
     try {
         const res  = await fetch(`/strategy/${btStrategyId}/backtest/run/`, {

@@ -543,7 +543,7 @@ function triggerBacktest(ticker, tickerLabel) {
     }
 
     // 모달 열기 → 코인 선택 → 바로 실행
-    openBT(strategyId, strategyName);
+    openBT(strategyId, strategyName, '{{ strategy.conditions.first.timeframe|default:'day' }}');
     tickerSelect.value = ticker;
     runBT();
 }
