@@ -12,11 +12,6 @@
       "dest": "coinscreener/wsgi.py"
     }
   ],
-  "functions": {
-    "coinscreener/wsgi.py": {
-      "maxDuration": 300
-    }
-  },
   "crons": [
     {
       "path": "/cron/scan/",
