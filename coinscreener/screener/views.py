@@ -902,12 +902,17 @@ def ai_strategy_create(request):
 def cron_scan(request):
     """Vercel Cron: 30분 주기로 한국 표준시(KST)를 계산하여, 예약된 활성 알림 스캔 및 텔레그램 발송"""
     from django.http import HttpResponseForbidden
+    import traceback
     
     # 보안 검증: Vercel Cron이거나 디버그 시크릿이 있는 경우만 허용
     is_vercel_cron = request.headers.get('x-vercel-cron') == '1'
     is_debug = request.GET.get('secret') == 'wonii_cron_debug'
     
+    print(f"[CRON_SCAN] Triggered. is_vercel_cron={is_vercel_cron}, is_debug={is_debug}")
+    print(f"[CRON_SCAN] Headers: {dict(request.headers)}")
+    
     if not is_vercel_cron and not is_debug:
+        print("[CRON_SCAN] Security check failed: Forbidden access.")
         return HttpResponseForbidden("권한이 없습니다.")
         
     try:
@@ -916,6 +921,7 @@ def cron_scan(request):
         
         # 한국 표준시(KST) 구하기 (settings.py의 TIME_ZONE='Asia/Seoul' 및 USE_TZ=True 연동)
         now_kst = timezone.localtime(timezone.now())
+        print(f"[CRON_SCAN] Current KST time: {now_kst}")
         
         # 가장 가까운 정각(1시간 단위)으로 반올림 (30분 오차 범위 보정)
         rounded_time = now_kst + datetime.timedelta(minutes=30)
@@ -925,6 +931,7 @@ def cron_scan(request):
         active_settings = AlertSetting.objects.filter(
             enabled=True
         )
+        print(f"[CRON_SCAN] Found {active_settings.count()} active alert settings.")
         
         processed_count = 0
         sent_count = 0
@@ -932,8 +939,11 @@ def cron_scan(request):
         
         for setting in active_settings:
             strategy = setting.strategy
+            print(f"[CRON_SCAN] Scanning strategy: {strategy.name} (ID: {strategy.id})")
             conditions = list(strategy.conditions.all())
+            print(f"[CRON_SCAN] Strategy conditions count: {len(conditions)}")
             if not conditions:
+                print(f"[CRON_SCAN] Skipping strategy {strategy.name} due to no conditions.")
                 continue
                 
             processed_count += 1
@@ -941,18 +951,23 @@ def cron_scan(request):
             # 티커 수집 (설정된 vol_limit 사용, 0인 경우 전체 코인)
             vol_limit = setting.vol_limit
             tickers = _get_tickers(setting.exchange, vol_limit)
+            print(f"[CRON_SCAN] Tickers count for {setting.exchange} (limit {vol_limit}): {len(tickers)}")
             
             results, tg_results = process_scan_and_alert(strategy, tickers, conditions)
+            print(f"[CRON_SCAN] Scan results: total matched = {len(results)}, notify list = {len(tg_results)}")
             
             # 텔레그램 발송 (중복 방지 처리된 tg_results 사용)
             if tg.is_configured():
-                tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id)
+                res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id)
+                print(f"[CRON_SCAN] Telegram send result: {res}")
                 sent_count += 1
                 results_summary.append({
                     'strategy': strategy.name,
                     'matched_count': len(results),
                     'sent_count': len(tg_results)
                 })
+            else:
+                print(f"[CRON_SCAN] Telegram is not configured properly (missing environment variables).")
                 
         return JsonResponse({
             'ok': True,
@@ -963,7 +978,9 @@ def cron_scan(request):
         })
         
     except Exception as e:
-        return JsonResponse({'error': f'크론 수행 중 서버 오류: {str(e)}'}, status=500)
+        err_msg = traceback.format_exc()
+        print(f"[CRON_SCAN] Error occurred:\n{err_msg}")
+        return JsonResponse({'error': f'크론 수행 중 서버 오류: {str(e)}', 'traceback': err_msg}, status=500)
 
 
 
