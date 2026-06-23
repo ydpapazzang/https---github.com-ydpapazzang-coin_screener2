@@ -644,5 +644,60 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertFalse(data['ok'])
         self.assertEqual(data['error'], '전략 이름을 입력해주세요.')
 
+    def test_condition_add_volume(self):
+        # Adding a volume condition via POST
+        payload = {
+            'cond_type': 'VOLUME',
+            'timeframe': 'week',
+            'offset': 0,
+            'operator': 'gte',
+            'volume_target': 'prev',
+            'volume_pct': 150
+        }
+        response = self.client.post(
+            f'/strategy/{self.strategy.id}/condition/add/',
+            data=payload
+        )
+        self.assertEqual(response.status_code, 302) # Redirects back to strategy_detail
+        
+        # Check database
+        conditions = self.strategy.conditions.filter(left_indicator='VOLUME')
+        self.assertEqual(len(conditions), 1)
+        c = conditions[0]
+        self.assertEqual(c.timeframe, 'week')
+        self.assertEqual(c.offset, 0)
+        self.assertEqual(c.left_indicator, 'VOLUME')
+        self.assertEqual(c.right_indicator, 'VOLUME_PREV')
+        self.assertEqual(c.bb_std, 1.5) # 150% -> 1.5
+        self.assertEqual(c.get_volume_pct, 150)
+
+    def test_condition_add_bb(self):
+        # Adding a bollinger bands condition via POST
+        payload = {
+            'cond_type': 'BB',
+            'timeframe': 'day',
+            'offset': 1,
+            'operator': 'lt',
+            'bb_period': 20,
+            'bb_target': 'BB_UPPER'
+        }
+        response = self.client.post(
+            f'/strategy/{self.strategy.id}/condition/add/',
+            data=payload
+        )
+        self.assertEqual(response.status_code, 302)
+        
+        # Check database
+        conditions = self.strategy.conditions.filter(right_indicator='BB_UPPER')
+        self.assertEqual(len(conditions), 1)
+        c = conditions[0]
+        self.assertEqual(c.timeframe, 'day')
+        self.assertEqual(c.offset, 1)
+        self.assertEqual(c.left_indicator, 'CLOSE')
+        self.assertEqual(c.right_indicator, 'BB_UPPER')
+        self.assertEqual(c.right_param, 20)
+        self.assertEqual(c.bb_std, 2.0)
+
+
 
 

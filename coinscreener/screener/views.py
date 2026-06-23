@@ -74,6 +74,7 @@ def condition_add(request, strategy_id):
     cond_type = request.POST.get('cond_type', '').upper()
     timeframe = request.POST.get('timeframe', 'day')
     operator  = request.POST.get('operator', 'gte')
+    bb_std    = None
 
     try:
         offset = int(request.POST.get('offset', 0))
@@ -149,6 +150,7 @@ def condition_add(request, strategy_id):
 
         left_indicator, left_param   = 'CLOSE', 0
         right_indicator, right_param = bb_target, bb_period
+        bb_std                       = 2.0
 
     elif cond_type == 'HA':
         ha_pattern = request.POST.get('ha_pattern', 'HA_BULL')
@@ -236,6 +238,7 @@ def condition_add(request, strategy_id):
         operator=operator,
         right_indicator=right_indicator,
         right_param=right_param,
+        bb_std=bb_std,
     )
     clear_strategy_cache(strategy_id)
     return redirect('strategy_detail', strategy_id=strategy_id)

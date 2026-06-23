@@ -728,24 +728,50 @@
               <span class="csel hi">{{ cond.get_timeframe_display }}</span>
               <span class="csel">{{ cond.offset }}봉전</span>
               
-              {% if cond.left_indicator == 'CLOSE' %}
-                <span class="carr">종가</span>
-              {% elif cond.left_indicator == 'VAL' %}
-                <span class="cinput" style="width:auto; padding:6px 10px;">{{ cond.left_param }}</span>
-              {% else %}
+              {% if cond.left_indicator == 'VOLUME' %}
+                <span class="carr">거래량</span>
+                <span class="carr">{{ cond.get_operator_display }}</span>
+                {% if cond.right_indicator == 'VOLUME_PREV' %}
+                  <span class="cinput" style="width:auto; padding:6px 10px;">이전봉 거래량의 {{ cond.get_volume_pct }}%</span>
+                {% elif cond.right_indicator == 'VOLUME_MA' %}
+                  <span class="cinput" style="width:auto; padding:6px 10px;">최근 {{ cond.right_param }}봉 평균 거래량의 {{ cond.get_volume_pct }}%</span>
+                {% endif %}
+                
+              {% elif cond.left_indicator == 'HA_BULL' or cond.left_indicator == 'HA_BEAR' or cond.left_indicator == 'HA_BULL_N' or cond.left_indicator == 'HA_BEAR_N' or cond.left_indicator == 'HA_NO_LOWER' or cond.left_indicator == 'HA_NO_UPPER' %}
                 <span class="carr">{{ cond.get_left_indicator_display }}</span>
-                <span class="cinput">{{ cond.left_param }}</span>
-              {% endif %}
-              
-              <span class="carr">{{ cond.get_operator_display }}</span>
-              
-              {% if cond.right_indicator == 'CLOSE' %}
-                <span class="carr">종가</span>
-              {% elif cond.right_indicator == 'VAL' %}
-                <span class="cinput" style="width:auto; padding:6px 10px;">{{ cond.right_param }}</span>
+                {% if 'N' in cond.left_indicator %}
+                  <span class="cinput" style="width:auto; padding:6px 10px;">{{ cond.left_param }}봉 연속</span>
+                {% endif %}
+                <span class="carr" style="color:var(--text3);">조건 충족</span>
+                
               {% else %}
-                <span class="carr">{{ cond.get_right_indicator_display }}</span>
-                <span class="cinput">{{ cond.right_param }}</span>
+                {% if cond.left_indicator == 'CLOSE' %}
+                  <span class="carr">종가</span>
+                {% elif cond.left_indicator == 'VAL' %}
+                  <span class="cinput" style="width:auto; padding:6px 10px;">{{ cond.left_param }}</span>
+                {% elif cond.left_indicator == 'MA' or cond.left_indicator == 'EMA' or cond.left_indicator == 'WMA' %}
+                  <span class="carr">{{ cond.left_indicator }}({{ cond.left_param }})</span>
+                {% elif cond.left_indicator == 'RSI' %}
+                  <span class="carr">RSI({{ cond.left_param }})</span>
+                {% else %}
+                  <span class="carr">{{ cond.get_left_indicator_display }}</span>
+                  <span class="cinput">{{ cond.left_param }}</span>
+                {% endif %}
+                
+                <span class="carr">{{ cond.get_operator_display }}</span>
+                
+                {% if cond.right_indicator == 'CLOSE' %}
+                  <span class="carr">종가</span>
+                {% elif cond.right_indicator == 'VAL' %}
+                  <span class="cinput" style="width:auto; padding:6px 10px;">{{ cond.right_param }}</span>
+                {% elif cond.right_indicator == 'MA' or cond.right_indicator == 'EMA' or cond.right_indicator == 'WMA' %}
+                  <span class="carr">{{ cond.right_indicator }}({{ cond.right_param }})</span>
+                {% elif cond.right_indicator == 'BB_UPPER' or cond.right_indicator == 'BB_MIDDLE' or cond.right_indicator == 'BB_LOWER' %}
+                  <span class="carr">{{ cond.get_right_indicator_display }}({{ cond.right_param }}, {{ cond.bb_std|default:"2.0" }}σ)</span>
+                {% else %}
+                  <span class="carr">{{ cond.get_right_indicator_display }}</span>
+                  <span class="cinput">{{ cond.right_param }}</span>
+                {% endif %}
               {% endif %}
             </div>
           </div>

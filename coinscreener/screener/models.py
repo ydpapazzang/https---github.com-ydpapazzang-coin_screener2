@@ -156,8 +156,13 @@ class Condition(models.Model):
         
         return f"{self.offset}봉전 {left_part} {op_lbl} {right_part}"
 
+    @property
+    def get_volume_pct(self):
+        return int(self.bb_std * 100) if self.bb_std is not None else 100
+
     def __str__(self):
         return self.get_readable_text()
+
 
 
 class AlertSetting(models.Model):
