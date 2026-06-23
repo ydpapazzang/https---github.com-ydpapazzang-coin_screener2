@@ -517,13 +517,13 @@ class StrategyTradingViewsTestCase(TestCase):
         )
 
     def test_strategy_trading_root_redirects(self):
-        # Accessing trading root should redirect to the first strategy's trading view
+        # Accessing trading root should redirect to the first strategy's detail view
         response = self.client.get('/trading/')
-        self.assertRedirects(response, f'/strategy/{self.strategy.id}/trading/')
+        self.assertRedirects(response, f'/strategy/{self.strategy.id}/')
 
     def test_strategy_trading_detail_view(self):
-        # Accessing a specific strategy's trading page should render correctly
-        response = self.client.get(f'/strategy/{self.strategy.id}/trading/')
+        # Accessing a specific strategy's page should render correctly (using the new dashboard)
+        response = self.client.get(f'/strategy/{self.strategy.id}/')
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'screener/strategy_trading.html')
         self.assertContains(response, "Trading Strategy")

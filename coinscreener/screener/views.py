@@ -52,11 +52,13 @@ def strategy_delete(request):
 # ──────────────────────────────────────────
 
 def strategy_detail(request, strategy_id):
+    strategies = Strategy.objects.all().order_by('-created_at')
     strategy   = get_object_or_404(Strategy, id=strategy_id)
     conditions = strategy.conditions.all()
     # 최근 100건의 알림 이력 조회
     histories  = strategy.histories.all().order_by('-created_at')[:100]
-    return render(request, 'screener/strategy_detail.html', {
+    return render(request, 'screener/strategy_trading.html', {
+        'strategies': strategies,
         'strategy':   strategy,
         'conditions': conditions,
         'histories':  histories,
@@ -989,14 +991,12 @@ def strategy_trading(request, strategy_id=None):
     if strategy_id is None:
         first_strat = strategies.first()
         if first_strat:
-            return redirect('strategy_trading', strategy_id=first_strat.id)
+            return redirect('strategy_detail', strategy_id=first_strat.id)
         strategy = None
         conditions = []
         histories = []
     else:
-        strategy = get_object_or_404(Strategy, id=strategy_id)
-        conditions = strategy.conditions.all()
-        histories = strategy.histories.all().order_by('-created_at')[:100]
+        return redirect('strategy_detail', strategy_id=strategy_id)
         
     return render(request, 'screener/strategy_trading.html', {
         'strategies': strategies,
