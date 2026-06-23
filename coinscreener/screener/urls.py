@@ -29,6 +29,7 @@ urlpatterns = [
     path('strategy/<int:strategy_id>/backtest/run/', views.backtest_run,   name='backtest_run'),
     path('ai/ask/',                                  views.ai_ask,         name='ai_ask'),
     path('ai/strategy/create/',                      views.ai_strategy_create, name='ai_strategy_create'),
+    path('ai/strategy/add-conditions/',              views.ai_strategy_add_conditions, name='ai_strategy_add_conditions'),
     path('cron/scan',                                views.cron_scan,      name='cron_scan_no_slash'),
     path('cron/scan/',                               views.cron_scan,      name='cron_scan'),
     path('cron/scan-debug',                          views.cron_scan,      name='cron_scan_debug_no_slash'),

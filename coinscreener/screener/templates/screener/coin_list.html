@@ -158,6 +158,26 @@ body::after {
     transform: scale(1.03);
 }
 
+.btn-why-selected {
+    background: rgba(124, 58, 237, 0.15);
+    border: 1px solid rgba(124, 58, 237, 0.35);
+    color: #a78bfa;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+    vertical-align: middle;
+}
+.btn-why-selected:hover {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #fff;
+    box-shadow: 0 0 10px var(--blue-glow);
+    transform: scale(1.03);
+}
+
 /* TRADINGVIEW MODAL OVERLAY */
 .tv-modal-overlay {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -480,14 +500,17 @@ body::after {
             <tr>
                 <td class="num">{{ forloop.counter }}</td>
                 <td class="symbol">
-                    <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}" target="_blank" title="업비트 차트 보기">
-                        {{ r.symbol }}
-                    </a>
-                    {% if r.status == 'new' %}
-                        <span class="status-badge new">신규</span>
-                    {% elif r.status == 'maintained' %}
-                        <span class="status-badge maintained">유지</span>
-                    {% endif %}
+                    <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}" target="_blank" title="업비트 차트 보기">
+                            {{ r.symbol }}
+                        </a>
+                        {% if r.status == 'new' %}
+                            <span class="status-badge new">신규</span>
+                        {% elif r.status == 'maintained' %}
+                            <span class="status-badge maintained">유지</span>
+                        {% endif %}
+                        <button class="btn-why-selected" onclick="askAIWhySelected('{{ r.symbol }}', '{{ r.price }}', '{{ r.volume_display }}', '{{ r.details }}')" title="AI에게 왜 선택되었는지 질문">❓ 왜 잡혔어?</button>
+                    </div>
                 </td>
                 <td class="price">{{ r.price|floatformat:0 }}</td>
                 <td class="volume">{{ r.volume_display }}</td>
@@ -713,5 +736,6 @@ function closeTradingViewChart(event) {
     }, 300);
 }
 </script>
+{% include "screener/ai_assistant.html" %}
 </body>
 </html>

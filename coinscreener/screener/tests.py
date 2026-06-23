@@ -746,6 +746,129 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(cached_data['results'][0]['details'], '골든크로스')
         self.assertEqual(cached_data['results'][0]['volume_display'], '10.0억')
 
+    def test_ai_strategy_add_conditions(self):
+        import json
+        payload = {
+            'strategy_id': self.strategy.id,
+            'create_strategy': {
+                'name': 'Dummy',
+                'conditions': [
+                    {
+                        'timeframe': 'day',
+                        'offset': 0,
+                        'left_indicator': 'CLOSE',
+                        'operator': 'gte',
+                        'right_indicator': 'MA',
+                        'right_param': 20
+                    }
+                ]
+            }
+        }
+        response = self.client.post(
+            '/ai/strategy/add-conditions/',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['strategy_id'], self.strategy.id)
+        
+        # Verify conditions were added to strategy
+        conditions = self.strategy.conditions.all()
+        self.assertEqual(conditions.count(), 1)
+        c = conditions[0]
+        self.assertEqual(c.left_indicator, 'CLOSE')
+        self.assertEqual(c.right_indicator, 'MA')
+        self.assertEqual(c.right_param, 20)
+
+    @patch('requests.post')
+    def test_ai_ask_with_strategy_context(self, mock_post):
+        import json
+        import os
+        
+        # Mock requests.post response
+        mock_response = mock_post.return_value
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'choices': [{
+                'message': {
+                    'content': '이 전략은 추세 추종 전략입니다.'
+                }
+            }]
+        }
+        
+        # Add a condition to strategy to ensure it gets formatted
+        Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            offset=0,
+            left_indicator='RSI',
+            left_param=14,
+            operator='lte',
+            right_indicator='VAL',
+            right_param=30
+        )
+        
+        with patch.dict('os.environ', {'GROQ_API_KEY': 'mock_key'}):
+            payload = {
+                'prompt': '내 전략 분석해줘',
+                'strategy_id': self.strategy.id
+            }
+            response = self.client.post(
+                '/ai/ask/',
+                data=json.dumps(payload),
+                content_type='application/json'
+            )
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data['response'], '이 전략은 추세 추종 전략입니다.')
+            
+            # Check if payload to Groq has strategy conditions in content
+            args, kwargs = mock_post.call_args
+            system_msg = kwargs['json']['messages'][0]['content']
+            self.assertIn('[현재 전략 정보]', system_msg)
+            self.assertIn('RSI(14) lte VAL(30)', system_msg)
+
+    @patch('requests.post')
+    def test_ai_ask_with_coin_context(self, mock_post):
+        import json
+        import os
+        
+        mock_response = mock_post.return_value
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'choices': [{
+                'message': {
+                    'content': 'NEAR 코인은 조건이 만족되었습니다. {"buttons": []}'
+                }
+            }]
+        }
+        
+        with patch.dict('os.environ', {'GROQ_API_KEY': 'mock_key'}):
+            payload = {
+                'prompt': '이 코인 왜 잡혔어?',
+                'coin_symbol': 'KRW-NEAR',
+                'coin_price': '3000',
+                'coin_volume': '1.5억',
+                'coin_details': 'RSI(14): 28.5'
+            }
+            response = self.client.post(
+                '/ai/ask/',
+                data=json.dumps(payload),
+                content_type='application/json'
+            )
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertIn('NEAR 코인은 조건이 만족되었습니다.', data['response'])
+            
+            # Check if payload to Groq has coin details in content
+            args, kwargs = mock_post.call_args
+            system_msg = kwargs['json']['messages'][0]['content']
+            self.assertIn('[대상 코인 정보]', system_msg)
+            self.assertIn('KRW-NEAR', system_msg)
+            self.assertIn('RSI(14): 28.5', system_msg)
+
 
 
 

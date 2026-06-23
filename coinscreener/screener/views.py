@@ -692,12 +692,28 @@ def ai_ask(request):
     import os
     
     prompt = ""
+    strategy_id = None
+    coin_symbol = None
+    coin_price = None
+    coin_volume = None
+    coin_details = None
+
     try:
         if request.content_type == 'application/json':
             body = json.loads(request.body)
             prompt = body.get('prompt', '')
+            strategy_id = body.get('strategy_id')
+            coin_symbol = body.get('coin_symbol')
+            coin_price = body.get('coin_price')
+            coin_volume = body.get('coin_volume')
+            coin_details = body.get('coin_details')
         else:
             prompt = request.POST.get('prompt', '')
+            strategy_id = request.POST.get('strategy_id')
+            coin_symbol = request.POST.get('coin_symbol')
+            coin_price = request.POST.get('coin_price')
+            coin_volume = request.POST.get('coin_volume')
+            coin_details = request.POST.get('coin_details')
     except Exception:
         return JsonResponse({'error': '잘못된 요청 형식입니다.'}, status=400)
         
@@ -719,6 +735,38 @@ def ai_ask(request):
         )
         return JsonResponse({'response': fallback_msg})
 
+    # Build strategy and/or coin context
+    context_str = ""
+    if strategy_id:
+        try:
+            strategy = Strategy.objects.get(id=strategy_id)
+            conds = list(strategy.conditions.all())
+            cond_strings = []
+            for idx, c in enumerate(conds, 1):
+                left = f"{c.left_indicator}({c.left_param})" if c.left_param else c.left_indicator
+                right = f"{c.right_indicator}({c.right_param})" if c.right_param else c.right_indicator
+                op = c.operator
+                if c.bb_std is not None:
+                    op += f" (std={c.bb_std})"
+                cond_strings.append(f"{idx}. {c.timeframe}봉: {left} {op} {right} (n봉전: {c.offset})")
+            
+            context_str += f"\n[현재 전략 정보]\n- 전략명: {strategy.name}\n- 전략 ID: {strategy.id}\n"
+            if cond_strings:
+                context_str += "- 설정된 조건들:\n" + "\n".join(cond_strings) + "\n"
+            else:
+                context_str += "- 설정된 조건이 없습니다.\n"
+        except Strategy.DoesNotExist:
+            pass
+
+    if coin_symbol:
+        context_str += (
+            f"\n[대상 코인 정보]\n"
+            f"- 종목명: {coin_symbol}\n"
+            f"- 현재가: {coin_price or 'N/A'}\n"
+            f"- 거래대금: {coin_volume or 'N/A'}\n"
+            f"- 매칭된 지표 상세 상태: {coin_details or 'N/A'}\n"
+        )
+
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
@@ -734,53 +782,35 @@ def ai_ask(request):
                         "당신은 코인 스크리너 및 트레이딩 전략 전문가 'wonii AI 비서'입니다. "
                         "사용자의 질문에 친절하고 전문적으로 답해 주세요. "
                         "답변은 가독성이 좋게 마크다운(Markdown) 서식과 이모티콘을 활용해 서술해 주세요.\n\n"
-                        "★ [중요 규칙: 실시간 전략 생성 지원] ★\n"
-                        "사용자가 전략 추천, 전략 생성, 단타 전략 기법, 혹은 특정 기술적 지표 활용법을 물어볼 때(예: '단타 전략 만들어줘', '단타 전략 추천', '골든크로스 전략 알려줘', 'RSI 30 이하 조건 추가' 등)에는, 상세한 텍스트 설명에 이어 **답변의 맨 마지막 줄에 사용자가 클릭 한 번으로 실제 전략과 검색조건들을 데이터베이스에 즉시 생성하고 연동할 수 있는 순수한 구조화 JSON 블록**을 무조건! 반드시! 포함해야 합니다. 단순 일반적인 안부 인사 등을 제외하고는 전략 관련 대화 시 100%의 확률로 JSON을 포함시키세요.\n\n"
-                        "JSON 데이터 작성 규칙:\n"
-                        "1. 주석(예: // 또는 #)을 JSON 본문에 절대로 포함하지 마십시오. 순수한 표준 JSON 규격이어야 자바스크립트의 JSON.parse가 에러 없이 작동합니다.\n"
-                        "2. 사용 가능한 timeframe: 'minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month'. 단타(스캘핑) 전략 요청 시 5분봉('minute5') 이나 15분봉('minute15')을 활용하십시오.\n"
-                        "3. 사용 가능한 지표(indicator): 'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER', 'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF', 'VAL', 'CLOSE'.\n"
-                        "4. 사용 가능한 연산자(operator): 'gt', 'lt', 'gte', 'lte', 'is'.\n"
-                        "5. 볼린저 밴드(BB) 조건식 설정 시: left_indicator='CLOSE', left_param=0, operator='gt'/'lt', right_indicator='BB_UPPER'/'BB_LOWER' 형태로 작성하세요 (예: 종가가 볼린저 밴드 상단을 돌파하는 조건).\n"
-                        "6. 고정값 비교(예: RSI 30 이하) 설정 시: left_indicator='RSI', left_param=14, operator='lte', right_indicator='VAL', right_param=30 형태로 작성하세요.\n"
-                        "7. 일목균형표(Ichimoku) 조건식 설정 시:\n"
-                        "   - 전환선(Tenkan) vs 기준선(Kijun) : left_indicator='IC_TENKAN', left_param=9, operator='gte'/'lte', right_indicator='IC_KIJUN', right_param=26\n"
-                        "   - 종가(Close) vs 선행스팬1(Span A) : left_indicator='CLOSE', left_param=0, operator='gte'/'lte', right_indicator='IC_SPAN_A', right_param=26\n"
-                        "   - 종가(Close) vs 선행스팬2(Span B) : left_indicator='CLOSE', left_param=0, operator='gte'/'lte', right_indicator='IC_SPAN_B', right_param=26\n"
-                        "   - 선행스팬1(Span A) vs 선행스팬2(Span B) : left_indicator='IC_SPAN_A', left_param=26, operator='gte'/'lte', right_indicator='IC_SPAN_B', right_param=26\n"
-                        "   - 후행스팬(Chikou) vs 26봉 전 종가 : left_indicator='IC_CHIKOU', left_param=0, operator='gte'/'lte', right_indicator='IC_CHIKOU_REF', right_param=26\n\n"
-                        "8. 하이킨아시(HA) 패턴 설정 시:\n"
-                        "   - left_indicator=하이킨아시 패턴명 (예: 'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')\n"
-                        "   - left_param=연속 봉 수 N (예: 'HA_BULL_N'에서 3봉 연속 양봉인 경우 3, 단일 패턴이면 1)\n"
-                        "   - operator='is'\n"
-                        "   - right_indicator='VAL'\n"
-                        "   - right_param=0\n\n"
-                        "JSON 데이터 형식 예시:\n"
-                        "{\n"
-                        "  \"create_strategy\": {\n"
-                        "    \"name\": \"단타 EMA 크로스 전략\",\n"
-                        "    \"conditions\": [\n"
-                        "      {\n"
-                        "        \"timeframe\": \"minute15\",\n"
-                        "        \"offset\": 0,\n"
-                        "        \"left_indicator\": \"CLOSE\",\n"
-                        "        \"left_param\": 0,\n"
-                        "        \"operator\": \"gte\",\n"
-                        "        \"right_indicator\": \"EMA\",\n"
-                        "        \"right_param\": 20\n"
-                        "      },\n"
-                        "      {\n"
-                        "        \"timeframe\": \"minute15\",\n"
-                        "        \"offset\": 0,\n"
-                        "        \"left_indicator\": \"RSI\",\n"
-                        "        \"left_param\": 14,\n"
-                        "        \"operator\": \"lte\",\n"
-                        "        \"right_indicator\": \"VAL\",\n"
-                        "        \"right_param\": 30\n"
-                        "      }\n"
-                        "    ]\n"
-                        "  }\n"
-                        "}"
+                        f"{context_str}\n\n"
+                        "★ [중요 규칙: 실시간 전략 생성 및 분석 지원] ★\n"
+                        "1. 사용자가 전략 추천, 전략 생성, 단타 전략 기법, 혹은 기술적 지표 활용법을 물어볼 때(예: '단타 전략 만들어줘', 'RSI 과매도 반등 전략 만들어줘' 등)에는, 상세한 텍스트 설명에 이어 **답변의 맨 마지막 줄에 사용자가 클릭 한 번으로 실제 전략과 검색조건들을 데이터베이스에 즉시 생성/연동할 수 있는 순수한 구조화 JSON 블록**을 반드시 포함해야 합니다.\n"
+                        "   - 만약 위 [현재 전략 정보]가 제공된 상태에서 사용자가 새로운 전략 생성/조건 구성을 물어본다면, 이 JSON 블록은 현재 전략에 추가(add)되거나 새 전략으로 생성(create)되는 옵션을 제공하게 됩니다.\n"
+                        "   - JSON 데이터 형식:\n"
+                        "     {\n"
+                        "       \"create_strategy\": {\n"
+                        "         \"name\": \"전략 이름\",\n"
+                        "         \"conditions\": [\n"
+                        "           { \"timeframe\": \"minute15\", \"offset\": 0, \"left_indicator\": \"CLOSE\", \"left_param\": 0, \"operator\": \"gte\", \"right_indicator\": \"EMA\", \"right_param\": 20 }\n"
+                        "         ]\n"
+                        "       }\n"
+                        "     }\n\n"
+                        "2. 사용자가 '내 전략 봐줘', '내 전략 분석해줘' 등 현재 전략 분석 요청을 할 경우, 위에 제공된 [현재 전략 정보]를 읽고 이 전략의 매매 성격(예: 눌림목 매매, 추세 추종 등)과 강점, 약점(예: 거래량 필터 누락, 상반된 지표 등)을 예리하고 구체적으로 분석하는 보고서를 마크다운 형식으로 작성해 주십시오.\n\n"
+                        "3. 사용자가 특정 코인이 왜 이 전략에 감지되었는지 물어보는 경우(예: '이 코인 왜 잡혔어?', [대상 코인 정보] 제공 시), 위에 제공된 [대상 코인 정보]의 '매칭된 지표 상세 상태' 값을 참고하여, 각 조건 지표가 구체적으로 어떤 수치로 맞아떨어졌는지 초보자도 쉽게 이해하도록 설명하십시오.\n"
+                        "   - 또한 해당 코인의 현재 상태(과열 구간인지, 매수 타이밍으로 안전한지 등)에 대한 냉철한 기술적 분석을 덧붙여 주십시오.\n"
+                        "   - 그리고 이 설명 뒤에 사용자가 해당 코인의 실시간 차트를 열거나, 백테스트를 즉시 실행하거나, 알림 설정을 켤 수 있도록 **반드시 아래 형식의 JSON 블록을 마지막 줄에 출력**하십시오.\n"
+                        "     {\n"
+                        "       \"buttons\": [\n"
+                        "         { \"type\": \"chart\", \"symbol\": \"" + str(coin_symbol or '') + "\", \"label\": \"📈 차트 보기\" },\n"
+                        "         { \"type\": \"backtest\", \"symbol\": \"" + str(coin_symbol or '') + "\", \"label\": \"🧪 백테스팅 실행\" },\n"
+                        "         { \"type\": \"alert\", \"symbol\": \"" + str(coin_symbol or '') + "\", \"label\": \"🔔 알림 설정\" }\n"
+                        "       ]\n"
+                        "     }\n\n"
+                        "★ JSON 데이터 작성 규칙:\n"
+                        "1. 주석(예: // 또는 #)을 JSON 본문에 절대로 포함하지 마십시오.\n"
+                        "2. 사용 가능한 timeframe: 'minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month'.\n"
+                        "3. 사용 가능한 지표: 'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER', 'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF', 'VAL', 'CLOSE', 'VOLUME', 'VOLUME_PREV', 'VOLUME_MA'.\n"
+                        "4. 사용 가능한 연산자: 'gt', 'lt', 'gte', 'lte', 'is'."
                     )
                 },
                 {"role": "user", "content": prompt}
@@ -903,6 +933,102 @@ def ai_strategy_create(request):
             'ok': True,
             'strategy_id': strategy.id,
             'redirect_url': redirect_url
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': f'서버 내부 오류: {str(e)}'}, status=500)
+
+
+@csrf_exempt
+def ai_strategy_add_conditions(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST 요청만 가능합니다.'}, status=405)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        strategy_id = data.get('strategy_id')
+        strategy_data = data.get('create_strategy')
+        
+        if not strategy_id:
+            return JsonResponse({'error': '전략 ID가 필요합니다.'}, status=400)
+            
+        strategy = get_object_or_404(Strategy, id=strategy_id)
+        
+        if not strategy_data:
+            return JsonResponse({'error': '유효한 전략 데이터가 없습니다.'}, status=400)
+            
+        # Create Conditions
+        conditions_data = strategy_data.get('conditions', [])
+        valid_timeframes = ['minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month']
+        valid_indicators = [
+            'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 
+            'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER',
+            'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF',
+            'VAL', 'CLOSE',
+            'VOLUME', 'VOLUME_PREV', 'VOLUME_MA'
+        ]
+        valid_operators = ['gt', 'lt', 'gte', 'lte', 'is']
+        
+        for c in conditions_data:
+            timeframe = c.get('timeframe', 'day')
+            if timeframe not in valid_timeframes:
+                timeframe = 'day'
+                
+            try:
+                offset = int(c.get('offset', 0))
+            except (ValueError, TypeError):
+                offset = 0
+            if offset < 0:
+                offset = 0
+                
+            left_indicator = c.get('left_indicator', 'MA')
+            if left_indicator not in valid_indicators:
+                left_indicator = 'MA'
+                
+            try:
+                left_param = int(c.get('left_param', 5))
+            except (ValueError, TypeError):
+                left_param = 5
+                
+            operator = c.get('operator', 'gte')
+            if operator not in valid_operators:
+                operator = 'gte'
+                
+            right_indicator = c.get('right_indicator', 'MA')
+            if right_indicator not in valid_indicators:
+                right_indicator = 'MA'
+                
+            try:
+                right_param = int(c.get('right_param', 20))
+            except (ValueError, TypeError):
+                right_param = 20
+                
+            bb_std = c.get('bb_std')
+            if bb_std is not None:
+                try:
+                    bb_std = float(bb_std)
+                except (ValueError, TypeError):
+                    bb_std = None
+            
+            Condition.objects.create(
+                strategy=strategy,
+                timeframe=timeframe,
+                offset=offset,
+                left_indicator=left_indicator,
+                left_param=left_param,
+                operator=operator,
+                right_indicator=right_indicator,
+                right_param=right_param,
+                bb_std=bb_std
+            )
+            
+        clear_strategy_cache(strategy.id)
+        
+        return JsonResponse({
+            'ok': True,
+            'strategy_id': strategy.id,
+            'redirect_url': f"/strategy/{strategy.id}/"
         })
         
     except Exception as e:

@@ -189,6 +189,38 @@
     animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* AI Action Buttons Row */
+.ai-action-btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+.ai-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: rgba(124, 58, 237, 0.12);
+    border: 1px solid rgba(124, 58, 237, 0.25);
+    color: #a78bfa;
+    border-radius: 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.ai-action-btn:hover {
+    background: #7c3aed;
+    border-color: #7c3aed;
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+}
+.ai-action-btn:active {
+    transform: translateY(0);
+}
 </style>
 
 <!-- wonii-AI 비서 플로팅 버튼 -->
@@ -217,6 +249,9 @@
     
     <!-- 빠른 질문 추천 -->
     <div class="ai-quick-row">
+        {% if strategy %}
+        <button class="ai-quick-btn" onclick="askQuick('🔍 내 전략 봐줘')">🔍 내 전략 분석</button>
+        {% endif %}
         <button class="ai-quick-btn" onclick="askQuick('💡 볼린저 밴드 돌파 전략 추천')">💡 볼린저 밴드</button>
         <button class="ai-quick-btn" onclick="askQuick('📈 하이킨아시 조건식 가이드')">📈 하이킨아시</button>
         <button class="ai-quick-btn" onclick="askQuick('⚡ RSI 스캘핑 기법')">⚡ RSI 기법</button>
@@ -292,20 +327,20 @@ function parseMarkdown(text) {
     return html;
 }
 
-async function sendAIPrompt() {
+async function sendAIPrompt(extraParams = null) {
     const input = document.getElementById('ai-input');
     const sendBtn = document.getElementById('ai-send-btn');
     const msgContainer = document.getElementById('ai-messages');
     
     const prompt = input.value.trim();
-    if (!prompt) return;
+    if (!prompt && !extraParams) return;
     
     input.value = '';
     
     // Add User Message
     const userMsgEl = document.createElement('div');
     userMsgEl.className = 'ai-msg user';
-    userMsgEl.textContent = prompt;
+    userMsgEl.textContent = prompt || `이 코인 왜 잡혔어? (${extraParams ? extraParams.coin_symbol : ''})`;
     msgContainer.appendChild(userMsgEl);
     
     msgContainer.scrollTop = msgContainer.scrollHeight;
@@ -327,6 +362,16 @@ async function sendAIPrompt() {
     input.disabled = true;
     sendBtn.disabled = true;
     
+    // Build request body
+    const requestBody = { prompt: prompt };
+    const currentStrategyId = "{{ strategy.id|default:'' }}";
+    if (currentStrategyId) {
+        requestBody.strategy_id = parseInt(currentStrategyId, 10);
+    }
+    if (extraParams) {
+        Object.assign(requestBody, extraParams);
+    }
+    
     try {
         const response = await fetch('/ai/ask/', {
             method: 'POST',
@@ -334,7 +379,7 @@ async function sendAIPrompt() {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': '{{ csrf_token }}'
             },
-            body: JSON.stringify({ prompt: prompt })
+            body: JSON.stringify(requestBody)
         });
         
         const loader = document.getElementById('ai-loading-bubble');
@@ -345,19 +390,57 @@ async function sendAIPrompt() {
         const aiMsgEl = document.createElement('div');
         aiMsgEl.className = 'ai-msg assistant';
         if (data.response) {
-            // Extract strategy JSON from response text
             const text = data.response;
-            const extracted = extractStrategyJSON(text);
+            const extracted = extractAIJSON(text);
             
             if (extracted) {
                 aiMsgEl.innerHTML = parseMarkdown(extracted.cleanText);
                 
-                const strategyName = extracted.parsed.create_strategy.name || "AI 추천 전략";
-                const btn = document.createElement('button');
-                btn.className = 'ai-strat-btn';
-                btn.innerHTML = `✨ <strong>[${strategyName}]</strong> 전략 실시간 추가`;
-                btn.onclick = () => createAIStrategy(extracted.parsed, btn);
-                aiMsgEl.appendChild(btn);
+                if (extracted.parsed.create_strategy) {
+                    const strategyName = extracted.parsed.create_strategy.name || "AI 추천 전략";
+                    const btn = document.createElement('button');
+                    btn.className = 'ai-strat-btn';
+                    
+                    const hasStrategyContext = "{{ strategy.id|default:'' }}";
+                    if (hasStrategyContext) {
+                        btn.innerHTML = `✨ <strong>[현재 전략]</strong>에 조건 채우기`;
+                        btn.onclick = () => addAIStrategyConditions(extracted.parsed, btn);
+                    } else {
+                        btn.innerHTML = `✨ <strong>[${strategyName}]</strong> 전략 실시간 추가`;
+                        btn.onclick = () => createAIStrategy(extracted.parsed, btn);
+                    }
+                    aiMsgEl.appendChild(btn);
+                }
+                
+                if (extracted.parsed.buttons && Array.isArray(extracted.parsed.buttons)) {
+                    const btnRow = document.createElement('div');
+                    btnRow.className = 'ai-action-btn-row';
+                    
+                    extracted.parsed.buttons.forEach(b => {
+                        const actBtn = document.createElement('button');
+                        actBtn.className = 'ai-action-btn';
+                        actBtn.innerHTML = b.label || b.type;
+                        actBtn.onclick = () => {
+                            if (b.type === 'chart') {
+                                if (typeof window.openTVChartGlobal === 'function') {
+                                    window.openTVChartGlobal(b.symbol);
+                                } else {
+                                    showToast('❌ 차트를 지원하지 않는 페이지입니다.', 'err');
+                                }
+                            } else if (b.type === 'backtest') {
+                                if (typeof window.runBacktestGlobal === 'function') {
+                                    window.runBacktestGlobal(b.symbol);
+                                }
+                            } else if (b.type === 'alert') {
+                                if (typeof window.openAlertGlobal === 'function') {
+                                    window.openAlertGlobal();
+                                }
+                            }
+                        };
+                        btnRow.appendChild(actBtn);
+                    });
+                    aiMsgEl.appendChild(btnRow);
+                }
             } else {
                 aiMsgEl.innerHTML = parseMarkdown(text);
             }
@@ -385,63 +468,55 @@ async function sendAIPrompt() {
     msgContainer.scrollTop = msgContainer.scrollHeight;
 }
 
-function extractStrategyJSON(text) {
-    const keywordIndex = text.indexOf('"create_strategy"');
-    if (keywordIndex === -1) return null;
-    
-    // Find the opening brace '{' preceding '"create_strategy"'
-    let startIndex = -1;
-    for (let i = keywordIndex; i >= 0; i--) {
-        if (text[i] === '{') {
-            startIndex = i;
-            break;
-        }
-    }
-    
-    if (startIndex === -1) return null;
-    
-    // Find the closing brace by counting braces
-    let braceCount = 0;
-    let endIndex = -1;
-    for (let i = startIndex; i < text.length; i++) {
-        if (text[i] === '{') braceCount++;
-        else if (text[i] === '}') {
-            braceCount--;
-            if (braceCount === 0) {
-                endIndex = i;
-                break;
+function extractAIJSON(text) {
+    let searchStart = 0;
+    while (true) {
+        const startIndex = text.indexOf('{', searchStart);
+        if (startIndex === -1) return null;
+        
+        let braceCount = 0;
+        let endIndex = -1;
+        for (let i = startIndex; i < text.length; i++) {
+            if (text[i] === '{') braceCount++;
+            else if (text[i] === '}') {
+                braceCount--;
+                if (braceCount === 0) {
+                    endIndex = i;
+                    break;
+                }
             }
         }
-    }
-    
-    if (endIndex === -1) return null;
-    
-    const jsonStr = text.substring(startIndex, endIndex + 1);
-    try {
-        const parsed = JSON.parse(jsonStr);
         
-        // Clean text and remove surrounding code block backticks (```json or ``json or ``` or ``)
-        let cleanText = text.substring(0, startIndex).trim();
-        let afterText = text.substring(endIndex + 1).trim();
+        if (endIndex === -1) {
+            searchStart = startIndex + 1;
+            continue;
+        }
         
-        // Clean ending backticks/code fences from cleanText
-        cleanText = cleanText.replace(/```[a-z]*\s*$/, '').trim();
-        cleanText = cleanText.replace(/``[a-z]*\s*$/, '').trim();
-        cleanText = cleanText.replace(/`[a-z]*\s*$/, '').trim();
-        
-        // Clean starting backticks/code fences from afterText
-        afterText = afterText.replace(/^\s*```/, '').trim();
-        afterText = afterText.replace(/^\s*``/, '').trim();
-        afterText = afterText.replace(/^\s*`/, '').trim();
-        
-        return {
-            raw: jsonStr,
-            parsed: parsed,
-            cleanText: (cleanText + '\n\n' + afterText).trim()
-        };
-    } catch (e) {
-        console.error("Failed to parse extracted strategy JSON:", e);
-        return null;
+        const jsonStr = text.substring(startIndex, endIndex + 1);
+        try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.create_strategy || parsed.buttons) {
+                let cleanText = text.substring(0, startIndex).trim();
+                let afterText = text.substring(endIndex + 1).trim();
+                
+                cleanText = cleanText.replace(/```[a-z]*\s*$/, '').trim();
+                cleanText = cleanText.replace(/``[a-z]*\s*$/, '').trim();
+                cleanText = cleanText.replace(/`[a-z]*\s*$/, '').trim();
+                
+                afterText = afterText.replace(/^\s*```/, '').trim();
+                afterText = afterText.replace(/^\s*``/, '').trim();
+                afterText = afterText.replace(/^\s*`/, '').trim();
+                
+                return {
+                    raw: jsonStr,
+                    parsed: parsed,
+                    cleanText: (cleanText + '\n\n' + afterText).trim()
+                };
+            }
+        } catch (e) {
+            // ignore and search next
+        }
+        searchStart = startIndex + 1;
     }
 }
 
@@ -477,6 +552,268 @@ async function createAIStrategy(strategyObj, btnEl) {
         btnEl.innerHTML = originalHtml;
     }
 }
+
+async function addAIStrategyConditions(strategyObj, btnEl) {
+    if (!confirm('현재 전략에 생성된 조건들을 추가하시겠습니까?')) return;
+    
+    btnEl.disabled = true;
+    const originalHtml = btnEl.innerHTML;
+    btnEl.innerHTML = `<span class="spinner-inline"></span> 조건 채우는 중...`;
+    
+    const currentStrategyId = "{{ strategy.id|default:'' }}";
+    if (!currentStrategyId) {
+        showToast('❌ 전략 정보가 올바르지 않습니다.', 'err');
+        btnEl.disabled = false;
+        btnEl.innerHTML = originalHtml;
+        return;
+    }
+    
+    try {
+        const response = await fetch('/ai/strategy/add-conditions/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                strategy_id: parseInt(currentStrategyId, 10),
+                create_strategy: strategyObj.create_strategy
+            })
+        });
+        
+        const data = await response.json();
+        if (data.ok && data.redirect_url) {
+            showToast('✨ 현재 전략에 조건이 성공적으로 추가되었습니다!', 'ok');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            showToast('❌ 조건 추가 실패: ' + (data.error || '알 수 없는 오류'), 'err');
+            btnEl.disabled = false;
+            btnEl.innerHTML = originalHtml;
+        }
+    } catch (e) {
+        showToast('❌ 조건 추가 중 네트워크 오류가 발생했습니다.', 'err');
+        btnEl.disabled = false;
+        btnEl.innerHTML = originalHtml;
+    }
+}
+
+/* ── TradingView Global Chart Controllers ── */
+window.openTVChartGlobal = function(symbol) {
+    if (typeof TradingView === 'undefined') {
+        const script = document.createElement('script');
+        script.src = 'https://s3.tradingview.com/tv.js';
+        script.onload = () => {
+            window.openTVChartGlobal(symbol);
+        };
+        document.head.appendChild(script);
+        return;
+    }
+    
+    let modal = document.getElementById('tv-chart-modal-global');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'tv-chart-modal-global';
+        modal.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(8, 10, 16, 0.85);
+            backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+            z-index: 9999; display: none; align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.25s ease;
+        `;
+        modal.onclick = (e) => {
+            if (e.target === modal) window.closeTVChartGlobal();
+        };
+        
+        modal.innerHTML = `
+            <div class="tv-modal-container" style="
+                width: 90%; max-width: 1000px;
+                background: rgba(16, 20, 33, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 45px rgba(124, 58, 237, 0.18);
+                border-radius: 20px; overflow: hidden;
+                display: flex; flex-direction: column;
+                transform: scale(0.95); transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+            " onclick="event.stopPropagation()">
+                <div class="tv-modal-header" style="
+                    display: flex; align-items: center; justify-content: space-between;
+                    padding: 18px 24px; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+                    background: rgba(7, 9, 14, 0.5);
+                ">
+                    <div class="tv-modal-title-wrap" style="display: flex; align-items: center; gap: 10px;">
+                        <span class="tv-modal-title" id="tv-modal-title-global" style="font-family: 'Space Grotesk', sans-serif; font-size: 17px; font-weight: 700; color: #fff;">차트</span>
+                        <span class="tv-modal-badge" id="tv-modal-exchange-badge-global" style="
+                            font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px;
+                            background: rgba(124, 58, 237, 0.15); color: #a78bfa; border: 1px solid rgba(124, 58, 237, 0.3);
+                        ">Upbit</span>
+                    </div>
+                    <button class="tv-modal-close" onclick="window.closeTVChartGlobal()" title="닫기" style="
+                        background: rgba(255, 255, 255, 0.05); border: none; color: #9ca3af;
+                        font-size: 20px; cursor: pointer; transition: all 0.2s;
+                        width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%;
+                    ">&times;</button>
+                </div>
+                <div class="tv-modal-body" style="position: relative; width: 100%; height: 550px; background: #07090e;">
+                    <div id="tv-chart-container-global" style="width: 100%; height: 100%;"></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    modal.style.display = 'flex';
+    modal.offsetHeight; // force layout
+    modal.style.opacity = '1';
+    const container = modal.querySelector('.tv-modal-container');
+    if (container) container.style.transform = 'scale(1)';
+    document.body.style.overflow = 'hidden';
+    
+    let coinSymbol = symbol;
+    if (symbol.includes('-')) {
+        coinSymbol = symbol.split('-')[1];
+    }
+    document.getElementById('tv-modal-title-global').textContent = `${coinSymbol}/KRW 실시간 차트`;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const exchange = urlParams.get('exchange') || 'upbit';
+    const isUpbit = exchange.toLowerCase() === 'upbit';
+    
+    const badge = document.getElementById('tv-modal-exchange-badge-global');
+    badge.textContent = isUpbit ? 'Upbit' : 'Bithumb';
+    if (isUpbit) {
+        badge.style.background = 'rgba(124, 58, 237, 0.15)';
+        badge.style.color = '#a78bfa';
+        badge.style.borderColor = 'rgba(124, 58, 237, 0.3)';
+    } else {
+        badge.style.background = 'rgba(16, 185, 129, 0.15)';
+        badge.style.color = '#10b981';
+        badge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+    }
+    
+    const tvSymbol = (isUpbit ? 'UPBIT:' : 'BITHUMB:') + coinSymbol + 'KRW';
+    
+    new TradingView.widget({
+        "autosize": true,
+        "symbol": tvSymbol,
+        "interval": "15",
+        "timezone": "Asia/Seoul",
+        "theme": "dark",
+        "style": "1",
+        "locale": "ko",
+        "toolbar_bg": "#1e222d",
+        "enable_publishing": false,
+        "hide_side_toolbar": false,
+        "allow_symbol_change": true,
+        "container_id": "tv-chart-container-global"
+    });
+};
+
+window.closeTVChartGlobal = function() {
+    const modal = document.getElementById('tv-chart-modal-global');
+    if (!modal) return;
+    
+    modal.style.opacity = '0';
+    const container = modal.querySelector('.tv-modal-container');
+    if (container) container.style.transform = 'scale(0.95)';
+    
+    setTimeout(() => {
+        if (modal.style.opacity === '0') {
+            modal.style.display = 'none';
+            document.body.style.overflow = '';
+            const containerDiv = document.getElementById('tv-chart-container-global');
+            if (containerDiv) containerDiv.innerHTML = '';
+        }
+    }, 300);
+};
+
+/* ── Global Backtest Caller ── */
+window.runBacktestGlobal = function(ticker) {
+    if (typeof openBT !== 'function') {
+        showToast('❌ 이 페이지에서는 백테스팅을 실행할 수 없습니다.', 'err');
+        return;
+    }
+    const tickerSelect = document.getElementById('bt-ticker');
+    if (!tickerSelect) {
+        showToast('❌ 백테스팅 대상을 선택할 수 없습니다.', 'err');
+        return;
+    }
+    
+    let optionExists = false;
+    for (let i = 0; i < tickerSelect.options.length; i++) {
+        if (tickerSelect.options[i].value === ticker) {
+            optionExists = true;
+            break;
+        }
+    }
+    if (!optionExists) {
+        const opt = document.createElement('option');
+        opt.value = ticker;
+        opt.textContent = ticker.replace('KRW-', '');
+        opt.dataset.dynamic = '1';
+        tickerSelect.insertBefore(opt, tickerSelect.firstChild);
+    }
+    
+    const strategyId = "{{ strategy.id|default:'' }}";
+    const strategyName = "{{ strategy.name|escapejs }}";
+    const firstTimeframe = "{{ strategy.conditions.first.timeframe|default:'day' }}";
+    
+    if (!strategyId) {
+        showToast('❌ 전략 정보가 올바르지 않습니다.', 'err');
+        return;
+    }
+    
+    openBT(parseInt(strategyId), strategyName, firstTimeframe);
+    tickerSelect.value = ticker;
+    runBT();
+};
+
+/* ── Global Alert Highlight ── */
+window.openAlertGlobal = function() {
+    const tgAlertBox = document.getElementById('tg-alert-box');
+    const autoScanPanel = document.querySelector('.auto-scan-panel');
+    
+    if (tgAlertBox) {
+        tgAlertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        tgAlertBox.style.outline = '2px solid #f5a623';
+        tgAlertBox.style.boxShadow = '0 0 20px rgba(245, 166, 35, 0.4)';
+        setTimeout(() => {
+            tgAlertBox.style.outline = '';
+            tgAlertBox.style.boxShadow = '';
+        }, 3000);
+        showToast('🔔 사이드바의 텔레그램 알림 설정을 확인해 주세요!', 'ok');
+    } else if (autoScanPanel) {
+        autoScanPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        autoScanPanel.style.outline = '2px solid #7c3aed';
+        autoScanPanel.style.boxShadow = '0 0 20px rgba(124, 58, 237, 0.4)';
+        setTimeout(() => {
+            autoScanPanel.style.outline = '';
+            autoScanPanel.style.boxShadow = '';
+        }, 3000);
+        showToast('🔔 상단의 실시간 알림 설정을 확인해 주세요!', 'ok');
+    } else {
+        showToast('⚠️ 현재 페이지에는 설정할 수 있는 알림 옵션이 없습니다.', 'err');
+    }
+};
+
+/* ── Global Trigger: Ask AI Why Selected ── */
+window.askAIWhySelected = function(symbol, price, volume, details) {
+    const panel = document.getElementById('ai-panel');
+    if (panel && !panel.classList.contains('open')) {
+        panel.classList.add('open');
+        document.getElementById('ai-input').focus();
+    }
+    
+    const input = document.getElementById('ai-input');
+    input.value = `이 코인 왜 잡혔어? (종목: ${symbol})`;
+    
+    sendAIPrompt({
+        coin_symbol: symbol,
+        coin_price: price,
+        coin_volume: volume,
+        coin_details: details
+    });
+};
 
 /* ── wonii-AI 비서 창 드래그 크기 조절 (Top / Left / Top-Left) ── */
 (function initAIChatResizer() {
