@@ -166,8 +166,12 @@ def check_ha_pattern(df: pd.DataFrame, pattern: str, param: int, offset: int) ->
 
 def get_required_len(indicator_type, param):
     """지표 계산에 필요한 최소 데이터 길이 반환"""
-    if indicator_type in ('VAL', 'CLOSE'):
+    if indicator_type in ('VAL', 'CLOSE', 'VOLUME'):
         return 0
+    if indicator_type == 'VOLUME_PREV':
+        return 1
+    if indicator_type == 'VOLUME_MA':
+        return param
     if indicator_type == 'IC_TENKAN':
         return param
     if indicator_type == 'IC_KIJUN':
@@ -338,6 +342,30 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
 
     elif indicator_type == 'CLOSE':
         val = df['close'].iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'VOLUME':
+        val = df['volume'].iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'VOLUME_PREV':
+        prev_idx = target_idx - 1
+        if abs(prev_idx) > len(df): return None
+        val = df['volume'].iloc[prev_idx]
+        multiplier = bb_std if bb_std is not None else 1.0
+        val = val * multiplier
+        return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'VOLUME_MA':
+        if param < 1: return None
+        start_idx = target_idx - param
+        end_idx = target_idx
+        if abs(start_idx) > len(df): return None
+        vol_slice = df['volume'].iloc[start_idx : end_idx]
+        if vol_slice.empty: return None
+        avg_val = vol_slice.mean()
+        multiplier = bb_std if bb_std is not None else 1.0
+        val = avg_val * multiplier
         return None if pd.isna(val) else float(val)
 
     elif indicator_type == 'IC_TENKAN':

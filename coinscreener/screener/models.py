@@ -47,6 +47,10 @@ class Condition(models.Model):
         ('IC_CHIKOU_REF',  '26봉 전 종가'),
         ('VAL',       '고정값'),
         ('CLOSE',     '종가'),
+        # 거래량 지표
+        ('VOLUME',      '거래량'),
+        ('VOLUME_PREV', '이전봉 거래량'),
+        ('VOLUME_MA',   '평균 거래량'),
     ]
     OPERATOR_CHOICES = [
         ('gt',  '크다 (>)'),
@@ -68,8 +72,51 @@ class Condition(models.Model):
     right_param     = models.IntegerField(default=20)
     bb_std          = models.FloatField(null=True, blank=True)
 
+    def get_readable_text(self):
+        left_lbl = self.get_left_indicator_display()
+        right_lbl = self.get_right_indicator_display()
+        
+        op_map = {
+            'gt': '초과(>)',
+            'lt': '미만(<)',
+            'gte': '이상(>=)',
+            'lte': '이하(<=)',
+            'is': '충족'
+        }
+        op_lbl = op_map.get(self.operator, self.operator)
+        
+        # 하이킨아시 패턴 포맷
+        ha_patterns = ('HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')
+        if self.left_indicator in ha_patterns:
+            if 'N' in self.left_indicator:
+                return f"{self.offset}봉전 {left_lbl}({self.left_param}봉 연속)"
+            return f"{self.offset}봉전 {left_lbl}"
+
+        # 거래량 포맷
+        if self.left_indicator == 'VOLUME':
+            if self.right_indicator == 'VOLUME_PREV':
+                pct = int(self.bb_std * 100) if self.bb_std else 100
+                return f"{self.offset}봉전 거래량 {op_lbl} 이전봉 거래량의 {pct}%"
+            elif self.right_indicator == 'VOLUME_MA':
+                pct = int(self.bb_std * 100) if self.bb_std else 100
+                return f"{self.offset}봉전 거래량 {op_lbl} 최근 {self.right_param}봉 평균 거래량의 {pct}%"
+        
+        # 볼린저밴드 포맷
+        if self.right_indicator in ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER'):
+            std_val = self.bb_std if self.bb_std is not None else 2.0
+            return f"{self.offset}봉전 종가 {op_lbl} {right_lbl}({self.right_param}, {std_val}σ)"
+
+        # 기본 포맷
+        left_part = f"{left_lbl}({self.left_param})" if self.left_indicator not in ('CLOSE', 'VAL') else left_lbl
+        if self.left_indicator == 'VAL': left_part = f"{self.left_param}"
+        
+        right_part = f"{right_lbl}({self.right_param})" if self.right_indicator not in ('CLOSE', 'VAL') else right_lbl
+        if self.right_indicator == 'VAL': right_part = f"{self.right_param}"
+        
+        return f"{self.offset}봉전 {left_part} {op_lbl} {right_part}"
+
     def __str__(self):
-        return f"{self.offset}봉전 {self.left_indicator}({self.left_param}) {self.operator} {self.right_indicator}({self.right_param})"
+        return self.get_readable_text()
 
 
 class AlertSetting(models.Model):

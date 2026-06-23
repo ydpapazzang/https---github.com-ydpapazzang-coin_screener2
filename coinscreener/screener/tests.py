@@ -444,3 +444,63 @@ class BacktestOffsetTestCase(TestCase):
         with patch('requests.get', side_effect=Exception("API Timeout")):
             result = shorten_url("https://my-screener-site.com/strategy/19/")
             self.assertEqual(result, "https://my-screener-site.com/strategy/19/")
+
+    @patch('pyupbit.get_ohlcv')
+    def test_volume_indicators(self, mock_get_ohlcv):
+        """거래량 지표들(VOLUME, VOLUME_PREV, VOLUME_MA) 계산 및 스크리닝 검증"""
+        dates = [datetime(2026, 1, 1) + timedelta(days=i) for i in range(10)]
+        closes = [100.0] * 10
+        opens = [100.0] * 10
+        highs = [100.0] * 10
+        lows = [100.0] * 10
+        # 이전봉 대비 150%+ 돌파를 검증하기 위해 마지막 봉(idx -1) 거래량을 200, 그 직전 봉(idx -2) 거래량을 100으로 설정
+        # 평균 거래량(N=5) 대비 200%+ 돌파를 검증하기 위해 앞의 봉들 평균을 50, 마지막 봉 거래량을 200으로 설정
+        volumes = [50.0] * 8 + [100.0] + [200.0]
+        values = [100000.0] * 10
+
+        test_df = pd.DataFrame({
+            'open': opens,
+            'high': highs,
+            'low': lows,
+            'close': closes,
+            'volume': volumes,
+            'value': values
+        }, index=dates)
+
+        mock_get_ohlcv.return_value = test_df
+
+        # 1. VOLUME >= VOLUME_PREV * 1.5 (이전봉 거래량 대비 150%)
+        cond_prev = Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            offset=0,
+            left_indicator='VOLUME',
+            left_param=0,
+            operator='gte',
+            right_indicator='VOLUME_PREV',
+            right_param=1,
+            bb_std=1.5
+        )
+
+        from .engine import check_strategy
+        is_match, details, last_price, volume, status = check_strategy('KRW-BTC', [cond_prev])
+        self.assertTrue(is_match)
+
+        cond_prev.delete()
+
+        # 2. VOLUME >= VOLUME_MA(5) * 2.0 (최근 5봉 평균 대비 200%)
+        cond_ma = Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            offset=0,
+            left_indicator='VOLUME',
+            left_param=0,
+            operator='gte',
+            right_indicator='VOLUME_MA',
+            right_param=5,
+            bb_std=2.0
+        )
+
+        is_match, details, last_price, volume, status = check_strategy('KRW-BTC', [cond_ma])
+        self.assertTrue(is_match)
+

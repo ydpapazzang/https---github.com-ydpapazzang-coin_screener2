@@ -189,6 +189,38 @@ def condition_add(request, strategy_id):
             left_indicator, left_param = 'IC_CHIKOU', 0
             right_indicator, right_param = 'IC_CHIKOU_REF', 26
 
+    elif cond_type == 'VOLUME':
+        volume_target = request.POST.get('volume_target', 'prev')
+        try:
+            volume_pct = int(request.POST.get('volume_pct', 150))
+        except ValueError:
+            volume_pct = 150
+
+        if volume_pct < 1:
+            messages.error(request, "기준 비율은 1% 이상이어야 합니다.")
+            return redirect('strategy_detail', strategy_id=strategy_id)
+
+        bb_std = volume_pct / 100.0  # multiplier
+        left_indicator = 'VOLUME'
+        left_param = 0
+
+        if volume_target == 'prev':
+            right_indicator = 'VOLUME_PREV'
+            right_param = 1
+        elif volume_target == 'ma':
+            try:
+                volume_period = int(request.POST.get('volume_period', 5))
+            except ValueError:
+                volume_period = 5
+            if volume_period < 1:
+                messages.error(request, "평균 거래량 기간은 1 이상이어야 합니다.")
+                return redirect('strategy_detail', strategy_id=strategy_id)
+            right_indicator = 'VOLUME_MA'
+            right_param = volume_period
+        else:
+            messages.error(request, "올바르지 않은 거래량 비교 유형입니다.")
+            return redirect('strategy_detail', strategy_id=strategy_id)
+
     else:
         messages.error(request, f"알 수 없는 조건 유형입니다: {cond_type}")
         return redirect('strategy_detail', strategy_id=strategy_id)
@@ -794,7 +826,8 @@ def ai_strategy_create(request):
             'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 
             'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER',
             'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF',
-            'VAL', 'CLOSE'
+            'VAL', 'CLOSE',
+            'VOLUME', 'VOLUME_PREV', 'VOLUME_MA'
         ]
         valid_operators = ['gt', 'lt', 'gte', 'lte', 'is']
         

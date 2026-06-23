@@ -840,6 +840,7 @@ select.op-select {
             <button class="tab-btn" onclick="switchTab(event,'BB')">볼린저밴드</button>
             <button class="tab-btn" onclick="switchTab(event,'HA')">하이킨아시</button>
             <button class="tab-btn" onclick="switchTab(event,'IC')">일목균형표</button>
+            <button class="tab-btn" onclick="switchTab(event,'VOLUME')">거래량</button>
         </div>
 
         <!-- ═══ MA FORM ═══ -->
@@ -1236,6 +1237,95 @@ select.op-select {
             <button type="submit" class="btn-add-cond">＋ 일목균형표 조건 추가</button>
         </form>
 
+        <!-- ═══ VOLUME FORM ═══ -->
+        <form id="form-VOLUME" class="cond-form"
+              action="{% url 'condition_add' strategy.id %}" method="post"
+              onsubmit="return validateVOLUME()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="VOLUME">
+            <input type="hidden" name="offset" id="volume_offset" value="0">
+
+            <div class="form-grid">
+
+                <!-- ① 캔들 단위 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe">
+                        <option value="minute1">1분봉</option>
+                        <option value="minute3">3분봉</option>
+                        <option value="minute5">5분봉</option>
+                        <option value="minute10">10분봉</option>
+                        <option value="minute15">15분봉</option>
+                        <option value="minute30">30분봉</option>
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+
+                <!-- ② 기준 시점 (Offset) -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기준 시점</div>
+                    <select onchange="syncOffsetType('VOLUME')" id="volume_offset_type">
+                        <option value="current">현재봉 (0봉 전)</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="volume_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="volume_offset_slider" min="0" max="100" value="0"
+                               oninput="syncSlider('volume_offset','volume_offset_slider')">
+                        <span class="slider-val" id="volume_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+
+                <!-- ③ 비교 대상 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">③</span>비교 대상</div>
+                    <div class="bb-group" id="volume_target_group">
+                        <button type="button" class="bb-opt selected" onclick="selectVolumeTarget('prev',this)">이전봉 거래량 대비</button>
+                        <button type="button" class="bb-opt" onclick="selectVolumeTarget('ma',this)">평균 거래량(N봉) 대비</button>
+                    </div>
+                    <input type="hidden" name="volume_target" id="volume_target_val" value="prev">
+                </div>
+
+                <!-- ④ 평균 거래량 기간 (N봉) -->
+                <div class="field-row" id="volume_period_row" style="display:none;">
+                    <div class="field-label"><span class="num">④</span>평균 거래량 기간 (N)</div>
+                    <input type="number" name="volume_period" id="volume_period" value="5" min="1" class="wide">
+                    <span class="helper">최근 N봉의 평균 거래량 (기준 시점 이전)</span>
+                </div>
+
+                <!-- ⑤ 기준 비율 (%) -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">⑤</span>기준 비율 (%)</div>
+                    <div class="slider-wrap">
+                        <input type="range" class="slider" id="volume_pct_slider" min="10" max="1000" value="150" step="10"
+                               oninput="syncSlider('volume_pct_input','volume_pct_slider')">
+                        <span class="slider-val" id="volume_pct_display">150</span>
+                        <span class="slider-unit">%</span>
+                    </div>
+                    <input type="number" name="volume_pct" id="volume_pct_input" value="150" min="10" max="2000" class="wide"
+                           oninput="syncInputToSlider('volume_pct_input','volume_pct_slider')">
+                </div>
+
+                <!-- ⑥ 비교 조건 -->
+                <div class="field-row">
+                    <div class="field-label"><span class="num">⑥</span>비교 조건</div>
+                    <select name="operator" class="op-select">
+                        <option value="gte">이상 (&gt;=)</option>
+                        <option value="lte">이하 (&lt;=)</option>
+                        <option value="gt">초과 (&gt;)</option>
+                        <option value="lt">미만 (&lt;)</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <button type="submit" class="btn-add-cond">＋ 거래량 조건 추가</button>
+        </form>
+
     </div><!-- /card -->
 
     <!-- ── 하단 액션 바 ── -->
@@ -1609,6 +1699,53 @@ function validateIC() {
     const form   = document.getElementById('form-IC');
     const offset = parseInt(form.offset.value);
     if (isNaN(offset) || offset < 0) { alert("n봉 전은 0 이상의 숫자여야 합니다."); return false; }
+    return true;
+}
+
+function selectVolumeTarget(val, btn) {
+    btn.parentNode.querySelectorAll('.bb-opt').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('volume_target_val').value = val;
+    toggleVolumeFields();
+}
+
+function toggleVolumeFields() {
+    const target = document.getElementById('volume_target_val').value;
+    const periodRow = document.getElementById('volume_period_row');
+    const pctSlider = document.getElementById('volume_pct_slider');
+    const pctInput = document.getElementById('volume_pct_input');
+    const pctDisplay = document.getElementById('volume_pct_display');
+
+    if (target === 'ma') {
+        periodRow.style.display = 'block';
+        if (pctInput.value === '150') {
+            pctInput.value = '200';
+            pctSlider.value = '200';
+            pctDisplay.textContent = '200';
+        }
+    } else {
+        periodRow.style.display = 'none';
+        if (pctInput.value === '200') {
+            pctInput.value = '150';
+            pctSlider.value = '150';
+            pctDisplay.textContent = '150';
+        }
+    }
+}
+
+function validateVOLUME() {
+    const form = document.getElementById('form-VOLUME');
+    const offset = parseInt(form.offset.value);
+    if (isNaN(offset) || offset < 0) { alert("n봉 전은 0 이상의 숫자여야 합니다."); return false; }
+    
+    const pct = parseInt(document.getElementById('volume_pct_input').value);
+    if (isNaN(pct) || pct <= 0) { alert("기준 비율은 1% 이상이어야 합니다."); return false; }
+    
+    const target = document.getElementById('volume_target_val').value;
+    if (target === 'ma') {
+        const period = parseInt(document.getElementById('volume_period').value);
+        if (isNaN(period) || period < 1) { alert("평균 거래량 기간은 1 이상이어야 합니다."); return false; }
+    }
     return true;
 }
 </script>
