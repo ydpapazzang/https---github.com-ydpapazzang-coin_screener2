@@ -698,6 +698,55 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(c.right_param, 20)
         self.assertEqual(c.bb_std, 2.0)
 
+    @patch('coinscreener.screener.views._get_tickers')
+    @patch('coinscreener.screener.views.check_strategy')
+    def test_strategy_scan_count_no_conditions(self, mock_check_strategy, mock_get_tickers):
+        response = self.client.get(f'/strategy/{self.strategy.id}/scan-count/')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['count'], 0)
+        mock_get_tickers.assert_not_called()
+
+    @patch('coinscreener.screener.views._get_tickers')
+    @patch('coinscreener.screener.views.check_strategy')
+    def test_strategy_scan_count_with_conditions(self, mock_check_strategy, mock_get_tickers):
+        # Create a dummy condition
+        Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            offset=0,
+            left_indicator='CLOSE',
+            operator='gte',
+            right_indicator='MA',
+            right_param=5
+        )
+
+        mock_get_tickers.return_value = ['KRW-BTC', 'KRW-ETH']
+
+        def side_effect(ticker, conditions):
+            if ticker == 'KRW-BTC':
+                return True, ['골든크로스'], 50000.0, 1000000000.0, '진입 대기'
+            return False, [], 3000.0, 50000000.0, '진입 대기'
+        mock_check_strategy.side_effect = side_effect
+
+        response = self.client.get(f'/strategy/{self.strategy.id}/scan-count/?exchange=upbit&vol_limit=100')
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(data['count'], 1)
+
+        # Check cache
+        from django.core.cache import cache
+        cached_data = cache.get(f"strategy_results_{self.strategy.id}_upbit_100")
+        self.assertIsNotNone(cached_data)
+        self.assertEqual(len(cached_data['results']), 1)
+        self.assertEqual(cached_data['results'][0]['symbol'], 'KRW-BTC')
+        self.assertEqual(cached_data['results'][0]['price'], 50000.0)
+        self.assertEqual(cached_data['results'][0]['details'], '골든크로스')
+        self.assertEqual(cached_data['results'][0]['volume_display'], '10.0억')
+
+
 
 
 

@@ -11,6 +11,7 @@ urlpatterns = [
     path('strategy/<int:strategy_id>/trading/',       views.strategy_trading,     name='strategy_trading'),
     path('strategy/<int:strategy_id>/save-risk/',     views.save_risk_settings,   name='save_risk_settings'),
     path('strategy/<int:strategy_id>/rename/',        views.strategy_rename,      name='strategy_rename'),
+    path('strategy/<int:strategy_id>/scan-count/',    views.strategy_scan_count,  name='strategy_scan_count'),
     path('strategy/<int:strategy_id>/search/',        views.coin_search,          name='coin_search'),
     path('strategy/<int:strategy_id>/search-stream/', views.coin_search_stream,   name='coin_search_stream'),
     path('strategy/<int:strategy_id>/results/',       views.coin_search_results,  name='coin_search_results'),

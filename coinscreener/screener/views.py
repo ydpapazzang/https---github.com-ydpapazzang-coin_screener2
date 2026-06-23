@@ -1050,6 +1050,67 @@ def strategy_rename(request, strategy_id):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
+@require_GET
+def strategy_scan_count(request, strategy_id):
+    strategy = get_object_or_404(Strategy, id=strategy_id)
+    conditions = list(strategy.conditions.all())
+    
+    if not conditions:
+        return JsonResponse({'ok': True, 'count': 0})
+        
+    exchange = request.GET.get('exchange', 'upbit')
+    try:
+        vol_limit_param = request.GET.get('vol_limit')
+        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 100
+    except (ValueError, TypeError):
+        vol_limit = 100
+        
+    tickers = _get_tickers(exchange, vol_limit)
+    results = []
+    error_occurred = False
+
+    def process_ticker(ticker):
+        try:
+            is_match, details, price, volume, status = check_strategy(ticker, conditions)
+            if price is None:
+                return "API_ERROR"
+            if is_match:
+                unique_details = list(dict.fromkeys(details))
+                return {
+                    'symbol':         ticker,
+                    'price':          price,
+                    'details':        ", ".join(unique_details),
+                    'volume':         volume,
+                    'volume_display': f"{volume / 100_000_000:.1f}억",
+                    'status':         status,
+                }
+        except Exception:
+            pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(process_ticker, t): t for t in tickers}
+        for future in concurrent.futures.as_completed(futures):
+            res = future.result()
+            if res == "API_ERROR":
+                error_occurred = True
+            elif res:
+                results.append(res)
+                
+    results.sort(key=lambda x: x.get('volume', 0), reverse=True)
+    last_updated = timezone.now()
+    cache_key = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
+
+    cache.set(cache_key, {
+        'results':            results,
+        'rate_limit_warning': error_occurred,
+        'last_updated':       last_updated,
+    }, timeout=300)
+    
+    return JsonResponse({'ok': True, 'count': len(results)})
+
+
+
 
 
 

@@ -581,6 +581,7 @@ select option, .scope-sel option, .time-sel option {
     <!-- TOP BAR -->
     <div class="topbar">
         <input class="search-input" id="search-input" placeholder="전략 이름 검색..." oninput="filterStrategies()">
+        <button type="button" class="btn btn-outline" id="scan-all-btn" onclick="scanAllStrategies()" style="background: rgba(124, 58, 237, 0.1); border-color: rgba(124, 58, 237, 0.3); color: #a78bfa; margin-right: 4px;">🔍 전체 조회하기</button>
         <button class="btn btn-blue" onclick="openAddModal()">＋ 추가</button>
         <button class="btn btn-outline" id="del-mode-btn" onclick="toggleDelMode()">삭제 모드</button>
     </div>
@@ -601,7 +602,8 @@ select option, .scope-sel option, .time-sel option {
                     <a href="{% url 'strategy_detail' strategy.id %}" class="strategy-name">
                         {{ strategy.name }}
                     </a>
-                    <div class="card-spinner" id="spinner-{{ strategy.id }}"></div>
+                    <div class="card-spinner" id="spinner-{{ strategy.id }}" style="margin-left: 8px;"></div>
+                    <span class="card-result-badge" id="badge-{{ strategy.id }}" style="display: none; cursor: pointer; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2); transition: transform 0.15s, opacity 0.15s; margin-left: 8px;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'" onclick="goToResults({{ strategy.id }})" title="결과 보기">0건</span>
                 </div>
 
                 <div class="card-bottom">
@@ -779,6 +781,64 @@ function runSearch(id) {
     const vol = document.getElementById('vol-val-' + id).value;
     document.getElementById('spinner-' + id).style.display = 'block';
     window.location.href = `/strategy/${id}/search/?exchange=${ex}&vol_limit=${vol}`;
+}
+
+/* ── 매칭 결과 페이지 이동 ── */
+function goToResults(id) {
+    const ex = document.getElementById('ex-val-' + id).value;
+    const vol = document.getElementById('vol-val-' + id).value;
+    window.location.href = `/strategy/${id}/results/?exchange=${ex}&vol_limit=${vol}`;
+}
+
+/* ── 전체 전략 일괄 조회 ── */
+async function scanAllStrategies() {
+    const cards = document.querySelectorAll('.strategy-card');
+    if (cards.length === 0) return;
+    
+    const scanBtn = document.getElementById('scan-all-btn');
+    const originalText = scanBtn.textContent;
+    scanBtn.disabled = true;
+    scanBtn.textContent = '🔄 전체 조회 중...';
+    
+    const promises = Array.from(cards).map(async (card) => {
+        const checkbox = card.querySelector('.del-chk');
+        if (!checkbox) return;
+        const id = checkbox.value;
+        
+        const spinner = document.getElementById('spinner-' + id);
+        const badge = document.getElementById('badge-' + id);
+        
+        if (spinner) spinner.style.display = 'inline-block';
+        if (badge) badge.style.display = 'none';
+        
+        const ex = document.getElementById('ex-val-' + id).value;
+        const vol = document.getElementById('vol-val-' + id).value;
+        
+        try {
+            const response = await fetch(`/strategy/${id}/scan-count/?exchange=${ex}&vol_limit=${vol}`);
+            const data = await response.json();
+            
+            if (spinner) spinner.style.display = 'none';
+            if (badge) {
+                badge.textContent = `${data.count}건`;
+                badge.style.display = 'inline-block';
+            }
+        } catch (e) {
+            console.error(e);
+            if (spinner) spinner.style.display = 'none';
+            if (badge) {
+                badge.textContent = '오류';
+                badge.style.background = 'linear-gradient(135deg, #f43f5e 0%, #be123c 100%)';
+                badge.style.display = 'inline-block';
+            }
+        }
+    });
+    
+    await Promise.all(promises);
+    
+    scanBtn.disabled = false;
+    scanBtn.textContent = originalText;
+    showToast('✨ 모든 전략의 조회가 완료되었습니다!', 'ok');
 }
 
 /* ── 전략 검색 필터 ── */
