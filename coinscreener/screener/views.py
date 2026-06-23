@@ -737,6 +737,13 @@ def ai_ask(request):
 
     # Build strategy and/or coin context
     context_str = ""
+    if not strategy_id:
+        # Check if the user mentioned a strategy name in the prompt
+        for s in Strategy.objects.all():
+            if s.name in prompt:
+                strategy_id = s.id
+                break
+
     if strategy_id:
         try:
             strategy = Strategy.objects.get(id=strategy_id)
@@ -757,6 +764,16 @@ def ai_ask(request):
                 context_str += "- 설정된 조건이 없습니다.\n"
         except Strategy.DoesNotExist:
             pass
+    else:
+        # No specific strategy selected/matched, list all available strategies
+        strategy_list_str = ""
+        for s in Strategy.objects.all().order_by('-created_at'):
+            strategy_list_str += f"- {s.name} (ID: {s.id})\n"
+        
+        if strategy_list_str:
+            context_str += f"\n[보유 중인 전략 목록]\n{strategy_list_str}"
+        else:
+            context_str += f"\n[보유 중인 전략 목록]\n(현재 저장된 전략이 없습니다.)\n"
 
     if coin_symbol:
         context_str += (
@@ -795,7 +812,9 @@ def ai_ask(request):
                         "         ]\n"
                         "       }\n"
                         "     }\n\n"
-                        "2. 사용자가 '내 전략 봐줘', '내 전략 분석해줘' 등 현재 전략 분석 요청을 할 경우, 위에 제공된 [현재 전략 정보]를 읽고 이 전략의 매매 성격(예: 눌림목 매매, 추세 추종 등)과 강점, 약점(예: 거래량 필터 누락, 상반된 지표 등)을 예리하고 구체적으로 분석하는 보고서를 마크다운 형식으로 작성해 주십시오.\n\n"
+                        "2. 사용자가 '내 전략 봐줘', '내 전략 분석해줘' 등 현재 전략 분석 요청을 할 경우:\n"
+                        "   - 만약 위 [현재 전략 정보]가 제공되었다면, 해당 전략의 매매 성격(예: 눌림목 매매, 추세 추종 등)과 강점, 약점(예: 거래량 필터 누락 등)을 예리하게 분석하는 보고서를 마크다운 형식으로 작성해 주십시오.\n"
+                        "   - 만약 특정 전략 정보가 제공되지 않았고 [보유 중인 전략 목록]만 제공되었다면, **절대로 임의의 전략을 지어내거나 가상의 지표를 섞어 환각(Hallucination) 답변을 하지 마십시오.** 대신 [보유 중인 전략 목록]을 보여주며 분석하고 싶은 전략 이름을 입력해 달라고 하거나, 원하는 전략의 '전략 설정' 혹은 '검색 실행' 화면으로 이동하도록 사용자에게 친절하게 되물어 주십시오.\n\n"
                         "3. 사용자가 특정 코인이 왜 이 전략에 감지되었는지 물어보는 경우(예: '이 코인 왜 잡혔어?', [대상 코인 정보] 제공 시), 위에 제공된 [대상 코인 정보]의 '매칭된 지표 상세 상태' 값을 참고하여, 각 조건 지표가 구체적으로 어떤 수치로 맞아떨어졌는지 초보자도 쉽게 이해하도록 설명하십시오.\n"
                         "   - 또한 해당 코인의 현재 상태(과열 구간인지, 매수 타이밍으로 안전한지 등)에 대한 냉철한 기술적 분석을 덧붙여 주십시오.\n"
                         "   - 그리고 이 설명 뒤에 사용자가 해당 코인의 실시간 차트를 열거나, 백테스트를 즉시 실행하거나, 알림 설정을 켤 수 있도록 **반드시 아래 형식의 JSON 블록을 마지막 줄에 출력**하십시오.\n"

@@ -869,6 +869,44 @@ class StrategyTradingViewsTestCase(TestCase):
             self.assertIn('KRW-NEAR', system_msg)
             self.assertIn('RSI(14): 28.5', system_msg)
 
+    @patch('requests.post')
+    def test_ai_ask_without_strategy_context_lists_strategies(self, mock_post):
+        import json
+        import os
+        
+        mock_response = mock_post.return_value
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'choices': [{
+                'message': {
+                    'content': '어떤 전략을 분석하고 싶으신가요?'
+                }
+            }]
+        }
+        
+        # Create second strategy to have multiple strategies in the list
+        Strategy.objects.create(name="Another Cool Strategy")
+        
+        with patch.dict('os.environ', {'GROQ_API_KEY': 'mock_key'}):
+            payload = {
+                'prompt': '내 전략 분석해줘'
+            }
+            response = self.client.post(
+                '/ai/ask/',
+                data=json.dumps(payload),
+                content_type='application/json'
+            )
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data['response'], '어떤 전략을 분석하고 싶으신가요?')
+            
+            # Check if payload to Groq has "보유 중인 전략 목록" and strategy names in system prompt
+            args, kwargs = mock_post.call_args
+            system_msg = kwargs['json']['messages'][0]['content']
+            self.assertIn('[보유 중인 전략 목록]', system_msg)
+            self.assertIn('Trading Strategy', system_msg)
+            self.assertIn('Another Cool Strategy', system_msg)
+
 
 
 
