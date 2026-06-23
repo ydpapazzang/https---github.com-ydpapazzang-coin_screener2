@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wonii -screener. 전략 트레이딩</title>
+<style>
+  :root {
+    --bg: #0b0b13;
+    --bg2: #13131e;
+    --bg3: #1a1a28;
+    --bg4: #222235;
+    --border: #ffffff14;
+    --border2: #ffffff22;
+    --text: #f0f0f0;
+    --text2: #9090a8;
+    --text3: #55556a;
+    --purple: #7C6FF7;
+    --purple-dim: #2a2047;
+    --purple-light: #a99ef5;
+    --green: #5DCAA5;
+    --green-dim: #0d2318;
+    --amber: #EF9F27;
+    --amber-dim: #251a08;
+    --red: #F09595;
+    --red-dim: #230d0d;
+    --blue: #5BA8F5;
+    --blue-dim: #0c1e30;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  /* NAV */
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 0 32px; height: 56px; border-bottom: 0.5px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 100; }
+  .logo { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: -0.3px; text-decoration: none; }
+  .logo span { color: var(--purple); }
+  .nav-right { display: flex; gap: 8px; align-items: center; }
+  .nav-btn { background: transparent; border: 0.5px solid var(--border2); border-radius: 8px; color: var(--text2); font-size: 12px; padding: 6px 14px; cursor: pointer; transition: all 0.15s; text-decoration: none; display: inline-block; text-align: center; }
+  .nav-btn:hover { background: var(--bg3); color: var(--text); }
+  .nav-btn.active { background: var(--purple); border-color: var(--purple); color: #fff; }
+
+  /* LAYOUT */
+  .layout { display: grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 56px); }
+
+  /* SIDEBAR */
+  .sidebar { border-right: 0.5px solid var(--border); padding: 20px 16px; display: flex; flex-direction: column; gap: 24px; background: var(--bg); }
+  .sidebar-section-label { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+
+  .strat-list { display: flex; flex-direction: column; gap: 4px; }
+  .strat-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; cursor: pointer; border: 0.5px solid transparent; transition: all 0.15s; }
+  .strat-item:hover { background: var(--bg3); }
+  .strat-item.active { background: var(--bg3); border-color: var(--purple); }
+  .strat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .strat-info { flex: 1; min-width: 0; }
+  .strat-name { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .strat-meta { font-size: 11px; color: var(--text3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .strat-badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; white-space: nowrap; }
+
+  .add-strat { display: flex; align-items: center; justify-content: center; gap: 6px; border: 0.5px dashed var(--border2); border-radius: 10px; padding: 9px; color: var(--text3); font-size: 12px; cursor: pointer; transition: all 0.15s; text-align: center; width: 100%; background: transparent; }
+  .add-strat:hover { border-color: var(--purple); color: var(--purple); }
+
+  .risk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .risk-full { grid-column: 1 / -1; }
+  .risk-box { background: var(--bg3); border-radius: 8px; padding: 9px 11px; border: 0.5px solid var(--border); transition: all 0.15s; }
+  .risk-box.on { border-color: var(--purple); background: var(--purple-dim); }
+  .risk-label { font-size: 10px; color: var(--text3); margin-bottom: 3px; }
+  .risk-val { font-size: 14px; font-weight: 600; }
+  .risk-val.r { color: var(--red); }
+  .risk-val.g { color: var(--green); }
+  .risk-val.y { color: var(--amber); }
+  .risk-input { width: 100%; background: transparent; border: none; font-size: 14px; font-weight: 600; color: var(--green); outline: none; font-family: inherit; }
+  .risk-input.r { color: var(--red); }
+  .risk-input.y { color: var(--amber); }
+
+  /* MAIN */
+  .main { padding: 24px 28px; overflow-y: auto; background: var(--bg); }
+  .main-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+  .main-title { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; }
+  .main-sub { font-size: 13px; color: var(--text2); margin-top: 4px; }
+  .header-tags { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+  .tag { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+  .tag-p { background: var(--purple-dim); color: var(--purple-light); }
+  .tag-g { background: var(--green-dim); color: var(--green); }
+  .tag-y { background: var(--amber-dim); color: var(--amber); }
+  .tag-r { background: var(--red-dim); color: var(--red); }
+  .tag-b { background: var(--blue-dim); color: var(--blue); }
+
+  /* SECTION */
+  .section { background: var(--bg2); border: 0.5px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 14px; }
+  .section-title { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 14px; }
+
+  /* TABS */
+  .tab-row { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 15px; }
+  .tab { font-size: 12px; font-weight: 500; padding: 6px 14px; border-radius: 20px; border: 0.5px solid var(--border2); color: var(--text2); background: transparent; cursor: pointer; transition: all 0.15s; }
+  .tab:hover { background: var(--bg3); color: var(--text); }
+  .tab.on { background: var(--purple); border-color: var(--purple); color: #fff; }
+
+  /* CONDITION BLOCKS */
+  .cond-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 10px; }
+  .cond-block { background: var(--bg3); border-radius: 11px; padding: 14px 16px; border: 0.5px solid var(--border); transition: border-color 0.15s; }
+  .cond-block:hover { border-color: var(--border2); }
+  .cond-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .cond-label { font-size: 12px; font-weight: 600; color: var(--purple-light); display: flex; align-items: center; gap: 7px; }
+  .cond-del-btn { font-size: 18px; color: var(--text3); cursor: pointer; line-height: 1; transition: color 0.1s; background: none; border: none; outline: none; }
+  .cond-del-btn:hover { color: var(--red); }
+
+  .cond-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .csel { background: var(--bg); border: 0.5px solid var(--border2); border-radius: 8px; color: var(--text); font-size: 12px; padding: 6px 10px; cursor: pointer; outline: none; font-family: inherit; transition: border-color 0.15s; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2355556a'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px; }
+  .csel:focus { border-color: var(--purple); }
+  .csel.hi { border-color: var(--purple); color: var(--purple-light); }
+  .csel.g { border-color: var(--green); color: var(--green); }
+  .carr { color: var(--text3); font-size: 12px; font-weight: 500; }
+  .cinput { background: var(--bg); border: 0.5px solid var(--border2); border-radius: 8px; color: var(--text); font-size: 12px; padding: 6px 8px; width: 58px; text-align: center; outline: none; font-family: inherit; transition: border-color 0.15s; }
+  .cinput:focus { border-color: var(--purple); }
+
+  /* FILTER ROW */
+  .filter-wrap { display: flex; gap: 7px; flex-wrap: wrap; }
+  .fchip { display: flex; align-items: center; gap: 5px; background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 8px; padding: 7px 12px; font-size: 12px; color: var(--text2); cursor: pointer; transition: all 0.15s; user-select: none; }
+  .fchip:hover { border-color: var(--purple); color: var(--text); }
+  .fchip.on { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+
+  /* ACTION BAR */
+  .action-bar { display: flex; gap: 8px; margin-top: 18px; }
+  .abtn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; font-family: inherit; text-decoration: none; }
+  .abtn:active { transform: scale(0.97); }
+  .abtn-run { background: var(--purple); color: #fff; flex: 1; }
+  .abtn-run:hover { background: #6a5ee8; }
+  .abtn-bt { background: var(--amber); color: var(--amber-dim); }
+  .abtn-bt:hover { background: #d68c1a; }
+  .abtn-alert { background: transparent; border: 0.5px solid var(--border2); color: var(--text2); padding: 10px 14px; border-radius: 10px; cursor: pointer; font-size: 16px; transition: all 0.15s; }
+  .abtn-alert:hover { border-color: var(--amber); color: var(--amber); }
+
+  /* INFO BOX */
+  .info-box { background: var(--bg3); border-left: 3px solid var(--purple); border-radius: 0 8px 8px 0; padding: 10px 14px; font-size: 12px; color: var(--text2); line-height: 1.6; margin-top: 12px; }
+  .info-box b { color: var(--text); font-weight: 600; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* FORM STYLING FOR CONDITIONS */
+  .cond-form { display: none; margin-top: 10px; }
+  .cond-form.active { display: block; }
+  .form-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 15px; }
+  .field-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .field-label { font-size: 12px; color: var(--text2); font-weight: 600; min-width: 80px; }
+  .field-label .num { color: var(--purple-light); font-weight: 700; margin-right: 4px; }
+  .cond-form select, .cond-form input[type="number"], .cond-form input[type="text"] {
+    background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 8px; color: var(--text);
+    font-size: 12px; padding: 6px 10px; outline: none; font-family: inherit;
+  }
+  .cond-form select:focus, .cond-form input:focus { border-color: var(--purple); }
+  .cond-form input.wide { width: 70px; text-align: center; }
+  .btn-add-cond { background: var(--purple); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .btn-add-cond:hover { background: #6a5ee8; }
+  
+  .slider-wrap { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 150px; }
+  .slider { flex: 1; height: 4px; border-radius: 2px; background: var(--bg3); outline: none; -webkit-appearance: none; accent-color: var(--purple); }
+  .slider-val { font-size: 12px; font-weight: 600; color: var(--purple-light); }
+  .slider-unit { font-size: 11px; color: var(--text3); }
+
+  .option-group { display: flex; gap: 6px; }
+  .opt-btn { background: var(--bg3); border: 0.5px solid var(--border2); border-radius: 6px; color: var(--text2); font-size: 11px; padding: 5px 10px; cursor: pointer; transition: all 0.1s; }
+  .opt-btn:hover { color: var(--text); border-color: var(--border2); }
+  .opt-btn.selected { background: var(--purple-dim); color: var(--purple-light); border-color: var(--purple); }
+
+  .alert { background: var(--red-dim); border: 0.5px solid var(--red); color: var(--red); padding: 10px 14px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; }
+  .helper { font-size: 11px; color: var(--text3); }
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav>
+  <a href="{% url 'strategy_list' %}" class="logo">wonii <span>-screener.</span></a>
+  <div class="nav-right">
+    <a href="{% url 'strategy_list' %}" class="nav-btn">전략 리스트</a>
+    <a href="{% if strategy %}{% url 'strategy_trading' strategy.id %}{% else %}#{% endif %}" class="nav-btn active">전략 설정</a>
+    {% if strategy %}
+      <a href="{% url 'coin_search_results' strategy.id %}" class="nav-btn">검색 결과</a>
+      <button class="nav-btn" onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}', '{{ strategy.conditions.first.timeframe|default:'day' }}')">백테스팅</button>
+    {% else %}
+      <a href="#" onclick="alert('전략을 먼저 선택해주세요!')" class="nav-btn">검색 결과</a>
+      <a href="#" onclick="alert('전략을 먼저 선택해주세요!')" class="nav-btn">백테스팅</a>
+    {% endif %}
+  </div>
+</nav>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div>
+      <div class="sidebar-section-label">내 전략</div>
+      <div class="strat-list">
+        {% for s in strategies %}
+        <a href="{% url 'strategy_trading' s.id %}" style="text-decoration: none;">
+          <div class="strat-item {% if strategy and s.id == strategy.id %}active{% endif %}">
+            <div class="strat-dot" style="background: {% cycle '#7C6FF7' '#5DCAA5' '#EF9F27' '#F09595' %};"></div>
+            <div class="strat-info">
+              <div class="strat-name">{{ s.name }}</div>
+              <div class="strat-meta">{{ s.get_meta_text }}</div>
+            </div>
+            <span class="strat-badge tag-{% cycle 'p' 'g' 'y' 'r' %}">{{ s.win_rate|floatformat:0 }}%</span>
+          </div>
+        </a>
+        {% empty %}
+        <div style="font-size:11px; color:var(--text3); text-align:center; padding:10px;">전략이 없습니다.</div>
+        {% endfor %}
+      </div>
+      <div style="margin-top:8px;">
+        <button class="add-strat" onclick="createNewStrategy()">
+          <span style="font-size:16px; line-height:1;">+</span> 전략 추가
+        </button>
+      </div>
+    </div>
+
+    {% if strategy %}
+    <div>
+      <div class="sidebar-section-label">리스크 설정 <span style="color:var(--red); font-size:9px; background:var(--red-dim); padding:1px 5px; border-radius:3px; font-weight:700;">필수</span></div>
+      <div class="risk-grid">
+        <div class="risk-box">
+          <div class="risk-label">손절 기준</div>
+          <div style="display:flex; align-items:center; gap:2px;">
+            <input class="risk-input r" id="risk-sl" type="text" value="{{ strategy.stop_loss|floatformat:0 }}" style="width:40px;" oninput="updateRR(); saveRiskSettings();">
+            <span style="font-size:12px; color:var(--red);">%</span>
+          </div>
+        </div>
+        <div class="risk-box">
+          <div class="risk-label">목표 익절</div>
+          <div style="display:flex; align-items:center; gap:2px;">
+            <input class="risk-input" id="risk-tp" type="text" value="{{ strategy.take_profit|floatformat:0 }}" style="width:40px;" oninput="updateRR(); saveRiskSettings();">
+            <span style="font-size:12px; color:var(--green);">%</span>
+          </div>
+        </div>
+        <div class="risk-box risk-full">
+          <div class="risk-label">RR 비율 (Risk:Reward)</div>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+            <span class="risk-val y" id="risk-rr-val">1 : 3.0</span>
+            <span style="font-size:10px; color:var(--text3);">자동 계산</span>
+          </div>
+        </div>
+        <div class="risk-box risk-full">
+          <div class="risk-label">진입 자본 비율</div>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
+            <input type="range" id="risk-capital" min="5" max="100" value="{{ strategy.capital_pct }}" step="5" oninput="document.getElementById('capital-pct').textContent=this.value; saveRiskSettings();" style="flex:1; accent-color:var(--purple);">
+            <span id="capital-pct" style="font-size:13px; font-weight:600; color:var(--purple); min-width:32px;">{{ strategy.capital_pct }}</span>
+            <span style="font-size:11px; color:var(--text3);">%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sidebar-section-label">알림</div>
+      <div class="risk-box" id="tg-alert-box" style="cursor:pointer;" onclick="toggleTelegramAlert(this)">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:12px; font-weight:500; color:var(--text);">텔레그램 알림</div>
+            <div class="risk-label" style="margin-top:2px;">조건 충족 시 즉시 발송</div>
+          </div>
+          <span class="toggle" style="font-size:11px; font-weight:600; color:var(--text3);">꺼짐</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert">⚠️ {{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {% if strategy %}
+    <!-- ===== ACTIVE STRATEGY ===== -->
+    <div class="strat-content active">
+      <div class="main-header">
+        <div>
+          <div class="main-title">{{ strategy.name }}</div>
+          <div class="header-tags">
+            <span class="tag tag-p">{{ strategy.conditions.first.get_timeframe_display|default:"설정전" }}</span>
+            <span class="tag tag-g">승률 {{ strategy.win_rate|floatformat:0 }}%</span>
+            <span class="tag tag-y">RR {{ strategy.stop_loss|floatformat:0 }}% / {{ strategy.take_profit|floatformat:0 }}%</span>
+          </div>
+          <div class="main-sub" style="margin-top:6px;">나만의 차트 보조지표와 거래량 등을 조건으로 조합해 최적의 매수 타점을 스크리닝 하세요.</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">지표 선택</div>
+        <div class="tab-row">
+          <button class="tab tab-btn on" onclick="switchTab(event,'MA')">이동평균(MA)</button>
+          <button class="tab tab-btn" onclick="switchTab(event,'RSI')">RSI</button>
+          <button class="tab tab-btn" onclick="switchTab(event,'BB')">볼린저밴드</button>
+          <button class="tab tab-btn" onclick="switchTab(event,'HA')">하이킨아시</button>
+          <button class="tab tab-btn" onclick="switchTab(event,'IC')">일목균형표</button>
+          <button class="tab tab-btn" onclick="switchTab(event,'VOLUME')">거래량</button>
+        </div>
+
+        <!-- ═══ MA FORM ═══ -->
+        <form id="form-MA" class="cond-form active" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateMA()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="MA">
+            <input type="hidden" name="ma_type_a" id="ma_type_a_val" value="MA">
+            <input type="hidden" name="ma_type_b" id="ma_type_b_val" value="MA">
+            <input type="hidden" name="ma_price_a_type" id="ma_price_a_type_val" value="MA">
+            <input type="hidden" name="offset" id="ma_offset" value="0">
+
+            <div class="form-grid">
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe" id="ma_timeframe">
+                        <option value="minute1">1분봉</option>
+                        <option value="minute3">3분봉</option>
+                        <option value="minute5">5분봉</option>
+                        <option value="minute10">10분봉</option>
+                        <option value="minute15">15분봉</option>
+                        <option value="minute30">30분봉</option>
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                    <span class="helper">월봉 200봉은 약 16.6년, 주봉 200봉은 약 3.8년, 일봉 200봉은 약 6.6개월을 의미합니다.</span>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기간 선택</div>
+                    <select onchange="syncOffsetType('MA')" id="ma_offset_type">
+                        <option value="current">현재봉</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="ma_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="ma_offset_slider" min="0" max="100" value="0" oninput="syncSlider('ma_offset','ma_offset_slider')">
+                        <span class="slider-val" id="ma_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">③</span>이동평균 A</div>
+                    <select id="ma_a_source" onchange="toggleMaASource()" style="margin-right: 10px;">
+                        <option value="MA">N 기간 이동평균</option>
+                        <option value="CLOSE">종가</option>
+                    </select>
+                    <div id="ma_a_settings" style="display: inline-flex; align-items: center; gap: 8px;">
+                        <div class="option-group" id="ma_type_a_group">
+                            <button type="button" class="opt-btn selected" onclick="selectMaType('a','MA',this)">단순(SMA)</button>
+                            <button type="button" class="opt-btn" onclick="selectMaType('a','EMA',this)">지수(EMA)</button>
+                            <button type="button" class="opt-btn" onclick="selectMaType('a','WMA',this)">가중(WMA)</button>
+                        </div>
+                        <input type="number" name="ma_price_a_val" id="ma_a_val" value="5" min="1" class="wide">
+                        <span class="helper">기간</span>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">④</span>이동평균 B</div>
+                    <div class="option-group" id="ma_type_b_group" style="margin-right: 8px;">
+                        <button type="button" class="opt-btn selected" onclick="selectMaType('b','MA',this)">단순(SMA)</button>
+                        <button type="button" class="opt-btn" onclick="selectMaType('b','EMA',this)">지수(EMA)</button>
+                        <button type="button" class="opt-btn" onclick="selectMaType('b','WMA',this)">가중(WMA)</button>
+                    </div>
+                    <input type="number" name="ma_price_b_val" id="ma_b_val" value="20" min="1" class="wide">
+                    <span class="helper">기간</span>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">⑤</span>비교 조건</div>
+                    <select name="operator">
+                        <option value="gte">이상 (&gt;=)</option>
+                        <option value="lte">이하 (&lt;=)</option>
+                        <option value="gt">초과 (&gt;)</option>
+                        <option value="lt">미만 (&lt;)</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn-add-cond">＋ MA 조건 추가</button>
+        </form>
+
+        <!-- ═══ RSI FORM ═══ -->
+        <form id="form-RSI" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateRSI()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="RSI">
+            <input type="hidden" name="offset" id="rsi_offset" value="0">
+
+            <div class="form-grid">
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe">
+                        <option value="minute1">1분봉</option>
+                        <option value="minute3">3분봉</option>
+                        <option value="minute5">5분봉</option>
+                        <option value="minute10">10분봉</option>
+                        <option value="minute15">15분봉</option>
+                        <option value="minute30">30분봉</option>
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기간 선택</div>
+                    <select onchange="syncOffsetType('RSI')" id="rsi_offset_type">
+                        <option value="current">현재봉</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="rsi_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="rsi_offset_slider" min="0" max="100" value="0" oninput="syncSlider('rsi_offset','rsi_offset_slider')">
+                        <span class="slider-val" id="rsi_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">③</span>RSI 기간</div>
+                    <input type="number" name="rsi_period" value="14" min="1" class="wide">
+                    <span class="helper">기본값: 14</span>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">④</span>기준값</div>
+                    <div class="slider-wrap">
+                        <input type="range" class="slider" id="rsi_thr_slider" min="0" max="100" value="30" oninput="syncSlider('rsi_threshold_input','rsi_thr_slider')">
+                        <span class="slider-val" id="rsi_thr_display">30</span>
+                    </div>
+                    <input type="number" name="rsi_threshold" id="rsi_threshold_input" value="30" min="0" max="100" class="wide" oninput="syncInputToSlider('rsi_threshold_input','rsi_thr_slider')">
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">⑤</span>비교 조건</div>
+                    <select name="operator">
+                        <option value="gte">이상 (&gt;=)</option>
+                        <option value="lte">이하 (&lt;=)</option>
+                        <option value="gt">초과 (&gt;)</option>
+                        <option value="lt">미만 (&lt;)</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn-add-cond">＋ RSI 조건 추가</button>
+        </form>
+
+        <!-- ═══ BOLLINGER BAND FORM ═══ -->
+        <form id="form-BB" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateBB()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="BB">
+            <input type="hidden" name="offset" id="bb_offset" value="0">
+            <input type="hidden" name="bb_target" id="bb_target_val" value="BB_UPPER">
+
+            <div class="form-grid">
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe">
+                        <option value="minute1">1분봉</option>
+                        <option value="minute3">3분봉</option>
+                        <option value="minute5">5분봉</option>
+                        <option value="minute10">10분봉</option>
+                        <option value="minute15">15분봉</option>
+                        <option value="minute30">30분봉</option>
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기간 선택</div>
+                    <select onchange="syncOffsetType('BB')" id="bb_offset_type">
+                        <option value="current">현재봉</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="bb_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="bb_offset_slider" min="0" max="100" value="0" oninput="syncSlider('bb_offset','bb_offset_slider')">
+                        <span class="slider-val" id="bb_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">③</span>볼린저 밴드</div>
+                    <div class="option-group">
+                        <button type="button" class="opt-btn selected bb-opt" onclick="selectBB('BB_UPPER', this)">상단 밴드</button>
+                        <button type="button" class="opt-btn bb-opt" onclick="selectBB('BB_MIDDLE', this)">중단 밴드(SMA20)</button>
+                        <button type="button" class="opt-btn bb-opt" onclick="selectBB('BB_LOWER', this)">하단 밴드</button>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">④</span>상세 설정</div>
+                    <span class="helper">기간(Period)</span>
+                    <input type="number" name="bb_period" value="20" min="1" class="wide">
+                    <span class="helper" style="margin-left:12px;">승수(StdDev)</span>
+                    <select name="bb_std">
+                        <option value="2.0" selected>2.0</option>
+                        <option value="1.5">1.5</option>
+                        <option value="1.0">1.0</option>
+                        <option value="2.5">2.5</option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">⑤</span>비교 조건</div>
+                    <span class="helper" style="margin-right:8px;">종가(Close)가</span>
+                    <select name="operator">
+                        <option value="gte">이상 (&gt;=)</option>
+                        <option value="lte">이하 (&lt;=)</option>
+                        <option value="gt">초과 (&gt;)</option>
+                        <option value="lt">미만 (&lt;)</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn-add-cond">＋ BB 조건 추가</button>
+        </form>
+
+        <!-- ═══ HEIKIN ASHI FORM ═══ -->
+        <form id="form-HA" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateHA()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="HA">
+            <input type="hidden" name="ha_pattern" id="ha_pattern_val" value="HA_BULL">
+            <input type="hidden" name="offset" id="ha_offset" value="0">
+
+            <div class="form-grid">
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe">
+                        <option value="minute1">1분봉</option>
+                        <option value="minute3">3분봉</option>
+                        <option value="minute5">5분봉</option>
+                        <option value="minute10">10분봉</option>
+                        <option value="minute15">15분봉</option>
+                        <option value="minute30">30분봉</option>
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기간 선택</div>
+                    <select onchange="syncOffsetType('HA')" id="ha_offset_type">
+                        <option value="current">현재봉</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="ha_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="ha_offset_slider" min="0" max="100" value="0" oninput="syncSlider('ha_offset','ha_offset_slider')">
+                        <span class="slider-val" id="ha_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">③</span>패턴 종류</div>
+                    <div class="option-group" style="flex-wrap:wrap; max-width:550px;">
+                        <button type="button" class="opt-btn selected ha-opt" onclick="selectHA('HA_BULL', this)">HA 양봉</button>
+                        <button type="button" class="opt-btn ha-opt" onclick="selectHA('HA_BEAR', this)">HA 음봉</button>
+                        <button type="button" class="opt-btn ha-opt" onclick="selectHA('HA_BULL_N', this)">HA 연속 양봉</button>
+                        <button type="button" class="opt-btn ha-opt" onclick="selectHA('HA_BEAR_N', this)">HA 연속 음봉</button>
+                        <button type="button" class="opt-btn ha-opt" onclick="selectHA('HA_NO_LOWER', this)">HA 아랫꼬리 없음</button>
+                        <button type="button" class="opt-btn ha-opt" onclick="selectHA('HA_NO_UPPER', this)">HA 윗꼬리 없음</button>
+                    </div>
+                </div>
+                <div class="field-row" id="ha_n_wrap" style="display:none;">
+                    <div class="field-label"><span class="num">④</span>연속 봉수</div>
+                    <div class="slider-wrap">
+                        <input type="range" class="slider" id="ha_n_slider" min="2" max="20" value="3" oninput="syncHaN(this.value)">
+                        <span class="slider-val" id="ha_n_display">3</span>
+                    </div>
+                    <input type="number" name="ha_n" id="ha_n_input" value="3" min="2" max="20" class="wide" oninput="syncHaNInput(this.value)">
+                </div>
+            </div>
+            <button type="submit" class="btn-add-cond">＋ 하이킨아시 조건 추가</button>
+        </form>
+
+        <!-- ═══ 일목균형표 FORM ═══ -->
+        <form id="form-IC" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateIC()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="IC">
+            <input type="hidden" name="ic_comparison" id="ic_comparison_val" value="TENKAN_KIJUN">
+            <input type="hidden" name="offset" id="ic_offset" value="0">
+
+            <div class="form-grid">
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe">
+                        <option value="minute1">1분봉</option>
+                        <option value="minute3">3분봉</option>
+                        <option value="minute5">5분봉</option>
+                        <option value="minute10">10분봉</option>
+                        <option value="minute15">15분봉</option>
+                        <option value="minute30">30분봉</option>
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기간 선택</div>
+                    <select onchange="syncOffsetType('IC')" id="ic_offset_type">
+                        <option value="current">현재봉</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="ic_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="ic_offset_slider" min="0" max="100" value="0" oninput="syncSlider('ic_offset','ic_offset_slider')">
+                        <span class="slider-val" id="ic_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">③</span>비교 대상</div>
+                    <div class="option-group" style="flex-wrap:wrap; max-width:550px;">
+                        <button type="button" class="opt-btn selected bb-opt" onclick="selectIC('TENKAN_KIJUN', this)">전환선 / 기준선</button>
+                        <button type="button" class="opt-btn bb-opt" onclick="selectIC('CLOSE_SPAN_A', this)">종가 / 선행스팬1</button>
+                        <button type="button" class="opt-btn bb-opt" onclick="selectIC('CLOSE_SPAN_B', this)">종가 / 선행스팬2</button>
+                        <button type="button" class="opt-btn bb-opt" onclick="selectIC('SPAN_A_SPAN_B', this)">선행스팬1 / 선행스팬2</button>
+                        <button type="button" class="opt-btn bb-opt" onclick="selectIC('CHIKOU_CLOSE', this)">후행스팬 / 26봉 전 종가</button>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">④</span>참고사항</div>
+                    <span id="ic_comparison_helper" style="font-size: 12px; color: var(--amber);">전환선(9)이 기준선(26)과 비교됩니다.</span>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">⑤</span>비교 조건</div>
+                    <span class="helper" style="margin-right:8px;">앞선 지표가 뒤 지표</span>
+                    <select name="operator">
+                        <option value="gte">이상 (&gt;=)</option>
+                        <option value="lte">이하 (&lt;=)</option>
+                        <option value="gt">초과 (&gt;)</option>
+                        <option value="lt">미만 (&lt;)</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn-add-cond">＋ 일목균형표 조건 추가</button>
+        </form>
+
+        <!-- ═══ 거래량 FORM ═══ -->
+        <form id="form-VOLUME" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateVOLUME()">
+            {% csrf_token %}
+            <input type="hidden" name="cond_type" value="VOLUME">
+            <input type="hidden" name="offset" id="volume_offset" value="0">
+            <input type="hidden" name="volume_target" id="volume_target_val" value="prev">
+
+            <div class="form-grid">
+                <div class="field-row">
+                    <div class="field-label"><span class="num">①</span>캔들 단위</div>
+                    <select name="timeframe">
+                        <option value="minute1">1분봉</option>
+                        <option value="minute3">3분봉</option>
+                        <option value="minute5">5분봉</option>
+                        <option value="minute10">10분봉</option>
+                        <option value="minute15">15분봉</option>
+                        <option value="minute30">30분봉</option>
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">②</span>기간 선택</div>
+                    <select onchange="syncOffsetType('VOLUME')" id="volume_offset_type">
+                        <option value="current">현재봉</option>
+                        <option value="before">봉 전</option>
+                    </select>
+                    <div class="slider-wrap" id="volume_offset_slider_wrap" style="display:none;">
+                        <input type="range" class="slider" id="volume_offset_slider" min="0" max="100" value="0" oninput="syncSlider('volume_offset','volume_offset_slider')">
+                        <span class="slider-val" id="volume_offset_display">0</span>
+                        <span class="slider-unit">봉 전</span>
+                    </div>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">③</span>비교 대상</div>
+                    <div class="option-group">
+                        <button type="button" class="opt-btn selected bb-opt" onclick="selectVolumeTarget('prev', this)">이전봉 거래량 대비</button>
+                        <button type="button" class="opt-btn bb-opt" onclick="selectVolumeTarget('ma', this)">평균 거래량 대비</button>
+                    </div>
+                </div>
+                <div class="field-row" id="volume_period_row" style="display:none;">
+                    <div class="field-label"><span class="num">④</span>평균 기간</div>
+                    <input type="number" name="volume_period" id="volume_period" value="20" min="1" class="wide">
+                    <span class="helper">봉 (기본값: 20)</span>
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">⑤</span>기준 비율</div>
+                    <div class="slider-wrap">
+                        <input type="range" class="slider" id="volume_pct_slider" min="10" max="1000" value="150" step="10" oninput="syncSlider('volume_pct_input','volume_pct_slider')">
+                        <span class="slider-val" id="volume_pct_display">150</span>
+                        <span class="slider-unit">%</span>
+                    </div>
+                    <input type="number" name="volume_pct" id="volume_pct_input" value="150" min="10" max="1000" class="wide" oninput="syncInputToSlider('volume_pct_input','volume_pct_slider')">
+                </div>
+                <div class="field-row">
+                    <div class="field-label"><span class="num">⑥</span>비교 조건</div>
+                    <span class="helper" style="margin-right:8px;">거래량이 위 기준대비</span>
+                    <select name="operator">
+                        <option value="gte" selected>이상 (&gt;=)</option>
+                        <option value="gt">초과 (&gt;)</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn-add-cond">＋ 거래량 조건 추가</button>
+        </form>
+      </div>
+
+      <!-- ===== CONDITION SETTINGS ===== -->
+      <div class="section">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+          <div class="section-title" style="margin:0;">조건 설정</div>
+          <span class="tag tag-p">AND 조합</span>
+        </div>
+        
+        <div class="cond-list">
+          {% for cond in conditions %}
+          <div class="cond-block">
+            <div class="cond-head">
+              <span class="cond-label">
+                조건 {{ forloop.counter }} — {{ cond.get_timeframe_display }}
+              </span>
+              <form method="post" action="{% url 'condition_delete' strategy.id cond.id %}" style="display:inline;" onsubmit="return confirm('이 조건을 삭제하시겠습니까?')">
+                {% csrf_token %}
+                <button type="submit" class="cond-del-btn" title="조건 삭제">×</button>
+              </form>
+            </div>
+            <div class="cond-row">
+              <span class="csel hi">{{ cond.get_timeframe_display }}</span>
+              <span class="csel">{{ cond.offset }}봉전</span>
+              
+              {% if cond.left_indicator == 'CLOSE' %}
+                <span class="carr">종가</span>
+              {% elif cond.left_indicator == 'VAL' %}
+                <span class="cinput" style="width:auto; padding:6px 10px;">{{ cond.left_param }}</span>
+              {% else %}
+                <span class="carr">{{ cond.get_left_indicator_display }}</span>
+                <span class="cinput">{{ cond.left_param }}</span>
+              {% endif %}
+              
+              <span class="carr">{{ cond.get_operator_display }}</span>
+              
+              {% if cond.right_indicator == 'CLOSE' %}
+                <span class="carr">종가</span>
+              {% elif cond.right_indicator == 'VAL' %}
+                <span class="cinput" style="width:auto; padding:6px 10px;">{{ cond.right_param }}</span>
+              {% else %}
+                <span class="carr">{{ cond.get_right_indicator_display }}</span>
+                <span class="cinput">{{ cond.right_param }}</span>
+              {% endif %}
+            </div>
+          </div>
+          {% empty %}
+          <div class="cond-block" style="text-align: center; color: var(--text3); padding: 30px;">
+            설정된 조건이 없습니다. 위의 "지표 선택"에서 새로운 조건을 추가해주세요.
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="info-box">
+          <b>핵심 매매 원칙:</b> 설정한 조건들이 동시에 만족(AND)할 때 코인을 스크리닝하며, 우측 하단의 백테스팅 기능을 활용하여 과거 기간 동안의 가상 수익률과 승률을 손쉽게 검증할 수 있습니다.
+        </div>
+      </div>
+
+      <!-- ===== EXCHANGE & FILTER ===== -->
+      <div class="section">
+        <div class="section-title">거래소 & 필터</div>
+        <div class="filter-wrap">
+          <div class="fchip exchange-chip on" data-val="upbit" onclick="selectExchange(this)">업비트</div>
+          <div class="fchip exchange-chip" data-val="bithumb" onclick="selectExchange(this)">빗썸</div>
+          
+          <div style="border-left: 1px solid var(--border); margin: 0 8px;"></div>
+          
+          <div class="fchip vol-chip" data-val="30" onclick="selectVol(this)">거래대금 상위 30개</div>
+          <div class="fchip vol-chip" data-val="50" onclick="selectVol(this)">거래대금 상위 50개</div>
+          <div class="fchip vol-chip on" data-val="100" onclick="selectVol(this)">거래대금 상위 100개</div>
+          <div class="fchip vol-chip" data-val="200" onclick="selectVol(this)">거래대금 상위 200개</div>
+          <div class="fchip vol-chip" data-val="0" onclick="selectVol(this)">전체 코인</div>
+        </div>
+      </div>
+
+      <!-- ===== ACTION BAR ===== -->
+      <div class="action-bar">
+        <button class="abtn abtn-run" onclick="runSearch()">▶ 검색 실행</button>
+        <button class="abtn abtn-bt" onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}', '{{ strategy.conditions.first.timeframe|default:'day' }}')">📊 백테스팅</button>
+        <a href="{% url 'strategy_detail' strategy.id %}" class="abtn-alert" title="이전 상세 정보 및 알림 히스토리">🔔</a>
+      </div>
+    </div>
+    {% else %}
+    <!-- ===== NO STRATEGY ACTIVE ===== -->
+    <div style="text-align: center; padding: 100px 0; color: var(--text2);">
+      <h3>활성화된 전략이 없습니다.</h3>
+      <p style="margin-top: 10px; font-size:14px; color: var(--text3);">좌측 사이드바의 "+ 전략 추가" 버튼을 통해 새로운 트레이딩 전략을 생성하세요.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 백테스팅 모달 포함 -->
+{% if strategy %}
+  {% include "screener/backtest_modal.html" %}
+{% endif %}
+
+<script>
+  // 초기화 및 이벤트 리스너 등록
+  document.addEventListener("DOMContentLoaded", () => {
+    updateRR();
+    // 텔레그램 상태 동기화
+    {% if strategy %}
+      bindAlertSettings();
+    {% endif %}
+  });
+
+  // Fetch alert settings and update sidebar checkbox
+  {% if strategy %}
+  function bindAlertSettings() {
+    fetch('{% url "alert_get" strategy.id %}')
+      .then(res => res.json())
+      .then(data => {
+        const box = document.getElementById('tg-alert-box');
+        if (box) {
+          if (data.enabled) {
+            box.classList.add('on');
+            box.querySelector('.toggle').textContent = '켜짐';
+          } else {
+            box.classList.remove('on');
+            box.querySelector('.toggle').textContent = '꺼짐';
+          }
+        }
+        
+        // 동적으로 거래소/볼륨 칩스 선택 동기화
+        if (data.exchange) {
+          document.querySelectorAll('.exchange-chip').forEach(c => {
+            if (c.dataset.val === data.exchange) c.classList.add('on');
+            else c.classList.remove('on');
+          });
+        }
+        if (data.vol_limit !== undefined) {
+          document.querySelectorAll('.vol-chip').forEach(c => {
+            if (parseInt(c.dataset.val) === data.vol_limit) c.classList.add('on');
+            else c.classList.remove('on');
+          });
+        }
+      });
+  }
+  {% endif %}
+
+  // Create new strategy popup
+  function createNewStrategy() {
+    const name = prompt("새로운 전략의 이름을 입력해주세요:");
+    if (name && name.trim()) {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = "{% url 'strategy_create' %}";
+      
+      const csrf = document.createElement('input');
+      csrf.type = 'hidden';
+      csrf.name = 'csrfmiddlewaretoken';
+      csrf.value = '{{ csrf_token }}';
+      form.appendChild(csrf);
+      
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'name';
+      input.value = name.trim();
+      form.appendChild(input);
+      
+      document.body.appendChild(form);
+      form.submit();
+    }
+  }
+
+  // RR Ratio calculator
+  function updateRR() {
+    const slInput = document.getElementById('risk-sl');
+    const tpInput = document.getElementById('risk-tp');
+    if (!slInput || !tpInput) return;
+    const sl = parseFloat(slInput.value) || -8.0;
+    const tp = parseFloat(tpInput.value) || 24.0;
+    const rr = Math.abs(tp / sl);
+    document.getElementById('risk-rr-val').textContent = '1 : ' + (isNaN(rr) ? '0.0' : rr.toFixed(1));
+  }
+
+  // Save Risk settings dynamically via AJAX
+  let saveRiskTimer = null;
+  function saveRiskSettings() {
+    clearTimeout(saveRiskTimer);
+    saveRiskTimer = setTimeout(async () => {
+      const slInput = document.getElementById('risk-sl');
+      const tpInput = document.getElementById('risk-tp');
+      const capInput = document.getElementById('risk-capital');
+      if (!slInput || !tpInput || !capInput) return;
+      
+      const sl = parseFloat(slInput.value) || -8.0;
+      const tp = parseFloat(tpInput.value) || 24.0;
+      const cap = parseInt(capInput.value) || 20;
+
+      try {
+        const response = await fetch('{% if strategy %}{% url "save_risk_settings" strategy.id %}{% endif %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+          },
+          body: JSON.stringify({
+            stop_loss: sl,
+            take_profit: tp,
+            capital_pct: cap
+          })
+        });
+        const data = await response.json();
+        if (data.ok) {
+          console.log('Risk settings saved.');
+        }
+      } catch (err) {
+        console.error('Error auto-saving risk settings:', err);
+      }
+    }, 500);
+  }
+
+  // Toggle Telegram alerts
+  async function toggleTelegramAlert(el) {
+    el.classList.toggle('on');
+    const enabled = el.classList.contains('on');
+    el.querySelector('.toggle').textContent = enabled ? '켜짐' : '꺼짐';
+    
+    await saveAlertSettings(enabled);
+  }
+
+  // AJAX save alert settings
+  async function saveAlertSettings(enabledVal) {
+    const exchangeChip = document.querySelector('.exchange-chip.on');
+    const exchange = exchangeChip ? exchangeChip.dataset.val : 'upbit';
+    const volChip = document.querySelector('.vol-chip.on');
+    const volLimit = volChip ? parseInt(volChip.dataset.val) : 100;
+    const box = document.getElementById('tg-alert-box');
+    const enabled = enabledVal !== undefined ? enabledVal : (box ? box.classList.contains('on') : false);
+
+    try {
+      const response = await fetch('{% if strategy %}{% url "alert_save" strategy.id %}{% endif %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+          enabled: enabled,
+          exchange: exchange,
+          vol_limit: volLimit
+        })
+      });
+      const data = await response.json();
+      if (data.ok) {
+        console.log('Alert settings saved.');
+      }
+    } catch (err) {
+      console.error('Error saving alert settings:', err);
+    }
+  }
+
+  // Exchange and Volume filter selection chips
+  function selectExchange(el) {
+    document.querySelectorAll('.exchange-chip').forEach(c => c.classList.remove('on'));
+    el.classList.add('on');
+    saveAlertSettings();
+  }
+
+  function selectVol(el) {
+    document.querySelectorAll('.vol-chip').forEach(c => c.classList.remove('on'));
+    el.classList.add('on');
+    saveAlertSettings();
+  }
+
+  // Search Execute
+  function runSearch() {
+    const exchangeChip = document.querySelector('.exchange-chip.on');
+    const exchange = exchangeChip ? exchangeChip.dataset.val : 'upbit';
+    const volChip = document.querySelector('.vol-chip.on');
+    const vol = volChip ? volChip.dataset.val : '100';
+    const url = `{% if strategy %}{% url 'coin_search' strategy.id %}{% endif %}?exchange=${exchange}&vol_limit=${vol}`;
+    window.location.href = url;
+  }
+
+  // Tab switching
+  function switchTab(e, type) {
+    document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('on'));
+    document.querySelectorAll('.cond-form').forEach(f => f.classList.remove('active'));
+    e.target.classList.add('on');
+    document.getElementById('form-' + type).classList.add('active');
+  }
+
+  // Sliders and Offset types synchronization
+  function syncSlider(inputId, sliderId) {
+    const slider = document.getElementById(sliderId);
+    const val = parseInt(slider.value);
+    document.getElementById(inputId).value = val;
+    const dispId = sliderId.replace('_slider', '_display');
+    const disp = document.getElementById(dispId);
+    if (disp) disp.textContent = val;
+  }
+
+  function syncInputToSlider(inputId, sliderId) {
+    const inp = document.getElementById(inputId);
+    const slider = document.getElementById(sliderId);
+    const val = Math.max(parseInt(inp.min)||0, Math.min(parseInt(inp.max)||1000, parseInt(inp.value)||0));
+    slider.value = val;
+    const dispId = sliderId.replace('_slider', '_display');
+    const disp = document.getElementById(dispId);
+    if (disp) disp.textContent = val;
+  }
+
+  // Offset type sync for HA, RSI, MA etc.
+  function syncOffsetType(prefix) {
+    const sel = document.getElementById(prefix.toLowerCase() + '_offset_type');
+    const wrap = document.getElementById(prefix.toLowerCase() + '_offset_slider_wrap');
+    if (!sel || !wrap) return;
+    if (sel.value === 'before') {
+      wrap.style.display = 'flex';
+    } else {
+      wrap.style.display = 'none';
+      document.getElementById(prefix.toLowerCase() + '_offset').value = 0;
+    }
+  }
+
+  function toggleMaASource() {
+    const src = document.getElementById('ma_a_source').value;
+    const settings = document.getElementById('ma_a_settings');
+    const typeHid = document.getElementById('ma_price_a_type_val');
+    if (src === 'CLOSE') {
+      settings.style.opacity = '0.35';
+      settings.style.pointerEvents = 'none';
+      typeHid.value = 'CLOSE';
+    } else {
+      settings.style.opacity = '1';
+      settings.style.pointerEvents = '';
+      typeHid.value = 'MA';
+    }
+  }
+
+  function selectMaType(side, type, btn) {
+    const groupId = 'ma_type_' + side + '_group';
+    document.getElementById(groupId).querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('ma_type_' + side + '_val').value = type;
+  }
+
+  function selectBB(val, btn) {
+    document.querySelectorAll('.bb-opt').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('bb_target_val').value = val;
+  }
+
+  function selectHA(val, btn) {
+    document.querySelectorAll('.ha-opt').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('ha_pattern_val').value = val;
+    const showN = ['HA_BULL_N', 'HA_BEAR_N'].includes(val);
+    document.getElementById('ha_n_wrap').style.display = showN ? 'flex' : 'none';
+  }
+
+  function syncHaN(val) {
+    document.getElementById('ha_n_display').textContent = val;
+    document.getElementById('ha_n_input').value = val;
+  }
+
+  function syncHaNInput(val) {
+    const v = Math.max(2, Math.min(20, parseInt(val) || 2));
+    document.getElementById('ha_n_slider').value = v;
+    document.getElementById('ha_n_display').textContent = v;
+  }
+
+  function selectIC(val, btn) {
+    btn.parentNode.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('ic_comparison_val').value = val;
+    
+    const helper = document.getElementById('ic_comparison_helper');
+    if (val === 'TENKAN_KIJUN') {
+      helper.textContent = "전환선(9)이 기준선(26)과 비교됩니다.";
+    } else if (val === 'CLOSE_SPAN_A') {
+      helper.textContent = "종가(Close)가 선행스팬1(9, 26)과 비교됩니다.";
+    } else if (val === 'CLOSE_SPAN_B') {
+      helper.textContent = "종가(Close)가 선행스팬2(52)와 비교됩니다.";
+    } else if (val === 'SPAN_A_SPAN_B') {
+      helper.textContent = "선행스팬1(9, 26)이 선행스팬2(52)와 비교됩니다.";
+    } else if (val === 'CHIKOU_CLOSE') {
+      helper.textContent = "후행스팬(Chikou)이 26봉 전 종가와 비교됩니다.";
+    }
+  }
+
+  function selectVolumeTarget(val, btn) {
+    btn.parentNode.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('volume_target_val').value = val;
+    toggleVolumeFields();
+  }
+
+  function toggleVolumeFields() {
+    const target = document.getElementById('volume_target_val').value;
+    const periodRow = document.getElementById('volume_period_row');
+    const pctSlider = document.getElementById('volume_pct_slider');
+    const pctInput = document.getElementById('volume_pct_input');
+    const pctDisplay = document.getElementById('volume_pct_display');
+
+    if (target === 'ma') {
+      periodRow.style.display = 'block';
+      if (pctInput.value === '150') {
+        pctInput.value = '200';
+        pctSlider.value = '200';
+        pctDisplay.textContent = '200';
+      }
+    } else {
+      periodRow.style.display = 'none';
+      if (pctInput.value === '200') {
+        pctInput.value = '150';
+        pctSlider.value = '150';
+        pctDisplay.textContent = '150';
+      }
+    }
+  }
+
+  // Form Validations
+  function validateMA() {
+    const form = document.getElementById('form-MA');
+    const offset = parseInt(form.offset.value);
+    const aType = document.getElementById('ma_a_source').value;
+    const aVal = parseInt(form.ma_price_a_val.value);
+    const bVal = parseInt(form.ma_price_b_val.value);
+    if (isNaN(offset) || offset < 0) { alert("n봉 전은 0 이상의 숫자여야 합니다."); return false; }
+    if (aType !== 'CLOSE' && (isNaN(aVal) || aVal < 1)) { alert("이동평균A 기간은 1 이상이어야 합니다."); return false; }
+    if (isNaN(bVal) || bVal < 1) { alert("이동평균B 기간은 1 이상이어야 합니다."); return false; }
+    return true;
+  }
+
+  function validateRSI() {
+    const form = document.getElementById('form-RSI');
+    const period = parseInt(form.rsi_period.value);
+    const threshold = parseInt(form.rsi_threshold.value);
+    if (isNaN(period) || period < 1) { alert("RSI 기간은 1 이상이어야 합니다."); return false; }
+    if (isNaN(threshold) || threshold < 0 || threshold > 100) { alert("RSI 기준값은 0~100 사이여야 합니다."); return false; }
+    return true;
+  }
+
+  function validateBB() {
+    const form = document.getElementById('form-BB');
+    const period = parseInt(form.bb_period.value);
+    if (isNaN(period) || period < 1) { alert("볼린저밴드 기간은 1 이상이어야 합니다."); return false; }
+    return true;
+  }
+
+  function validateHA() {
+    const pattern = document.getElementById('ha_pattern_val').value;
+    if (['HA_BULL_N','HA_BEAR_N'].includes(pattern)) {
+      const n = parseInt(document.getElementById('ha_n_input').value);
+      if (isNaN(n) || n < 2) { alert("연속 봉 수는 2 이상이어야 합니다."); return false; }
+    }
+    return true;
+  }
+
+  function validateIC() {
+    const form = document.getElementById('form-IC');
+    const offset = parseInt(form.offset.value);
+    if (isNaN(offset) || offset < 0) { alert("n봉 전은 0 이상의 숫자여야 합니다."); return false; }
+    return true;
+  }
+
+  function validateVOLUME() {
+    const form = document.getElementById('form-VOLUME');
+    const offset = parseInt(form.offset.value);
+    if (isNaN(offset) || offset < 0) { alert("n봉 전은 0 이상의 숫자여야 합니다."); return false; }
+    
+    const pct = parseInt(document.getElementById('volume_pct_input').value);
+    if (isNaN(pct) || pct <= 0) { alert("기준 비율은 1% 이상이어야 합니다."); return false; }
+    
+    const target = document.getElementById('volume_target_val').value;
+    if (target === 'ma') {
+      const period = parseInt(document.getElementById('volume_period').value);
+      if (isNaN(period) || period < 1) { alert("평균 거래량 기간은 1 이상이어야 합니다."); return false; }
+    }
+    return true;
+  }
+</script>
+</body>
+</html>

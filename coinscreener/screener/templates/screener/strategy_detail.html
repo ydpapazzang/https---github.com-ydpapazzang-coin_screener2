@@ -787,7 +787,13 @@ select.op-select {
     <a href="{% url 'strategy_list' %}" style="text-decoration: none;">
         <div class="topnav-logo">wonii -screener<span>.</span></div>
     </a>
-    <div class="topnav-right">
+    <div class="topnav-right" style="display: flex; gap: 8px; align-items: center;">
+        <a href="{% url 'strategy_list' %}" style="text-decoration: none;">
+            <button class="nav-btn" style="background: transparent; border: 0.5px solid rgba(255,255,255,0.22); border-radius: 8px; color: #9090a8; font-size: 12px; padding: 6px 14px; cursor: pointer; transition: all 0.15s; font-family: inherit; font-weight: 600;">전략 리스트</button>
+        </a>
+        <a href="{% url 'strategy_trading' strategy.id %}" style="text-decoration: none;">
+            <button class="nav-btn" style="background: transparent; border: 0.5px solid rgba(255,255,255,0.22); border-radius: 8px; color: #9090a8; font-size: 12px; padding: 6px 14px; cursor: pointer; transition: all 0.15s; font-family: inherit; font-weight: 600;">전략 설정</button>
+        </a>
         <button class="btn-lang">EN</button>
         <button class="btn-theme">🌙</button>
     </div>

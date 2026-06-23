@@ -504,3 +504,52 @@ class BacktestOffsetTestCase(TestCase):
         is_match, details, last_price, volume, status = check_strategy('KRW-BTC', [cond_ma])
         self.assertTrue(is_match)
 
+
+class StrategyTradingViewsTestCase(TestCase):
+    def setUp(self):
+        from .models import Strategy
+        self.strategy = Strategy.objects.create(
+            name="Trading Strategy",
+            win_rate=65.0,
+            stop_loss=-5.0,
+            take_profit=15.0,
+            capital_pct=25
+        )
+
+    def test_strategy_trading_root_redirects(self):
+        # Accessing trading root should redirect to the first strategy's trading view
+        response = self.client.get('/trading/')
+        self.assertRedirects(response, f'/strategy/{self.strategy.id}/trading/')
+
+    def test_strategy_trading_detail_view(self):
+        # Accessing a specific strategy's trading page should render correctly
+        response = self.client.get(f'/strategy/{self.strategy.id}/trading/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'screener/strategy_trading.html')
+        self.assertContains(response, "Trading Strategy")
+        self.assertContains(response, "승률 65%")
+
+    def test_save_risk_settings(self):
+        # Saving risk settings via AJAX POST
+        import json
+        payload = {
+            'stop_loss': -10.0,
+            'take_profit': 30.0,
+            'capital_pct': 40
+        }
+        response = self.client.post(
+            f'/strategy/{self.strategy.id}/save-risk/',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(data['ok'])
+
+        # Check database
+        self.strategy.refresh_from_db()
+        self.assertEqual(self.strategy.stop_loss, -10.0)
+        self.assertEqual(self.strategy.take_profit, 30.0)
+        self.assertEqual(self.strategy.capital_pct, 40)
+
+

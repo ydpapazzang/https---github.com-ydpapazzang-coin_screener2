@@ -732,6 +732,14 @@ select option, .scope-sel option, .time-sel option {
     <a href="{% url 'strategy_list' %}" style="text-decoration: none;">
         <div class="logo">wonii -screener<span>.</span></div>
     </a>
+    <div class="nav-right" style="display: flex; gap: 8px; align-items: center;">
+        <a href="{% url 'strategy_list' %}" style="text-decoration: none;">
+            <button class="nav-btn active" style="background: var(--blue); border: 0.5px solid var(--blue); border-radius: 8px; color: #fff; font-size: 12px; padding: 6px 14px; cursor: pointer; transition: all 0.15s; font-family: inherit; font-weight: 600;">전략 리스트</button>
+        </a>
+        <a href="{% url 'strategy_trading_root' %}" style="text-decoration: none;">
+            <button class="nav-btn" style="background: transparent; border: 0.5px solid rgba(255,255,255,0.22); border-radius: 8px; color: #9090a8; font-size: 12px; padding: 6px 14px; cursor: pointer; transition: all 0.15s; font-family: inherit; font-weight: 600;">전략 설정</button>
+        </a>
+    </div>
 </nav>
 
 <div class="page">

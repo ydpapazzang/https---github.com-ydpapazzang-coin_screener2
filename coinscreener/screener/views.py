@@ -983,5 +983,48 @@ def cron_scan(request):
         return JsonResponse({'error': f'크론 수행 중 서버 오류: {str(e)}', 'traceback': err_msg}, status=500)
 
 
+def strategy_trading(request, strategy_id=None):
+    strategies = Strategy.objects.all().order_by('-created_at')
+    
+    if strategy_id is None:
+        first_strat = strategies.first()
+        if first_strat:
+            return redirect('strategy_trading', strategy_id=first_strat.id)
+        strategy = None
+        conditions = []
+        histories = []
+    else:
+        strategy = get_object_or_404(Strategy, id=strategy_id)
+        conditions = strategy.conditions.all()
+        histories = strategy.histories.all().order_by('-created_at')[:100]
+        
+    return render(request, 'screener/strategy_trading.html', {
+        'strategies': strategies,
+        'strategy': strategy,
+        'conditions': conditions,
+        'histories': histories,
+    })
+
+
+@csrf_exempt
+@require_POST
+def save_risk_settings(request, strategy_id):
+    strategy = get_object_or_404(Strategy, id=strategy_id)
+    try:
+        body = _json.loads(request.body)
+        stop_loss = float(body.get('stop_loss', -8.0))
+        take_profit = float(body.get('take_profit', 24.0))
+        capital_pct = int(body.get('capital_pct', 20))
+        
+        strategy.stop_loss = stop_loss
+        strategy.take_profit = take_profit
+        strategy.capital_pct = capital_pct
+        strategy.save()
+        return JsonResponse({'ok': True})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+
+
+
 
 

@@ -3,7 +3,48 @@ from django.db import models
 
 class Strategy(models.Model):
     name = models.CharField(max_length=100, verbose_name="전략명")
+    win_rate = models.FloatField(default=60.0, verbose_name="승률 (%)")
+    stop_loss = models.FloatField(default=-8.0, verbose_name="손절 기준 (%)")
+    take_profit = models.FloatField(default=24.0, verbose_name="목표 익절 (%)")
+    capital_pct = models.IntegerField(default=20, verbose_name="진입 자본 비율 (%)")
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def get_meta_text(self):
+        conds = self.conditions.all()
+        if not conds:
+            return "조건 없음"
+        
+        tfs = []
+        tf_map = {
+            'minute1': '1분', 'minute3': '3분', 'minute5': '5분',
+            'minute10': '10분', 'minute15': '15분', 'minute30': '30분',
+            'minute60': '1시간', 'minute240': '4시간',
+            'day': '일봉', 'week': '주봉', 'month': '월봉'
+        }
+        for c in conds:
+            tf_readable = tf_map.get(c.timeframe, c.timeframe)
+            if tf_readable not in tfs:
+                tfs.append(tf_readable)
+                
+        inds = []
+        ind_map = {
+            'MA': 'MA', 'EMA': 'EMA', 'WMA': 'WMA', 'RSI': 'RSI',
+            'BB_UPPER': '볼린저밴드', 'BB_MIDDLE': '볼린저밴드', 'BB_LOWER': '볼린저밴드',
+            'HA_BULL': '하이킨아시', 'HA_BEAR': '하이킨아시', 'HA_BULL_N': '하이킨아시', 'HA_BEAR_N': '하이킨아시', 'HA_NO_LOWER': '하이킨아시', 'HA_NO_UPPER': '하이킨아시',
+            'IC_TENKAN': '일목균형표', 'IC_KIJUN': '일목균형표', 'IC_SPAN_A': '일목균형표', 'IC_SPAN_B': '일목균형표', 'IC_SPAN_C': '일목균형표', 'IC_SPAN_D': '일목균형표', 'IC_CHIKOU': '일목균형표', 'IC_CHIKOU_REF': '일목균형표',
+            'VOLUME': '거래량', 'VOLUME_PREV': '거래량', 'VOLUME_MA': '거래량'
+        }
+        for c in conds:
+            ind_readable = ind_map.get(c.left_indicator, c.left_indicator)
+            if ind_readable not in ('CLOSE', 'VAL') and ind_readable not in inds:
+                inds.append(ind_readable)
+            ind_readable_r = ind_map.get(c.right_indicator, c.right_indicator)
+            if ind_readable_r not in ('CLOSE', 'VAL') and ind_readable_r not in inds:
+                inds.append(ind_readable_r)
+        
+        tf_str = " · ".join(tfs)
+        ind_str = " + ".join(inds) if inds else "종가"
+        return f"{tf_str} · {ind_str}"
 
     def __str__(self):
         return self.name
