@@ -1,0 +1,530 @@
+<style>
+/* ── toast ── */
+.toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: rgba(16, 20, 33, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #e4e7ec;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 9999;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    white-space: nowrap;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.toast.ok  { border-color: #10b981; color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.15); }
+.toast.err { border-color: #f43f5e; color: #f43f5e; box-shadow: 0 0 15px rgba(244, 63, 94, 0.15); }
+
+/* ── AI Assistant Styles ── */
+.ai-floating-btn {
+    position: fixed; bottom: 28px; right: 28px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: linear-gradient(135deg, #7c3aed 0%, #3b82f6 100%);
+    border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 32px rgba(124, 58, 237, 0.35);
+    z-index: 1000; transition: transform 0.25s, box-shadow 0.25s;
+    font-size: 24px; color: #fff; outline: none;
+}
+.ai-floating-btn:hover {
+    transform: scale(1.08) translateY(-2px);
+    box-shadow: 0 12px 40px rgba(124, 58, 237, 0.5);
+}
+.ai-floating-btn:active {
+    transform: scale(0.95);
+}
+
+.ai-chat-panel {
+    position: fixed; bottom: 100px; right: 28px;
+    width: min(500px, 92vw); height: 650px;
+    background: rgba(16, 20, 33, 0.85);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 20px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 35px rgba(124, 58, 237, 0.15);
+    display: none; flex-direction: column; overflow: hidden;
+    z-index: 1000; transform: translateY(20px); opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.1), opacity 0.3s ease;
+}
+.ai-chat-panel.open {
+    display: flex; transform: translateY(0); opacity: 1;
+}
+
+.resize-handle {
+    position: absolute;
+    background: transparent;
+    user-select: none;
+}
+.resize-handle.top { top: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; z-index: 1010; }
+.resize-handle.left { top: 0; bottom: 0; left: 0; width: 6px; cursor: ew-resize; z-index: 1010; }
+.resize-handle.top-left { top: 0; left: 0; width: 12px; height: 12px; cursor: nwse-resize; z-index: 1011; }
+
+.ai-chat-header {
+    background: linear-gradient(90deg, rgba(124, 58, 237, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
+}
+.ai-chat-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700; font-size: 15px; color: #fff; display: flex; align-items: center; gap: 8px;
+}
+.ai-chat-title span.pulse {
+    width: 8px; height: 8px; border-radius: 50%; background: #10b981;
+    display: inline-block; animation: pulse 1.5s infinite;
+    box-shadow: 0 0 8px #10b981;
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.ai-chat-close {
+    background: transparent; border: none; color: #9ca3af; cursor: pointer; font-size: 18px;
+    width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ai-chat-close:hover { background: rgba(255,255,255,0.06); color: #fff; }
+
+.ai-chat-body {
+    flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px;
+    scroll-behavior: smooth;
+}
+.ai-msg {
+    max-width: 85%; padding: 12px 16px; border-radius: 16px; font-size: 13.5px; line-height: 1.55;
+    word-break: break-word;
+}
+.ai-msg.user {
+    background: linear-gradient(135deg, #7c3aed 0%, #3b82f6 100%); color: #fff; align-self: flex-end;
+    border-bottom-right-radius: 2px;
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
+}
+.ai-msg.assistant {
+    background: rgba(255,255,255,0.03); color: #e4e7ec; align-self: flex-start;
+    border-bottom-left-radius: 2px; border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ai-msg.assistant p { margin-bottom: 8px; }
+.ai-msg.assistant p:last-child { margin-bottom: 0; }
+.ai-msg.assistant ul, .ai-msg.assistant ol { margin-left: 18px; margin-bottom: 8px; }
+.ai-msg.assistant li { margin-bottom: 4px; }
+.ai-msg.assistant strong { color: #fff; }
+
+.ai-quick-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 20px 12px; }
+.ai-quick-btn {
+    background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #9ca3af; padding: 6px 14px; border-radius: 20px; font-size: 11.5px;
+    cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); font-weight: 600;
+}
+.ai-quick-btn:hover {
+    background: rgba(124, 58, 237, 0.15); border-color: rgba(124, 58, 237, 0.4); color: #fff;
+}
+
+.ai-chat-footer {
+    padding: 12px 20px 20px; border-top: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex; gap: 8px; align-items: center;
+}
+.ai-chat-input {
+    flex: 1; background: rgba(7, 9, 14, 0.6); border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #e4e7ec; padding: 11px 16px; border-radius: 10px; font-size: 13.5px;
+    outline: none; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ai-chat-input:focus { border-color: #7c3aed; box-shadow: 0 0 10px rgba(124, 58, 237, 0.35); }
+.ai-send-btn {
+    background: #7c3aed; border: none; color: #fff; width: 38px; height: 38px;
+    border-radius: 10px; cursor: pointer; display: grid; place-items: center;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); font-size: 16px; outline: none;
+    box-shadow: 0 4px 10px rgba(124, 58, 237, 0.35);
+}
+.ai-send-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.ai-send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.ai-loader { display: flex; align-items: center; gap: 4px; padding: 4px 6px; }
+.ai-loader .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: #9ca3af;
+    animation: loader-dots 1.4s infinite ease-in-out both;
+}
+.ai-loader .dot:nth-child(1) { animation-delay: -0.32s; }
+.ai-loader .dot:nth-child(2) { animation-delay: -0.16s; }
+@keyframes loader-dots {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1.0); }
+}
+
+/* AI Strategy Create Button */
+.ai-strat-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 12px; padding: 10px 18px;
+    background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+    border: none; border-radius: 20px;
+    color: #fff; font-size: 13px; font-weight: 800;
+    cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3), inset 0 1px 1px rgba(255,255,255,0.2);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    animation: pulse-glow 2s infinite;
+    outline: none;
+}
+.ai-strat-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5), inset 0 1px 1px rgba(255,255,255,0.3);
+}
+.ai-strat-btn:active { transform: translateY(1px); }
+.ai-strat-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; box-shadow: none; animation: none; }
+@keyframes pulse-glow {
+    0% { box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3); }
+    50% { box-shadow: 0 4px 25px rgba(0, 242, 254, 0.6); }
+    100% { box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3); }
+}
+
+.spinner-inline {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<!-- wonii-AI 비서 플로팅 버튼 -->
+<button class="ai-floating-btn" id="ai-btn" onclick="toggleAIChat()" title="AI 비서에게 질문하기">💬</button>
+
+<!-- wonii-AI 비서 챗 패널 -->
+<div class="ai-chat-panel" id="ai-panel">
+    <!-- 드래그 크기 조절을 위한 핸들들 -->
+    <div class="resize-handle top" id="resize-top"></div>
+    <div class="resize-handle left" id="resize-left"></div>
+    <div class="resize-handle top-left" id="resize-top-left"></div>
+
+    <div class="ai-chat-header">
+        <div class="ai-chat-title">
+            <span class="pulse"></span> wonii -AI 비서
+        </div>
+        <button class="ai-chat-close" onclick="toggleAIChat()">✕</button>
+    </div>
+    
+    <div class="ai-chat-body" id="ai-messages">
+        <div class="ai-msg assistant">
+            🤖 안녕하세요! <strong>wonii -screener</strong>의 AI 비서입니다. 
+            코인 추천 전략 설정이나 기술적 지표에 대해 무엇이든 물어보세요!
+        </div>
+    </div>
+    
+    <!-- 빠른 질문 추천 -->
+    <div class="ai-quick-row">
+        <button class="ai-quick-btn" onclick="askQuick('💡 볼린저 밴드 돌파 전략 추천')">💡 볼린저 밴드</button>
+        <button class="ai-quick-btn" onclick="askQuick('📈 하이킨아시 조건식 가이드')">📈 하이킨아시</button>
+        <button class="ai-quick-btn" onclick="askQuick('⚡ RSI 스캘핑 기법')">⚡ RSI 기법</button>
+    </div>
+    
+    <div class="ai-chat-footer">
+        <input type="text" class="ai-chat-input" id="ai-input" placeholder="질문을 입력하세요..." onkeypress="handleAIKeyPress(event)">
+        <button class="ai-send-btn" id="ai-send-btn" onclick="sendAIPrompt()">➔</button>
+    </div>
+</div>
+
+<script>
+if (typeof showToast === 'undefined') {
+    window.toastTimer = null;
+    window.showToast = function(msg, type) {
+        let t = document.getElementById('toast');
+        if (!t) {
+            t = document.createElement('div');
+            t.id = 'toast';
+            t.className = 'toast';
+            document.body.appendChild(t);
+        }
+        t.textContent = msg;
+        t.className = 'toast show ' + (type || '');
+        clearTimeout(window.toastTimer);
+        window.toastTimer = setTimeout(() => { t.className = 'toast'; }, 3000);
+    };
+}
+
+/* ── wonii-AI Assistant Client Logic ── */
+function toggleAIChat() {
+    const panel = document.getElementById('ai-panel');
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+        document.getElementById('ai-input').focus();
+    }
+}
+
+function handleAIKeyPress(e) {
+    if (e.key === 'Enter') {
+        sendAIPrompt();
+    }
+}
+
+function askQuick(prompt) {
+    document.getElementById('ai-input').value = prompt;
+    sendAIPrompt();
+}
+
+function parseMarkdown(text) {
+    let html = text;
+    // HTML escape
+    html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
+    // Bold
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Headers
+    html = html.replace(/^### (.*?)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.*?)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.*?)$/gm, '<h1>$1</h1>');
+    
+    // Unordered lists
+    html = html.replace(/^\* (.*?)$/gm, '<li>$1</li>');
+    html = html.replace(/^- (.*?)$/gm, '<li>$1</li>');
+    
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.08);padding:2px 5px;border-radius:4px;font-family:monospace;font-size:12px;color:#f5a623;">$1</code>');
+    
+    // Line breaks
+    html = html.replace(/\n/g, '<br>');
+    
+    return html;
+}
+
+async function sendAIPrompt() {
+    const input = document.getElementById('ai-input');
+    const sendBtn = document.getElementById('ai-send-btn');
+    const msgContainer = document.getElementById('ai-messages');
+    
+    const prompt = input.value.trim();
+    if (!prompt) return;
+    
+    input.value = '';
+    
+    // Add User Message
+    const userMsgEl = document.createElement('div');
+    userMsgEl.className = 'ai-msg user';
+    userMsgEl.textContent = prompt;
+    msgContainer.appendChild(userMsgEl);
+    
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+    
+    // Add Loader
+    const loaderEl = document.createElement('div');
+    loaderEl.className = 'ai-msg assistant';
+    loaderEl.id = 'ai-loading-bubble';
+    loaderEl.innerHTML = `
+        <div class="ai-loader">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
+        </div>
+    `;
+    msgContainer.appendChild(loaderEl);
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+    
+    input.disabled = true;
+    sendBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/ai/ask/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({ prompt: prompt })
+        });
+        
+        const loader = document.getElementById('ai-loading-bubble');
+        if (loader) loader.remove();
+        
+        const data = await response.json();
+        
+        const aiMsgEl = document.createElement('div');
+        aiMsgEl.className = 'ai-msg assistant';
+        if (data.response) {
+            // Extract strategy JSON from response text
+            const text = data.response;
+            const extracted = extractStrategyJSON(text);
+            
+            if (extracted) {
+                aiMsgEl.innerHTML = parseMarkdown(extracted.cleanText);
+                
+                const strategyName = extracted.parsed.create_strategy.name || "AI 추천 전략";
+                const btn = document.createElement('button');
+                btn.className = 'ai-strat-btn';
+                btn.innerHTML = `✨ <strong>[${strategyName}]</strong> 전략 실시간 추가`;
+                btn.onclick = () => createAIStrategy(extracted.parsed, btn);
+                aiMsgEl.appendChild(btn);
+            } else {
+                aiMsgEl.innerHTML = parseMarkdown(text);
+            }
+        } else if (data.error) {
+            aiMsgEl.innerHTML = `⚠️ <strong>오류:</strong> ${data.error}`;
+        } else {
+            aiMsgEl.innerHTML = `⚠️ <strong>오류:</strong> 올바르지 않은 응답이 수신되었습니다.`;
+        }
+        msgContainer.appendChild(aiMsgEl);
+        
+    } catch (e) {
+        const loader = document.getElementById('ai-loading-bubble');
+        if (loader) loader.remove();
+        
+        const errEl = document.createElement('div');
+        errEl.className = 'ai-msg assistant';
+        errEl.innerHTML = `⚠️ <strong>네트워크 오류:</strong> 연결이 원활하지 않습니다. 다시 시도해 주세요. (${e.message})`;
+        msgContainer.appendChild(errEl);
+    }
+    
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
+    
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+}
+
+function extractStrategyJSON(text) {
+    const keywordIndex = text.indexOf('"create_strategy"');
+    if (keywordIndex === -1) return null;
+    
+    // Find the opening brace '{' preceding '"create_strategy"'
+    let startIndex = -1;
+    for (let i = keywordIndex; i >= 0; i--) {
+        if (text[i] === '{') {
+            startIndex = i;
+            break;
+        }
+    }
+    
+    if (startIndex === -1) return null;
+    
+    // Find the closing brace by counting braces
+    let braceCount = 0;
+    let endIndex = -1;
+    for (let i = startIndex; i < text.length; i++) {
+        if (text[i] === '{') braceCount++;
+        else if (text[i] === '}') {
+            braceCount--;
+            if (braceCount === 0) {
+                endIndex = i;
+                break;
+            }
+        }
+    }
+    
+    if (endIndex === -1) return null;
+    
+    const jsonStr = text.substring(startIndex, endIndex + 1);
+    try {
+        const parsed = JSON.parse(jsonStr);
+        
+        // Clean text and remove surrounding code block backticks (```json or ``json or ``` or ``)
+        let cleanText = text.substring(0, startIndex).trim();
+        let afterText = text.substring(endIndex + 1).trim();
+        
+        // Clean ending backticks/code fences from cleanText
+        cleanText = cleanText.replace(/```[a-z]*\s*$/, '').trim();
+        cleanText = cleanText.replace(/``[a-z]*\s*$/, '').trim();
+        cleanText = cleanText.replace(/`[a-z]*\s*$/, '').trim();
+        
+        // Clean starting backticks/code fences from afterText
+        afterText = afterText.replace(/^\s*```/, '').trim();
+        afterText = afterText.replace(/^\s*``/, '').trim();
+        afterText = afterText.replace(/^\s*`/, '').trim();
+        
+        return {
+            raw: jsonStr,
+            parsed: parsed,
+            cleanText: (cleanText + '\n\n' + afterText).trim()
+        };
+    } catch (e) {
+        console.error("Failed to parse extracted strategy JSON:", e);
+        return null;
+    }
+}
+
+async function createAIStrategy(strategyObj, btnEl) {
+    btnEl.disabled = true;
+    const originalHtml = btnEl.innerHTML;
+    btnEl.innerHTML = `<span class="spinner-inline"></span> 생성 중...`;
+    
+    try {
+        const response = await fetch('/ai/strategy/create/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(strategyObj)
+        });
+        
+        const data = await response.json();
+        if (data.ok && data.redirect_url) {
+            showToast('✨ 전략이 성공적으로 생성되었습니다! 이동합니다.', 'ok');
+            setTimeout(() => {
+                window.location.href = data.redirect_url;
+            }, 1000);
+        } else {
+            showToast('❌ 전략 생성 실패: ' + (data.error || '알 수 없는 오류'), 'err');
+            btnEl.disabled = false;
+            btnEl.innerHTML = originalHtml;
+        }
+    } catch (e) {
+        showToast('❌ 전략 생성 중 네트워크 오류가 발생했습니다.', 'err');
+        btnEl.disabled = false;
+        btnEl.innerHTML = originalHtml;
+    }
+}
+
+/* ── wonii-AI 비서 창 드래그 크기 조절 (Top / Left / Top-Left) ── */
+(function initAIChatResizer() {
+    window.addEventListener('DOMContentLoaded', () => {
+        const panel = document.getElementById('ai-panel');
+        const hTop = document.getElementById('resize-top');
+        const hLeft = document.getElementById('resize-left');
+        const hTopLeft = document.getElementById('resize-top-left');
+
+        if (!panel) return;
+
+        let startX, startY, startWidth, startHeight;
+
+        function initDrag(e, direction) {
+            e.preventDefault();
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = parseInt(document.defaultView.getComputedStyle(panel).width, 10);
+            startHeight = parseInt(document.defaultView.getComputedStyle(panel).height, 10);
+            
+            function doDrag(moveEvent) {
+                moveEvent.preventDefault();
+                if (direction === 'left' || direction === 'top-left') {
+                    const newWidth = startWidth - (moveEvent.clientX - startX);
+                    if (newWidth > 320 && newWidth < 800) {
+                        panel.style.width = newWidth + 'px';
+                    }
+                }
+                if (direction === 'top' || direction === 'top-left') {
+                    const newHeight = startHeight - (moveEvent.clientY - startY);
+                    if (newHeight > 300 && newHeight < 900) {
+                        panel.style.height = newHeight + 'px';
+                    }
+                }
+            }
+            
+            function stopDrag() {
+                document.documentElement.removeEventListener('mousemove', doDrag, false);
+                document.documentElement.removeEventListener('mouseup', stopDrag, false);
+            }
+            
+            document.documentElement.addEventListener('mousemove', doDrag, false);
+            document.documentElement.addEventListener('mouseup', stopDrag, false);
+        }
+
+        if (hTop) hTop.addEventListener('mousedown', (e) => initDrag(e, 'top'), false);
+        if (hLeft) hLeft.addEventListener('mousedown', (e) => initDrag(e, 'left'), false);
+        if (hTopLeft) hTopLeft.addEventListener('mousedown', (e) => initDrag(e, 'top-left'), false);
+    });
+})();
+</script>

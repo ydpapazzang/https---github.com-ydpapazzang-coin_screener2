@@ -394,6 +394,63 @@ class BacktestOffsetTestCase(TestCase):
         self.assertEqual(c2.right_indicator, "VAL")
         self.assertEqual(c2.right_param, 30)
 
+    def test_ai_strategy_create_heikin_ashi(self):
+        """AI로 파싱한 Heikin Ashi 조건식을 통해 실제 전략 및 하이킨아시 조건이 잘 생성되는지 검증"""
+        import json
+        payload = {
+            "create_strategy": {
+                "name": "하이킨아시 추세 전략",
+                "conditions": [
+                    {
+                        "timeframe": "month",
+                        "offset": 0,
+                        "left_indicator": "HA_BULL_N",
+                        "left_param": 2,
+                        "operator": "is",
+                        "right_indicator": "VAL",
+                        "right_param": 0
+                    },
+                    {
+                        "timeframe": "week",
+                        "offset": 0,
+                        "left_indicator": "HA_BULL_N",
+                        "left_param": 3,
+                        "operator": "is",
+                        "right_indicator": "VAL",
+                        "right_param": 0
+                    }
+                ]
+            }
+        }
+        response = self.client.post(
+            '/ai/strategy/create/',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['ok'])
+
+        # 데이터베이스 생성 확인
+        strategy = Strategy.objects.get(id=data['strategy_id'])
+        self.assertEqual(strategy.name, "하이킨아시 추세 전략")
+
+        conditions = strategy.conditions.all().order_by('id')
+        self.assertEqual(len(conditions), 2)
+
+        c1 = conditions[0]
+        self.assertEqual(c1.timeframe, "month")
+        self.assertEqual(c1.left_indicator, "HA_BULL_N")
+        self.assertEqual(c1.left_param, 2)
+        self.assertEqual(c1.operator, "is")
+
+        c2 = conditions[1]
+        self.assertEqual(c2.timeframe, "week")
+        self.assertEqual(c2.left_indicator, "HA_BULL_N")
+        self.assertEqual(c2.left_param, 3)
+        self.assertEqual(c2.operator, "is")
+
+
     def test_ai_strategy_create_invalid_methods(self):
         """GET 요청 등 부적절한 메소드로 전략 생성 API 접근 시 405 차단 확인"""
         response = self.client.get('/ai/strategy/create/')
