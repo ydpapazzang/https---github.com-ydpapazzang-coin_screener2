@@ -179,7 +179,7 @@
     <a href="{% if strategy %}{% url 'strategy_detail' strategy.id %}{% else %}#{% endif %}" class="nav-btn active">전략 설정</a>
     {% if strategy %}
       <a href="{% url 'coin_search_results' strategy.id %}" class="nav-btn">검색 결과</a>
-      <button class="nav-btn" onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}', '{{ strategy.conditions.first.timeframe|default:'day' }}')">백테스팅</button>
+      <button class="nav-btn" id="nav-bt-btn" onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}', '{{ strategy.conditions.first.timeframe|default:'day' }}')">백테스팅</button>
     {% else %}
       <a href="#" onclick="alert('전략을 먼저 선택해주세요!')" class="nav-btn">검색 결과</a>
       <a href="#" onclick="alert('전략을 먼저 선택해주세요!')" class="nav-btn">백테스팅</a>
@@ -279,7 +279,10 @@
     <div class="strat-content active">
       <div class="main-header">
         <div>
-          <div class="main-title">{{ strategy.name }}</div>
+          <div class="main-title" style="display: flex; align-items: center; gap: 8px;">
+            <span id="strategy-name-text">{{ strategy.name }}</span>
+            <span onclick="editStrategyName()" style="cursor: pointer; font-size: 14px; opacity: 0.5; transition: opacity 0.15s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'" title="전략명 수정">✏️</span>
+          </div>
           <div class="header-tags">
             <span class="tag tag-p">{{ strategy.conditions.first.get_timeframe_display|default:"설정전" }}</span>
             <span class="tag tag-g">승률 {{ strategy.win_rate|floatformat:0 }}%</span>
@@ -778,7 +781,7 @@
       <!-- ===== ACTION BAR ===== -->
       <div class="action-bar">
         <button class="abtn abtn-run" onclick="runSearch()">▶ 검색 실행</button>
-        <button class="abtn abtn-bt" onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}', '{{ strategy.conditions.first.timeframe|default:'day' }}')">📊 백테스팅</button>
+        <button class="abtn abtn-bt" id="main-bt-btn" onclick="openBT({{ strategy.id }}, '{{ strategy.name|escapejs }}', '{{ strategy.conditions.first.timeframe|default:'day' }}')">📊 백테스팅</button>
         <a href="#history-section" class="abtn-alert" title="알림 히스토리 보기">🔔</a>
       </div>
 
@@ -1000,6 +1003,70 @@
       document.body.appendChild(form);
       form.submit();
     }
+  }
+
+  // Edit strategy name dynamically
+  function editStrategyName() {
+    const nameSpan = document.getElementById('strategy-name-text');
+    if (!nameSpan) return;
+    const currentName = nameSpan.textContent.trim();
+    const newName = prompt("전략 이름을 변경하시겠습니까?", currentName);
+    
+    if (newName === null) return; // Cancelled by user
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      alert("전략 이름을 입력해주세요.");
+      return;
+    }
+    if (trimmed === currentName) return;
+
+    // Send AJAX request
+    fetch("{% url 'strategy_rename' strategy.id %}", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token }}'
+      },
+      body: JSON.stringify({ name: trimmed })
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(errData => {
+          throw new Error(errData.error || "서버 오류");
+        });
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (data.ok) {
+        // Update header name
+        nameSpan.textContent = trimmed;
+        
+        // Update sidebar list name
+        const activeSidebarName = document.querySelector('.strat-item.active .strat-name');
+        if (activeSidebarName) {
+          activeSidebarName.textContent = trimmed;
+        }
+        
+        // Update backtest buttons onclick handlers
+        const escapedName = trimmed.replace(/'/g, "\\'");
+        const timeframe = '{{ strategy.conditions.first.timeframe|default:"day" }}';
+        const navBtBtn = document.getElementById('nav-bt-btn');
+        const mainBtBtn = document.getElementById('main-bt-btn');
+        if (navBtBtn) {
+          navBtBtn.setAttribute('onclick', `openBT({{ strategy.id }}, '${escapedName}', '${timeframe}')`);
+        }
+        if (mainBtBtn) {
+          mainBtBtn.setAttribute('onclick', `openBT({{ strategy.id }}, '${escapedName}', '${timeframe}')`);
+        }
+      } else {
+        alert("이름 변경에 실패했습니다: " + (data.error || "알 수 없는 오류"));
+      }
+    })
+    .catch(err => {
+      console.error(err);
+      alert("오류가 발생했습니다: " + err.message);
+    });
   }
 
   // RR Ratio calculator

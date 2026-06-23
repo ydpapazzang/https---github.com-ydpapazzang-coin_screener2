@@ -552,4 +552,40 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(self.strategy.take_profit, 30.0)
         self.assertEqual(self.strategy.capital_pct, 40)
 
+    def test_strategy_rename(self):
+        # Renaming strategy via AJAX POST
+        import json
+        payload = {
+            'name': 'New Strategy Name'
+        }
+        response = self.client.post(
+            f'/strategy/{self.strategy.id}/rename/',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        self.assertTrue(data['ok'])
+
+        # Check database
+        self.strategy.refresh_from_db()
+        self.assertEqual(self.strategy.name, 'New Strategy Name')
+
+    def test_strategy_rename_empty(self):
+        # Renaming with empty name should fail
+        import json
+        payload = {
+            'name': '   '
+        }
+        response = self.client.post(
+            f'/strategy/{self.strategy.id}/rename/',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.content)
+        self.assertFalse(data['ok'])
+        self.assertEqual(data['error'], '전략 이름을 입력해주세요.')
+
+
 

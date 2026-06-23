@@ -1025,6 +1025,23 @@ def save_risk_settings(request, strategy_id):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
+@csrf_exempt
+@require_POST
+def strategy_rename(request, strategy_id):
+    strategy = get_object_or_404(Strategy, id=strategy_id)
+    try:
+        body = _json.loads(request.body)
+        new_name = body.get('name', '').strip()
+        if not new_name:
+            return JsonResponse({'ok': False, 'error': '전략 이름을 입력해주세요.'}, status=400)
+        strategy.name = new_name
+        strategy.save()
+        return JsonResponse({'ok': True})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+
+
+
 
 
 
