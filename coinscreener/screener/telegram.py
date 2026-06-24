@@ -73,10 +73,17 @@ def send_alert(strategy_name: str, results: list, strategy_id: int = None) -> di
             lines.append(f"... 외 {len(results) - 20}개")
         text = "\n".join(lines)
 
-    # SITE_URL 환경변수 또는 VERCEL_URL 환경변수(Vercel 자동 생성)가 설정되어 있으면 웹사이트 링크 추가 (단축 URL 변환 적용)
-    site_url = os.environ.get('SITE_URL') or os.environ.get('VERCEL_URL')
+    # Vercel 환경변수 중 SITE_URL을 최우선으로 사용 (미설정 시 VERCEL_URL로 안전 폴백)
+    site_url = os.environ.get('SITE_URL', '').strip()
+    source = 'SITE_URL'
+    
+    if not site_url:
+        site_url = os.environ.get('VERCEL_URL', '').strip()
+        source = 'VERCEL_URL'
+
+    print(f"[TELEGRAM] Link site_url: '{site_url}' (retrieved from {source})")
+
     if strategy_id and site_url:
-        site_url = site_url.strip()
         if not site_url.startswith('http'):
             site_url = 'https://' + site_url
         site_url = site_url.rstrip('/')
