@@ -1092,6 +1092,10 @@ def cron_scan(request):
         processed_count = 0
         sent_count = 0
         results_summary = []
+        warnings = []
+        
+        if not active_settings.exists():
+            warnings.append("활성화된 알림 설정(AlertSetting)이 존재하지 않습니다. Vercel 배포 시 SQLite 데이터가 초기화되었거나, 웹 페이지에서 알림 설정을 켜지 않았을 수 있습니다.")
         
         for setting in active_settings:
             strategy = setting.strategy
@@ -1099,13 +1103,24 @@ def cron_scan(request):
             conditions = list(strategy.conditions.all())
             print(f"[CRON_SCAN] Strategy conditions count: {len(conditions)}")
             if not conditions:
-                print(f"[CRON_SCAN] Skipping strategy {strategy.name} due to no conditions.")
+                warn_msg = f"전략 '{strategy.name}'(ID: {strategy.id})에 조건이 존재하지 않아 스킵합니다."
+                print(f"[CRON_SCAN] {warn_msg}")
+                warnings.append(warn_msg)
                 continue
                 
             processed_count += 1
             
             # 티커 수집 (설정된 vol_limit 사용, 0인 경우 전체 코인)
             vol_limit = setting.vol_limit
+            
+            # Vercel 10초 실행 시간제한(Timeout) 방지를 위한 안전 장치 (30개 초과 시 자동으로 30개로 제한)
+            safe_limit = 30
+            if not vol_limit or vol_limit > safe_limit:
+                warn_msg = f"전략 '{strategy.name}': Vercel Hobby 실행시간 제한(10초) 방지를 위해 스캔 코인 수를 {vol_limit if vol_limit else '전체'}개에서 {safe_limit}개로 자동 제한합니다."
+                print(f"[CRON_SCAN] {warn_msg}")
+                warnings.append(warn_msg)
+                vol_limit = safe_limit
+                
             tickers = _get_tickers(setting.exchange, vol_limit)
             print(f"[CRON_SCAN] Tickers count for {setting.exchange} (limit {vol_limit}): {len(tickers)}")
             
@@ -1116,20 +1131,33 @@ def cron_scan(request):
             if tg.is_configured():
                 res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id)
                 print(f"[CRON_SCAN] Telegram send result: {res}")
-                sent_count += 1
+                if res.get('ok'):
+                    sent_count += 1
+                else:
+                    warnings.append(f"텔레그램 발송 실패 ({strategy.name}): {res.get('error')}")
                 results_summary.append({
                     'strategy': strategy.name,
                     'matched_count': len(results),
-                    'sent_count': len(tg_results)
+                    'sent_count': len(tg_results),
+                    'telegram_result': res
                 })
             else:
-                print(f"[CRON_SCAN] Telegram is not configured properly (missing environment variables).")
+                warn_msg = f"전략 '{strategy.name}': 텔레그램 환경변수(TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)가 Vercel에 설정되지 않았습니다."
+                print(f"[CRON_SCAN] {warn_msg}")
+                warnings.append(warn_msg)
+                results_summary.append({
+                    'strategy': strategy.name,
+                    'matched_count': len(results),
+                    'sent_count': len(tg_results),
+                    'telegram_result': {'ok': False, 'error': '환경변수 미설정'}
+                })
                 
         return JsonResponse({
             'ok': True,
             'time': now_kst.strftime('%Y-%m-%d %H:%M:%S KST'),
             'processed': processed_count,
             'sent_alerts': sent_count,
+            'warnings': warnings,
             'details': results_summary
         })
         
