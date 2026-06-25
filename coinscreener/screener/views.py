@@ -1063,8 +1063,9 @@ def cron_scan(request):
     # 보안 검증: Vercel Cron이거나 디버그 시크릿이 있는 경우만 허용
     is_vercel_cron = request.headers.get('x-vercel-cron') == '1'
     is_debug = request.GET.get('secret') == 'wonii_cron_debug'
+    is_force = request.GET.get('force') == 'true'
     
-    print(f"[CRON_SCAN] Triggered. is_vercel_cron={is_vercel_cron}, is_debug={is_debug}")
+    print(f"[CRON_SCAN] Triggered. is_vercel_cron={is_vercel_cron}, is_debug={is_debug}, is_force={is_force}")
     print(f"[CRON_SCAN] Headers: {dict(request.headers)}")
     
     if not is_vercel_cron and not is_debug:
@@ -1083,19 +1084,28 @@ def cron_scan(request):
         rounded_time = now_kst + datetime.timedelta(minutes=30)
         current_hour = rounded_time.hour
         
-        # Vercel Hobby 요금제 크론 제한(하루 1회 실행)에 대응하여, 시간 필터 없이 활성화된 모든 알림을 스캔 및 발송
-        active_settings = AlertSetting.objects.filter(
-            enabled=True
-        )
-        print(f"[CRON_SCAN] Found {active_settings.count()} active alert settings.")
-        
+        # 기본적으로 시간 필터를 적용하여 사용자가 설정한 시간(alert_hour)에만 스캔 수행
+        # 단, 수동 강제 테스트(&force=true) 시에는 시간 필터 없이 전체 스캔
+        if is_force:
+            active_settings = AlertSetting.objects.filter(enabled=True)
+            print(f"[CRON_SCAN] (FORCE) Scanning all {active_settings.count()} active settings ignoring time.")
+        else:
+            active_settings = AlertSetting.objects.filter(
+                enabled=True,
+                alert_hour=current_hour
+            )
+            print(f"[CRON_SCAN] Scanning {active_settings.count()} active settings matching KST hour {current_hour}.")
+            
         processed_count = 0
         sent_count = 0
         results_summary = []
         warnings = []
         
         if not active_settings.exists():
-            warnings.append("활성화된 알림 설정(AlertSetting)이 존재하지 않습니다. Vercel 배포 시 SQLite 데이터가 초기화되었거나, 웹 페이지에서 알림 설정을 켜지 않았을 수 있습니다.")
+            if is_force:
+                warnings.append("활성화된 알림 설정(AlertSetting)이 존재하지 않습니다. Vercel 배포 시 SQLite 데이터가 초기화되었거나, 웹 페이지에서 알림 설정을 켜지 않았을 수 있습니다.")
+            else:
+                warnings.append(f"현재 KST {current_hour}시에 예약 활성화된 알림 설정이 없습니다. (만약 즉시 강제 테스트를 원하시면 URL 뒤에 &force=true 를 붙여 접속해 주세요.)")
         
         for setting in active_settings:
             strategy = setting.strategy
