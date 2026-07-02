@@ -222,6 +222,18 @@ def condition_add(request, strategy_id):
         left_indicator = 'VOLUME'
         left_param = 0
 
+        if operator == 'btw':
+            try:
+                volume_pct_max = int(request.POST.get('volume_pct_max', 300))
+            except ValueError:
+                messages.error(request, "최대 기준 비율이 올바르지 않습니다.")
+                return redirect('strategy_detail', strategy_id=strategy_id)
+
+            if volume_pct_max <= volume_pct:
+                messages.error(request, "최대 비율은 최소 비율보다 커야 합니다.")
+                return redirect('strategy_detail', strategy_id=strategy_id)
+            left_param = volume_pct_max
+
         if volume_target == 'prev':
             right_indicator = 'VOLUME_PREV'
             right_param = 1

@@ -242,7 +242,12 @@ def check_strategy(ticker, conditions, current_price=None):
                     return False
 
                 if cond.operator == 'btw':
-                    max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+                    if cond.left_indicator == 'VOLUME':
+                        max_multiplier = cond.left_param / 100.0
+                        max_val = get_indicator_value(df, cond.right_indicator, cond.right_param, total_offset, bb_std=max_multiplier)
+                    else:
+                        max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+                    
                     if not (right_val <= left_val <= max_val):
                         return False
                 else:
@@ -288,15 +293,26 @@ def check_strategy(ticker, conditions, current_price=None):
             right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, cond.offset, bb_std=bb_std)
 
             if cond.operator == 'btw':
-                max_val = cond.bb_std if cond.bb_std is not None else float('inf')
-                details.append(f"{cond.left_indicator}({cond.left_param}): {left_val:.2f} (범위: {right_val:.2f} ~ {max_val:.2f})")
+                if cond.left_indicator == 'VOLUME':
+                    max_multiplier = cond.left_param / 100.0
+                    max_val = get_indicator_value(df, cond.right_indicator, cond.right_param, cond.offset, bb_std=max_multiplier)
+                    details.append(f"거래량: {left_val:,.0f} (범위: {right_val:,.0f} ~ {max_val:,.0f})")
+                else:
+                    max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+                    details.append(f"{cond.left_indicator}({cond.left_param}): {left_val:.2f} (범위: {right_val:.2f} ~ {max_val:.2f})")
             else:
                 if cond.left_indicator != 'VAL':
                     if left_val is not None and not pd.isna(left_val):
-                        details.append(f"{cond.left_indicator}({cond.left_param}): {left_val:.2f}")
+                        if cond.left_indicator == 'VOLUME':
+                            details.append(f"거래량: {left_val:,.0f}")
+                        else:
+                            details.append(f"{cond.left_indicator}({cond.left_param}): {left_val:.2f}")
                 if cond.right_indicator != 'VAL':
                     if right_val is not None and not pd.isna(right_val):
-                        details.append(f"{cond.right_indicator}({cond.right_param}): {right_val:.2f}")
+                        if 'VOLUME' in cond.right_indicator:
+                            details.append(f"{cond.right_indicator}: {right_val:,.0f}")
+                        else:
+                            details.append(f"{cond.right_indicator}({cond.right_param}): {right_val:.2f}")
         
         return True, details, last_price, volume, status
 

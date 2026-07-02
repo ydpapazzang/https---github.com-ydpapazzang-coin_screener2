@@ -139,9 +139,15 @@ class Condition(models.Model):
         if self.left_indicator == 'VOLUME':
             if self.right_indicator == 'VOLUME_PREV':
                 pct = int(self.bb_std * 100) if self.bb_std else 100
+                if self.operator == 'btw':
+                    max_pct = self.left_param
+                    return f"{self.offset}봉전 거래량 {op_lbl} 이전봉 거래량의 {pct}% ~ {max_pct}%"
                 return f"{self.offset}봉전 거래량 {op_lbl} 이전봉 거래량의 {pct}%"
             elif self.right_indicator == 'VOLUME_MA':
                 pct = int(self.bb_std * 100) if self.bb_std else 100
+                if self.operator == 'btw':
+                    max_pct = self.left_param
+                    return f"{self.offset}봉전 거래량 {op_lbl} 최근 {self.right_param}봉 평균 거래량의 {pct}% ~ {max_pct}%"
                 return f"{self.offset}봉전 거래량 {op_lbl} 최근 {self.right_param}봉 평균 거래량의 {pct}%"
         
         # 볼린저밴드 포맷
