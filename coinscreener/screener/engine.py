@@ -241,9 +241,14 @@ def check_strategy(ticker, conditions, current_price=None):
                 if left_val is None or right_val is None or pd.isna(left_val) or pd.isna(right_val):
                     return False
 
-                op_map = {'gt': left_val > right_val, 'lt': left_val < right_val, 'gte': left_val >= right_val, 'lte': left_val <= right_val}
-                if not op_map.get(cond.operator):
-                    return False
+                if cond.operator == 'btw':
+                    max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+                    if not (right_val <= left_val <= max_val):
+                        return False
+                else:
+                    op_map = {'gt': left_val > right_val, 'lt': left_val < right_val, 'gte': left_val >= right_val, 'lte': left_val <= right_val}
+                    if not op_map.get(cond.operator):
+                        return False
             return True
 
         # 1. 현재 봉(base_offset=0) 조건 확인
@@ -282,12 +287,16 @@ def check_strategy(ticker, conditions, current_price=None):
             left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, cond.offset, bb_std=bb_std)
             right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, cond.offset, bb_std=bb_std)
 
-            if cond.left_indicator != 'VAL':
-                if left_val is not None and not pd.isna(left_val):
-                    details.append(f"{cond.left_indicator}({cond.left_param}): {left_val:.2f}")
-            if cond.right_indicator != 'VAL':
-                if right_val is not None and not pd.isna(right_val):
-                    details.append(f"{cond.right_indicator}({cond.right_param}): {right_val:.2f}")
+            if cond.operator == 'btw':
+                max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+                details.append(f"{cond.left_indicator}({cond.left_param}): {left_val:.2f} (범위: {right_val:.2f} ~ {max_val:.2f})")
+            else:
+                if cond.left_indicator != 'VAL':
+                    if left_val is not None and not pd.isna(left_val):
+                        details.append(f"{cond.left_indicator}({cond.left_param}): {left_val:.2f}")
+                if cond.right_indicator != 'VAL':
+                    if right_val is not None and not pd.isna(right_val):
+                        details.append(f"{cond.right_indicator}({cond.right_param}): {right_val:.2f}")
         
         return True, details, last_price, volume, status
 

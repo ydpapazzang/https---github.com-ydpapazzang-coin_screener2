@@ -431,12 +431,21 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">⑤</span>비교 조건</div>
-                    <select name="operator">
+                    <select name="operator" id="rsi_operator" onchange="toggleRsiRange()">
                         <option value="gte">이상 (&gt;=)</option>
                         <option value="lte">이하 (&lt;=)</option>
                         <option value="gt">초과 (&gt;)</option>
                         <option value="lt">미만 (&lt;)</option>
+                        <option value="btw">범위 (A &lt;= RSI &lt;= B)</option>
                     </select>
+                </div>
+                <div class="field-row" id="rsi_thr_max_row" style="display:none;">
+                    <div class="field-label"><span class="num">⑥</span>최대값</div>
+                    <div class="slider-wrap">
+                        <input type="range" class="slider" id="rsi_thr_max_slider" min="0" max="100" value="70" oninput="syncSlider('rsi_threshold_max_input','rsi_thr_max_slider')">
+                        <span class="slider-val" id="rsi_thr_max_display">70</span>
+                    </div>
+                    <input type="number" name="rsi_threshold_max" id="rsi_threshold_max_input" value="70" min="0" max="100" class="wide" oninput="syncInputToSlider('rsi_threshold_max_input','rsi_thr_max_slider')">
                 </div>
             </div>
             <button type="submit" class="btn-add-cond">＋ RSI 조건 추가</button>
@@ -1357,12 +1366,29 @@
     return true;
   }
 
+  function toggleRsiRange() {
+    const op = document.getElementById('rsi_operator').value;
+    const maxRow = document.getElementById('rsi_thr_max_row');
+    if (op === 'btw') {
+      maxRow.style.display = 'flex';
+    } else {
+      maxRow.style.display = 'none';
+    }
+  }
+
   function validateRSI() {
     const form = document.getElementById('form-RSI');
     const period = parseInt(form.rsi_period.value);
     const threshold = parseInt(form.rsi_threshold.value);
     if (isNaN(period) || period < 1) { alert("RSI 기간은 1 이상이어야 합니다."); return false; }
     if (isNaN(threshold) || threshold < 0 || threshold > 100) { alert("RSI 기준값은 0~100 사이여야 합니다."); return false; }
+    
+    const op = document.getElementById('rsi_operator');
+    if (op && op.value === 'btw') {
+      const thresholdMax = parseInt(document.getElementById('rsi_threshold_max_input').value);
+      if (isNaN(thresholdMax) || thresholdMax < 0 || thresholdMax > 100) { alert("RSI 최대 기준값은 0~100 사이여야 합니다."); return false; }
+      if (threshold >= thresholdMax) { alert("최소값은 최대값보다 작아야 합니다."); return false; }
+    }
     return true;
   }
 

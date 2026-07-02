@@ -123,6 +123,20 @@ def condition_add(request, strategy_id):
             messages.error(request, "RSI 기간 또는 기준값이 올바르지 않습니다.")
             return redirect('strategy_detail', strategy_id=strategy_id)
 
+        if operator == 'btw':
+            try:
+                rsi_threshold_max = int(request.POST.get('rsi_threshold_max', 70))
+            except ValueError:
+                messages.error(request, "RSI 최대 기준값이 올바르지 않습니다.")
+                return redirect('strategy_detail', strategy_id=strategy_id)
+            if not (0 <= rsi_threshold_max <= 100):
+                messages.error(request, "RSI 최대 기준값은 0에서 100 사이여야 합니다.")
+                return redirect('strategy_detail', strategy_id=strategy_id)
+            if rsi_threshold >= rsi_threshold_max:
+                messages.error(request, "최소값은 최대값보다 작아야 합니다.")
+                return redirect('strategy_detail', strategy_id=strategy_id)
+            bb_std = float(rsi_threshold_max)
+
         if rsi_period < 1:
             messages.error(request, "RSI 기간은 1 이상이어야 합니다.")
             return redirect('strategy_detail', strategy_id=strategy_id)

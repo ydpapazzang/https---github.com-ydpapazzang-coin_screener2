@@ -98,6 +98,7 @@ class Condition(models.Model):
         ('lt',  '작다 (<)'),
         ('gte', '이상 (>=)'),
         ('lte', '이하 (<=)'),
+        ('btw', '사이 (A <= X <= B)'),
         # 하이킨아시 패턴 전용
         ('is',  '조건 충족'),
     ]
@@ -122,6 +123,7 @@ class Condition(models.Model):
             'lt': '미만(<)',
             'gte': '이상(>=)',
             'lte': '이하(<=)',
+            'btw': '사이(Between)',
             'is': '충족'
         }
         op_lbl = op_map.get(self.operator, self.operator)
@@ -148,6 +150,11 @@ class Condition(models.Model):
             return f"{self.offset}봉전 종가 {op_lbl} {right_lbl}({self.right_param}, {std_val}σ)"
 
         # 기본 포맷
+        if self.operator == 'btw':
+            max_val = int(self.bb_std) if self.bb_std is not None else 0
+            left_part = f"{left_lbl}({self.left_param})" if self.left_indicator not in ('CLOSE', 'VAL') else left_lbl
+            return f"{self.offset}봉전 {left_part} 값이 {self.right_param} ~ {max_val} 사이"
+
         left_part = f"{left_lbl}({self.left_param})" if self.left_indicator not in ('CLOSE', 'VAL') else left_lbl
         if self.left_indicator == 'VAL': left_part = f"{self.left_param}"
         
