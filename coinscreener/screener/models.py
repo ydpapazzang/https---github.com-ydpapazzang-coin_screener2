@@ -111,7 +111,7 @@ class Condition(models.Model):
     offset_mode     = models.CharField(max_length=20, null=True, blank=True)
     left_indicator  = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
     left_param      = models.IntegerField(default=5)
-    operator        = models.CharField(max_length=5, choices=OPERATOR_CHOICES, default='gte')
+    operator        = models.CharField(max_length=15, choices=OPERATOR_CHOICES, default='gte')
     right_indicator = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
     right_param     = models.IntegerField(default=20)
     bb_std          = models.FloatField(null=True, blank=True)
