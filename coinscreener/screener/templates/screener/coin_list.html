@@ -5,6 +5,57 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ strategy.name }} - 검색 결과</title>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
+<script>
+// Table Sorting Logic
+let sortOrders = {}; // Keep track of sort direction per column
+
+function sortTable(colIndex, type) {
+    const table = document.querySelector('.result-table');
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    
+    // Toggle sort order
+    const currentOrder = sortOrders[colIndex] || 'asc';
+    const newOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+    sortOrders[colIndex] = newOrder;
+    
+    // Update icons
+    const headers = table.querySelectorAll('th');
+    headers.forEach(th => {
+        const icon = th.querySelector('.sort-icon');
+        if (icon) icon.textContent = '';
+    });
+    const activeHeader = headers[colIndex];
+    if (activeHeader) {
+        const icon = activeHeader.querySelector('.sort-icon');
+        if (icon) icon.textContent = newOrder === 'asc' ? ' ▲' : ' ▼';
+    }
+
+    rows.sort((a, b) => {
+        const aCell = a.querySelectorAll('td')[colIndex];
+        const bCell = b.querySelectorAll('td')[colIndex];
+        
+        let aVal = aCell.getAttribute('data-val') || aCell.textContent.trim();
+        let bVal = bCell.getAttribute('data-val') || bCell.textContent.trim();
+        
+        if (type === 'num') {
+            aVal = parseFloat(aVal) || 0;
+            bVal = parseFloat(bVal) || 0;
+            return newOrder === 'asc' ? aVal - bVal : bVal - aVal;
+        } else {
+            return newOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+    });
+    
+    // Re-append sorted rows and update counter
+    rows.forEach((row, index) => {
+        row.querySelector('.num').textContent = index + 1;
+        tbody.appendChild(row);
+    });
+}
+</script>
+
     <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
 
@@ -487,9 +538,9 @@ body::after {
         <thead>
             <tr>
                 <th class="num">#</th>
-                <th>종목</th>
-                <th class="price">현재가</th>
-                <th class="volume">거래대금</th>
+                <th onclick="sortTable(1, 'str')" style="cursor:pointer" title="클릭하여 정렬">종목 <span class="sort-icon"></span></th>
+                <th class="price" onclick="sortTable(2, 'num')" style="cursor:pointer" title="클릭하여 정렬">현재가 <span class="sort-icon"></span></th>
+                <th class="volume" onclick="sortTable(3, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래대금 <span class="sort-icon"></span></th>
                 <th>관련 지표</th>
                 <th style="text-align: center;">실시간 차트</th>
                 <th style="text-align: center;">백테스트</th>
@@ -499,7 +550,7 @@ body::after {
             {% for r in results %}
             <tr>
                 <td class="num">{{ forloop.counter }}</td>
-                <td class="symbol">
+                <td class="symbol" data-val="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}">
                     <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                         {% if request.GET.exchange == 'kospi' %}
                             <a href="https://finance.naver.com/item/main.naver?code={{ r.symbol }}" target="_blank" title="네이버 증권 보기">
@@ -518,8 +569,8 @@ body::after {
                         <button class="btn-why-selected" onclick="askAIWhySelected('{{ r.symbol }}', '{{ r.price }}', '{{ r.volume_display }}', '{{ r.details }}')" title="AI에게 왜 선택되었는지 질문">❓ 왜 잡혔어?</button>
                     </div>
                 </td>
-                <td class="price">{{ r.price|floatformat:0 }}</td>
-                <td class="volume">{{ r.volume_display }}</td>
+                <td class="price" data-val="{{ r.price }}">{{ r.price|floatformat:0 }}</td>
+                <td class="volume" data-val="{{ r.volume }}">{{ r.volume_display }}</td>
                 <td>{{ r.details }}</td>
                 <td style="text-align: center;">
                     <button class="btn-tv-chart" onclick="openTradingViewChart('{{ r.symbol }}')" title="실시간 차트 보기">📊 차트</button>
