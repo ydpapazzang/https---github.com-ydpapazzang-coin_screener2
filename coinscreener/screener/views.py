@@ -377,7 +377,11 @@ def coin_search(request, strategy_id):
     except (ValueError, TypeError):
         vol_limit = 100
 
-    cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
+    tf_override = request.GET.get('timeframe')
+    tf_suffix = f"_{tf_override}" if tf_override else ""
+
+    # 캐시 확인 (파라미터 기반 Key)
+    cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
     cached_data = cache.get(cache_key)
 
     if cached_data and request.GET.get('refresh') != '1':
@@ -396,6 +400,7 @@ def coin_search(request, strategy_id):
         'exchange':  exchange,
         'vol_limit': vol_limit,
         'send_telegram': send_telegram,
+        'timeframe': tf_override or '',
     })
 
 
@@ -411,6 +416,12 @@ def coin_search_stream(request, strategy_id):
         vol_limit = int(vol_limit_param) if vol_limit_param is not None else 100
     except (ValueError, TypeError):
         vol_limit = 100
+    
+    tf_override = request.GET.get('timeframe')
+    if tf_override:
+        for c in conditions:
+            c.timeframe = tf_override
+
     send_telegram = request.GET.get('send_telegram') == '1'
 
     def event_stream():
@@ -474,6 +485,8 @@ def coin_search_stream(request, strategy_id):
         results.sort(key=lambda x: x.get('volume', 0), reverse=True)
         last_updated = timezone.now()
         cache_key = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
+        if tf_override:
+            cache_key += f"_{tf_override}"
 
         cache.set(cache_key, {
             'results':            results,
@@ -500,7 +513,7 @@ def coin_search_stream(request, strategy_id):
 
         yield "data: " + json.dumps({
             "type":     "done",
-            "redirect": f"/strategy/{strategy_id}/results/?exchange={exchange}&vol_limit={vol_limit}",
+            "redirect": f"/strategy/{strategy_id}/results/?exchange={exchange}&vol_limit={vol_limit}{f'&timeframe={tf_override}' if tf_override else ''}",
         }) + "\n\n"
 
     response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
@@ -514,7 +527,10 @@ def coin_search_results(request, strategy_id):
     strategy   = get_object_or_404(Strategy, id=strategy_id)
     exchange   = request.GET.get('exchange', 'upbit')
     vol_limit  = int(request.GET.get('vol_limit', 0) or 0)
-    cache_key  = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
+    tf_override = request.GET.get('timeframe')
+    tf_suffix = f"_{tf_override}" if tf_override else ""
+    
+    cache_key  = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
     cached_data = cache.get(cache_key)
 
     if not cached_data:
@@ -1312,6 +1328,11 @@ def strategy_scan_count(request, strategy_id):
     except (ValueError, TypeError):
         vol_limit = 100
         
+    tf_override = request.GET.get('timeframe')
+    if tf_override:
+        for c in conditions:
+            c.timeframe = tf_override
+
     tickers = _get_tickers(exchange, vol_limit)
     results = []
     error_occurred = False

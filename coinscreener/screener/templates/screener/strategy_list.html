@@ -237,18 +237,18 @@ body::after {
     z-index: 200;
 }
 .ex-menu.open, .vol-menu.open { display: block; }
-.ex-opt, .vol-opt {
+.ex-opt, .vol-opt, .tf-opt {
     padding: 10px 14px;
     font-size: 13px;
     color: var(--text);
     cursor: pointer;
     transition: var(--transition);
 }
-.ex-opt:hover, .vol-opt:hover {
+.ex-opt:hover, .vol-opt:hover, .tf-opt:hover {
     background: rgba(255, 255, 255, 0.05);
     color: #fff;
 }
-.ex-opt.selected, .vol-opt.selected {
+.ex-opt.selected, .vol-opt.selected, .tf-opt.selected {
     color: #fff;
     background: var(--blue);
     font-weight: 700;
@@ -629,6 +629,26 @@ select option, .scope-sel option, .time-sel option {
                         <input type="hidden" id="ex-val-{{ strategy.id }}" value="upbit">
                     </div>
 
+                    <!-- 캔들 단위 드롭다운 -->
+                    <div class="ex-wrap">
+                        <button type="button" class="ex-btn"
+                                onclick="toggleMenu(event,'tf-menu-{{ strategy.id }}')">
+                            <span id="tf-label-{{ strategy.id }}">기본(조건 유지)</span>
+                            <span class="arr">▼</span>
+                        </button>
+                        <div class="ex-menu" id="tf-menu-{{ strategy.id }}">
+                            <div class="tf-opt selected" onclick="selectTf({{ strategy.id }},'','기본(조건 유지)',this)">기본(조건 유지)</div>
+                            <div class="tf-opt tf-coin" onclick="selectTf({{ strategy.id }},'minute15','15분',this)">15분</div>
+                            <div class="tf-opt tf-coin" onclick="selectTf({{ strategy.id }},'minute30','30분',this)">30분</div>
+                            <div class="tf-opt tf-coin" onclick="selectTf({{ strategy.id }},'minute60','1시간',this)">1시간</div>
+                            <div class="tf-opt tf-coin" onclick="selectTf({{ strategy.id }},'minute240','4시간',this)">4시간</div>
+                            <div class="tf-opt" onclick="selectTf({{ strategy.id }},'day','일',this)">일</div>
+                            <div class="tf-opt" onclick="selectTf({{ strategy.id }},'week','주',this)">주</div>
+                            <div class="tf-opt" onclick="selectTf({{ strategy.id }},'month','월',this)">월</div>
+                        </div>
+                        <input type="hidden" id="tf-val-{{ strategy.id }}" value="">
+                    </div>
+
                     <!-- 거래대금 드롭다운 -->
                     <div class="vol-wrap">
                         <button type="button" class="vol-btn"
@@ -638,15 +658,15 @@ select option, .scope-sel option, .time-sel option {
                         </button>
                         <div class="vol-menu" id="vol-menu-{{ strategy.id }}">
                             <div class="vol-opt"    data-val="30"
-                                 onclick="selectVol({{ strategy.id }},this)">거래대금 상위 30개</div>
+                                 onclick="selectVol({{ strategy.id }},'30',this)">거래대금 상위 30개</div>
                             <div class="vol-opt"    data-val="50"
-                                 onclick="selectVol({{ strategy.id }},this)">거래대금 상위 50개</div>
+                                 onclick="selectVol({{ strategy.id }},'50',this)">거래대금 상위 50개</div>
                             <div class="vol-opt selected" data-val="100"
-                                 onclick="selectVol({{ strategy.id }},this)">거래대금 상위 100개</div>
+                                 onclick="selectVol({{ strategy.id }},'100',this)">거래대금 상위 100개</div>
                             <div class="vol-opt"    data-val="200"
-                                 onclick="selectVol({{ strategy.id }},this)">거래대금 상위 200개</div>
+                                 onclick="selectVol({{ strategy.id }},'200',this)">거래대금 상위 200개</div>
                             <div class="vol-opt"    data-val="0"
-                                 onclick="selectVol({{ strategy.id }},this)">전체 코인</div>
+                                 onclick="selectVol({{ strategy.id }},'0',this)">전체 코인</div>
                         </div>
                         <input type="hidden" id="vol-val-{{ strategy.id }}" value="100">
                     </div>
@@ -784,17 +804,23 @@ let currentAlertId = null;
 
 /* ── 검색 실행 ── */
 function runSearch(id) {
-    const ex  = document.getElementById('ex-val-'  + id).value;
+    const ex = document.getElementById('ex-val-' + id).value;
     const vol = document.getElementById('vol-val-' + id).value;
+    const tf = document.getElementById('tf-val-' + id).value;
+    let url = `/strategy/${id}/search/?exchange=${ex}&vol_limit=${vol}`;
+    if (tf) url += `&timeframe=${tf}`;
     document.getElementById('spinner-' + id).style.display = 'block';
-    window.location.href = `/strategy/${id}/search/?exchange=${ex}&vol_limit=${vol}`;
+    window.location.href = url;
 }
 
 /* ── 매칭 결과 페이지 이동 ── */
 function goToResults(id) {
     const ex = document.getElementById('ex-val-' + id).value;
     const vol = document.getElementById('vol-val-' + id).value;
-    window.location.href = `/strategy/${id}/results/?exchange=${ex}&vol_limit=${vol}`;
+    const tf = document.getElementById('tf-val-' + id).value;
+    let url = `/strategy/${id}/results/?exchange=${ex}&vol_limit=${vol}`;
+    if (tf) url += `&timeframe=${tf}`;
+    window.location.href = url;
 }
 
 /* ── 전체 전략 일괄 조회 ── */
@@ -820,9 +846,13 @@ async function scanAllStrategies() {
         
         const ex = document.getElementById('ex-val-' + id).value;
         const vol = document.getElementById('vol-val-' + id).value;
+        const tf = document.getElementById('tf-val-' + id).value;
+        
+        let url = `/strategy/${id}/scan-count/?exchange=${ex}&vol_limit=${vol}`;
+        if (tf) url += `&timeframe=${tf}`;
         
         try {
-            const response = await fetch(`/strategy/${id}/scan-count/?exchange=${ex}&vol_limit=${vol}`);
+            const response = await fetch(url);
             const data = await response.json();
             
             if (spinner) spinner.style.display = 'none';
@@ -870,7 +900,6 @@ function toggleMenu(e, menuId) {
     e.stopPropagation();
     const menu = document.getElementById(menuId);
     const isOpen = menu.classList.contains('open');
-    // 모든 메뉴 닫기
     document.querySelectorAll('.ex-menu, .vol-menu').forEach(m => m.classList.remove('open'));
     if (!isOpen) menu.classList.add('open');
 }
@@ -878,19 +907,39 @@ document.addEventListener('click', () => {
     document.querySelectorAll('.ex-menu, .vol-menu').forEach(m => m.classList.remove('open'));
 });
 
-/* ── 거래소 선택 ── */
-function selectEx(id, val, label, el) {
-    document.getElementById('ex-val-'   + id).value     = val;
-    document.getElementById('ex-label-' + id).textContent = label;
-    el.closest('.ex-menu').querySelectorAll('.ex-opt').forEach(o => o.classList.remove('selected'));
+/* ── 선택 제어 ── */
+function selectEx(id, val, text, el) {
+    document.getElementById('ex-label-' + id).textContent = text;
+    document.getElementById('ex-val-' + id).value = val;
+    const menu = el.closest('.ex-menu');
+    menu.querySelectorAll('.ex-opt').forEach(opt => opt.classList.remove('selected'));
     el.classList.add('selected');
-    el.closest('.ex-menu').classList.remove('open');
+    menu.classList.remove('open');
+    
+    const tfMenu = document.getElementById('tf-menu-' + id);
+    const tfValInput = document.getElementById('tf-val-' + id);
+    
+    if (val === 'kospi') {
+        tfMenu.querySelectorAll('.tf-coin').forEach(opt => opt.style.display = 'none');
+        if (tfValInput.value.startsWith('minute')) {
+            selectTf(id, '', '기본(조건 유지)', tfMenu.querySelector('.tf-opt'));
+        }
+    } else {
+        tfMenu.querySelectorAll('.tf-coin').forEach(opt => opt.style.display = 'block');
+    }
 }
 
-/* ── 거래대금 선택 ── */
-function selectVol(id, el) {
-    const val = el.dataset.val;
-    document.getElementById('vol-val-'   + id).value = val;
+function selectTf(id, val, text, el) {
+    document.getElementById('tf-label-' + id).textContent = text;
+    document.getElementById('tf-val-' + id).value = val;
+    const menu = el.closest('.ex-menu');
+    menu.querySelectorAll('.tf-opt').forEach(opt => opt.classList.remove('selected'));
+    el.classList.add('selected');
+    menu.classList.remove('open');
+}
+
+function selectVol(id, val, el) {
+    document.getElementById('vol-val-' + id).value = val;
     document.getElementById('vol-label-' + id).textContent = el.textContent;
     el.closest('.vol-menu').querySelectorAll('.vol-opt').forEach(o => o.classList.remove('selected'));
     el.classList.add('selected');
