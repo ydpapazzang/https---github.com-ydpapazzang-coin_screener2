@@ -284,10 +284,40 @@ body::after {
     width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
     border-radius: 50%;
 }
-.tv-modal-close:hover {
-    color: #fff; background: rgba(255, 255, 255, 0.1);
-    transform: rotate(90deg);
+.tv-modal-close:hover { color: #fff; text-shadow: 0 0 10px rgba(255, 255, 255, 0.5); }
+
+/* MOBILE RESPONSIVE */
+@media (max-width: 768px) {
+    .page { padding: 20px 12px 60px; }
+    .topnav { padding: 12px 16px; }
+    .logo { font-size: 18px; }
+    
+    .panel-body { flex-direction: column; align-items: stretch; gap: 12px; }
+    .ctrl-group { width: 100%; }
+    .ctrl-group select { width: 100%; }
+    .checkbox-group { width: 100%; max-width: 100%; }
+    
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+    }
+    .result-table {
+        min-width: 800px; /* Forces horizontal scroll on mobile */
+    }
+    
+    .tv-modal-container {
+        width: 95%;
+        height: 90vh;
+    }
+    #tv-chart-container {
+        height: calc(90vh - 60px);
+    }
 }
+
 .tv-modal-body {
     position: relative; width: 100%; height: 550px;
     background: #07090e;
@@ -534,58 +564,60 @@ body::after {
     {% endif %}
 
     {% if results %}
-    <table class="result-table">
-        <thead>
-            <tr>
-                <th class="num">#</th>
-                <th onclick="sortTable(1, 'str')" style="cursor:pointer" title="클릭하여 정렬">종목 <span class="sort-icon"></span></th>
-                <th class="price" onclick="sortTable(2, 'num')" style="cursor:pointer" title="클릭하여 정렬">현재가 <span class="sort-icon"></span></th>
-                <th class="amount" onclick="sortTable(3, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래대금 <span class="sort-icon"></span></th>
-                <th class="volume" onclick="sortTable(4, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래량 <span class="sort-icon"></span></th>
-                <th class="market_cap" onclick="sortTable(5, 'num')" style="cursor:pointer" title="클릭하여 정렬">시가총액 <span class="sort-icon"></span></th>
-                <th>관련 지표</th>
-                <th style="text-align: center;">실시간 차트</th>
-                <th style="text-align: center;">백테스트</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for r in results %}
-            <tr>
-                <td class="num">{{ forloop.counter }}</td>
-                <td class="symbol" data-val="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}">
-                    <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        {% if request.GET.exchange == 'kospi' %}
-                            <a href="https://finance.naver.com/item/main.naver?code={{ r.symbol }}" target="_blank" title="네이버 증권 보기">
-                                {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
-                            </a>
-                        {% else %}
-                            <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}" target="_blank" title="업비트 차트 보기">
-                                {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
-                            </a>
-                        {% endif %}
-                        {% if r.status == 'new' %}
-                            <span class="status-badge new">신규</span>
-                        {% elif r.status == 'maintained' %}
-                            <span class="status-badge maintained">유지</span>
-                        {% endif %}
-                        <button class="btn-why-selected" onclick="askAIWhySelected('{{ r.symbol }}', '{{ r.price }}', '{{ r.volume_display }}', '{{ r.details }}')" title="AI에게 왜 선택되었는지 질문">❓ 왜 잡혔어?</button>
-                    </div>
-                </td>
-                <td class="price" data-val="{{ r.price }}">{{ r.price|floatformat:0 }}</td>
-                <td class="amount" data-val="{{ r.amount }}">{{ r.amount_display }}</td>
-                <td class="volume" data-val="{{ r.volume }}">{{ r.volume_display }}</td>
-                <td class="market_cap" data-val="{{ r.market_cap }}">{{ r.market_cap_display }}</td>
-                <td>{{ r.details }}</td>
-                <td style="text-align: center;">
-                    <button class="btn-tv-chart" onclick="openTradingViewChart('{{ r.symbol }}')" title="실시간 차트 보기">📊 차트</button>
-                </td>
-                <td style="text-align: center;">
-                    <button class="btn-bt-small" style="display: inline-flex;" onclick="triggerBacktest('{{ r.symbol }}', '{{ r.symbol|slice:'4:' }}')" title="백테스팅">📈 백테스트</button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="table-responsive">
+        <table class="result-table">
+            <thead>
+                <tr>
+                    <th class="num">#</th>
+                    <th onclick="sortTable(1, 'str')" style="cursor:pointer" title="클릭하여 정렬">종목 <span class="sort-icon"></span></th>
+                    <th class="price" onclick="sortTable(2, 'num')" style="cursor:pointer" title="클릭하여 정렬">현재가 <span class="sort-icon"></span></th>
+                    <th class="amount" onclick="sortTable(3, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래대금 <span class="sort-icon"></span></th>
+                    <th class="volume" onclick="sortTable(4, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래량 <span class="sort-icon"></span></th>
+                    <th class="market_cap" onclick="sortTable(5, 'num')" style="cursor:pointer" title="클릭하여 정렬">시가총액 <span class="sort-icon"></span></th>
+                    <th>관련 지표</th>
+                    <th style="text-align: center;">실시간 차트</th>
+                    <th style="text-align: center;">백테스트</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results %}
+                <tr>
+                    <td class="num">{{ forloop.counter }}</td>
+                    <td class="symbol" data-val="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}">
+                        <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            {% if request.GET.exchange == 'kospi' %}
+                                <a href="https://finance.naver.com/item/main.naver?code={{ r.symbol }}" target="_blank" title="네이버 증권 보기">
+                                    {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
+                                </a>
+                            {% else %}
+                                <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}" target="_blank" title="업비트 차트 보기">
+                                    {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
+                                </a>
+                            {% endif %}
+                            {% if r.status == 'new' %}
+                                <span class="status-badge new">신규</span>
+                            {% elif r.status == 'maintained' %}
+                                <span class="status-badge maintained">유지</span>
+                            {% endif %}
+                            <button class="btn-why-selected" onclick="askAIWhySelected('{{ r.symbol }}', '{{ r.price }}', '{{ r.volume_display }}', '{{ r.details }}')" title="AI에게 왜 선택되었는지 질문">❓ 왜 잡혔어?</button>
+                        </div>
+                    </td>
+                    <td class="price" data-val="{{ r.price }}">{{ r.price|floatformat:0 }}</td>
+                    <td class="amount" data-val="{{ r.amount }}">{{ r.amount_display }}</td>
+                    <td class="volume" data-val="{{ r.volume }}">{{ r.volume_display }}</td>
+                    <td class="market_cap" data-val="{{ r.market_cap }}">{{ r.market_cap_display }}</td>
+                    <td>{{ r.details }}</td>
+                    <td style="text-align: center;">
+                        <button class="btn-tv-chart" onclick="openTradingViewChart('{{ r.symbol }}')" title="실시간 차트 보기">📊 차트</button>
+                    </td>
+                    <td style="text-align: center;">
+                        <button class="btn-bt-small" style="display: inline-flex;" onclick="triggerBacktest('{{ r.symbol }}', '{{ r.symbol|slice:'4:' }}')" title="백테스팅">📈 백테스트</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% else %}
     <div class="empty">조건에 맞는 코인이 없습니다.</div>
     {% endif %}

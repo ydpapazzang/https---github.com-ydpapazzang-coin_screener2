@@ -167,6 +167,19 @@
 
   .alert { background: var(--red-dim); border: 0.5px solid var(--red); color: var(--red); padding: 10px 14px; border-radius: 8px; font-size: 12px; margin-bottom: 14px; }
   .helper { font-size: 11px; color: var(--text3); }
+
+  /* MOBILE RESPONSIVE */
+  @media (max-width: 768px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border2); position: static; max-height: none; padding-bottom: 10px; }
+    .main-content { padding: 16px; margin-left: 0; }
+    .form-grid { grid-template-columns: 1fr; }
+    .field-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .field-label { min-width: auto; margin-bottom: 2px; }
+    .cond-form select, .cond-form input.wide { width: 100%; text-align: left; }
+    .action-bar { flex-direction: column; }
+    .nav-right { display: none; /* simple fix for top nav to prevent overflow */ }
+  }
 </style>
 </head>
 <body>
