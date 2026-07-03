@@ -201,15 +201,15 @@ body::after {
 
 <div class="modal">
     <div class="spinner"></div>
-    <div class="modal-title">코인 스크리닝 중...</div>
-    <div class="modal-sub" id="sub-text">업비트 전체 코인을 분석하고 있습니다</div>
+    <div class="modal-title">{% if exchange == 'kospi' %}주식/ETF 스크리닝 중...{% else %}코인 스크리닝 중...{% endif %}</div>
+    <div class="modal-sub" id="sub-text">{% if exchange == 'kospi' %}코스피 주식 및 ETF 데이터를 분석하고 있습니다{% else %}선택한 거래소의 전체 코인을 분석하고 있습니다{% endif %}</div>
 
     <div class="bar-wrap">
         <div class="bar-fill" id="bar"></div>
     </div>
 
     <div class="stats">
-        <span id="stat-left">0 / 0 코인 검사 중</span>
+        <span id="stat-left">0 / 0 종목 검사 중</span>
         <span class="hit" id="stat-right">✓ 0개 매칭</span>
     </div>
 

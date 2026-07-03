@@ -37,7 +37,10 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
                 start_date = (datetime.datetime.now() - datetime.timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
                 df = fdr.DataReader(ticker, start_date)
                 
-                if df is not None and not df.empty:
+                if df is not None:
+                    if df.empty:
+                        return None # 빈 데이터는 재시도 없이 즉시 반환
+                        
                     df = df.rename(columns={
                         'Open': 'open', 'High': 'high', 'Low': 'low', 
                         'Close': 'close', 'Volume': 'volume', 'Change': 'change'
@@ -289,7 +292,7 @@ def check_strategy(ticker, conditions, current_price=None):
             df = data_cache[conditions[0].timeframe]
             if not df.empty:
                 last_price = df['close'].iloc[-1]
-                volume = df['value'].iloc[-1]
+                volume = df['value'].iloc[-1] if 'value' in df.columns else df['volume'].iloc[-1]
 
         if not is_match_current:
             return False, [], last_price, volume, None

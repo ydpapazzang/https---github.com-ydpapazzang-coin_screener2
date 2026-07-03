@@ -427,7 +427,7 @@ body::after {
 
     <div class="page-title">검색 결과</div>
     <div class="page-sub">
-        {{ results|length }}개 코인이 조건에 맞습니다.
+        {{ results|length }}개 {% if request.GET.exchange == 'kospi' %}종목이{% else %}코인이{% endif %} 조건에 맞습니다.
         {% if is_cached %}
             (캐시된 결과, {{ last_updated|date:"H:i" }} 기준)
             <a href="?refresh=1&exchange={{ request.GET.exchange }}&vol_limit={{ request.GET.vol_limit }}">새로고침</a>
@@ -462,7 +462,7 @@ body::after {
                 <input type="checkbox" id="telegram-alert" onchange="toggleTelegramCheckbox()">
                 <label for="telegram-alert">
                     조회 건 발생 시 텔레그램 알림
-                    <span class="ctrl-desc">매칭되는 코인이 1개 이상 검색되면 즉시 텔레그램 발송</span>
+                    <span class="ctrl-desc">매칭되는 {% if request.GET.exchange == 'kospi' %}종목이{% else %}코인이{% endif %} 1개 이상 검색되면 즉시 텔레그램 발송</span>
                 </label>
             </div>
             
@@ -478,7 +478,7 @@ body::after {
 
     {% if rate_limit_warning %}
     <div class="alert error">
-        ⚠️ API 호출 제한으로 일부 코인 데이터를 가져오지 못했습니다. 결과가 누락되었을 수 있습니다.
+        ⚠️ API 호출 제한으로 일부 데이터를 가져오지 못했습니다. 결과가 누락되었을 수 있습니다.
     </div>
     {% endif %}
 
