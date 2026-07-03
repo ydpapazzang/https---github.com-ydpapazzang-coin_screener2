@@ -99,13 +99,15 @@ class Condition(models.Model):
         ('gte', '이상 (>=)'),
         ('lte', '이하 (<=)'),
         ('btw', '사이 (A <= X <= B)'),
+        ('cross_up', '상향 돌파 (Cross Up)'),
+        ('cross_down', '하향 돌파 (Cross Down)'),
         # 하이킨아시 패턴 전용
         ('is',  '조건 충족'),
     ]
 
     strategy        = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='conditions')
     timeframe       = models.CharField(max_length=20, choices=TIMEFRAME_CHOICES, default='day')
-    offset          = models.IntegerField(default=0, verbose_name="n봉 전")
+    offset          = models.IntegerField(default=0, verbose_name="n봉 이내")
     offset_mode     = models.CharField(max_length=20, null=True, blank=True)
     left_indicator  = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
     left_param      = models.IntegerField(default=5)
@@ -124,6 +126,8 @@ class Condition(models.Model):
             'gte': '이상(>=)',
             'lte': '이하(<=)',
             'btw': '사이(Between)',
+            'cross_up': '상향돌파',
+            'cross_down': '하향돌파',
             'is': '충족'
         }
         op_lbl = op_map.get(self.operator, self.operator)
@@ -132,8 +136,8 @@ class Condition(models.Model):
         ha_patterns = ('HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')
         if self.left_indicator in ha_patterns:
             if 'N' in self.left_indicator:
-                return f"{self.offset}봉전 {left_lbl}({self.left_param}봉 연속)"
-            return f"{self.offset}봉전 {left_lbl}"
+                return f"{self.offset}봉이내 {left_lbl}({self.left_param}봉 연속)"
+            return f"{self.offset}봉이내 {left_lbl}"
 
         # 거래량 포맷
         if self.left_indicator == 'VOLUME':
@@ -141,25 +145,25 @@ class Condition(models.Model):
                 pct = int(self.bb_std * 100) if self.bb_std else 100
                 if self.operator == 'btw':
                     max_pct = self.left_param
-                    return f"{self.offset}봉전 거래량 {op_lbl} 이전봉 거래량의 {pct}% ~ {max_pct}%"
-                return f"{self.offset}봉전 거래량 {op_lbl} 이전봉 거래량의 {pct}%"
+                    return f"{self.offset}봉이내 거래량 {op_lbl} 이전봉 거래량의 {pct}% ~ {max_pct}%"
+                return f"{self.offset}봉이내 거래량 {op_lbl} 이전봉 거래량의 {pct}%"
             elif self.right_indicator == 'VOLUME_MA':
                 pct = int(self.bb_std * 100) if self.bb_std else 100
                 if self.operator == 'btw':
                     max_pct = self.left_param
-                    return f"{self.offset}봉전 거래량 {op_lbl} 최근 {self.right_param}봉 평균 거래량의 {pct}% ~ {max_pct}%"
-                return f"{self.offset}봉전 거래량 {op_lbl} 최근 {self.right_param}봉 평균 거래량의 {pct}%"
+                    return f"{self.offset}봉이내 거래량 {op_lbl} 최근 {self.right_param}봉 평균 거래량의 {pct}% ~ {max_pct}%"
+                return f"{self.offset}봉이내 거래량 {op_lbl} 최근 {self.right_param}봉 평균 거래량의 {pct}%"
         
         # 볼린저밴드 포맷
         if self.right_indicator in ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER'):
             std_val = self.bb_std if self.bb_std is not None else 2.0
-            return f"{self.offset}봉전 종가 {op_lbl} {right_lbl}({self.right_param}, {std_val}σ)"
+            return f"{self.offset}봉이내 종가 {op_lbl} {right_lbl}({self.right_param}, {std_val}σ)"
 
         # 기본 포맷
         if self.operator == 'btw':
             max_val = int(self.bb_std) if self.bb_std is not None else 0
             left_part = f"{left_lbl}({self.left_param})" if self.left_indicator not in ('CLOSE', 'VAL') else left_lbl
-            return f"{self.offset}봉전 {left_part} 값이 {self.right_param} ~ {max_val} 사이"
+            return f"{self.offset}봉이내 {left_part} 값이 {self.right_param} ~ {max_val} 사이"
 
         left_part = f"{left_lbl}({self.left_param})" if self.left_indicator not in ('CLOSE', 'VAL') else left_lbl
         if self.left_indicator == 'VAL': left_part = f"{self.left_param}"
@@ -167,7 +171,7 @@ class Condition(models.Model):
         right_part = f"{right_lbl}({self.right_param})" if self.right_indicator not in ('CLOSE', 'VAL') else right_lbl
         if self.right_indicator == 'VAL': right_part = f"{self.right_param}"
         
-        return f"{self.offset}봉전 {left_part} {op_lbl} {right_part}"
+        return f"{self.offset}봉이내 {left_part} {op_lbl} {right_part}"
 
     @property
     def get_volume_pct(self):

@@ -243,45 +243,69 @@ def check_strategy(ticker, conditions, current_price=None):
                     data_cache[cond.timeframe] = df
                 
                 df = data_cache[cond.timeframe]
-                total_offset = cond.offset + base_offset
-
-                # 지표 계산에 필요한 최소 데이터 길이 검증
-                required_len = max(
-                    get_required_len(cond.left_indicator, cond.left_param),
-                    get_required_len(cond.right_indicator, cond.right_param)
-                ) + total_offset + 1
-
-                if len(df) < required_len: return False
-
-                # ── 하이킨아시 패턴 조건 ──
-                ha_patterns = ('HA_BULL','HA_BEAR','HA_BULL_N','HA_BEAR_N','HA_NO_LOWER','HA_NO_UPPER')
-                if cond.left_indicator in ha_patterns:
-                    pattern = cond.left_indicator
-                    param   = cond.left_param
-                    if not check_ha_pattern(df, pattern, param, total_offset):
-                        return False
-                    continue
-
-                bb_std = cond.bb_std if cond.bb_std is not None else 2.0
-                left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, total_offset, bb_std=bb_std)
-                right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, total_offset, bb_std=bb_std)
-
-                if left_val is None or right_val is None or pd.isna(left_val) or pd.isna(right_val):
-                    return False
-
-                if cond.operator == 'btw':
-                    if cond.left_indicator == 'VOLUME':
-                        max_multiplier = cond.left_param / 100.0
-                        max_val = get_indicator_value(df, cond.right_indicator, cond.right_param, total_offset, bb_std=max_multiplier)
-                    else:
-                        max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+                
+                cond_met = False
+                # cond.offset이 'n봉 이내'를 의미하므로, 0부터 cond.offset까지 모든 봉을 검사하여 하나라도 만족하면 True
+                for i in range(cond.offset + 1):
+                    total_offset = base_offset + i
                     
-                    if not (right_val <= left_val <= max_val):
-                        return False
-                else:
-                    op_map = {'gt': left_val > right_val, 'lt': left_val < right_val, 'gte': left_val >= right_val, 'lte': left_val <= right_val}
-                    if not op_map.get(cond.operator):
-                        return False
+                    required_len = max(
+                        get_required_len(cond.left_indicator, cond.left_param),
+                        get_required_len(cond.right_indicator, cond.right_param)
+                    ) + total_offset + 2  # +2 for cross_up/down
+
+                    if len(df) < required_len:
+                        continue
+                        
+                    # ── 하이킨아시 패턴 조건 ──
+                    ha_patterns = ('HA_BULL','HA_BEAR','HA_BULL_N','HA_BEAR_N','HA_NO_LOWER','HA_NO_UPPER')
+                    if cond.left_indicator in ha_patterns:
+                        if check_ha_pattern(df, cond.left_indicator, cond.left_param, total_offset):
+                            cond_met = True
+                            break
+                        continue
+                        
+                    bb_std = cond.bb_std if cond.bb_std is not None else 2.0
+                    left_val = get_indicator_value(df, cond.left_indicator, cond.left_param, total_offset, bb_std=bb_std)
+                    right_val = get_indicator_value(df, cond.right_indicator, cond.right_param, total_offset, bb_std=bb_std)
+
+                    if left_val is None or right_val is None or pd.isna(left_val) or pd.isna(right_val):
+                        continue
+
+                    if cond.operator == 'btw':
+                        if cond.left_indicator == 'VOLUME':
+                            max_multiplier = cond.left_param / 100.0
+                            max_val = get_indicator_value(df, cond.right_indicator, cond.right_param, total_offset, bb_std=max_multiplier)
+                        else:
+                            max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+                        
+                        if (right_val <= left_val <= max_val):
+                            cond_met = True
+                            break
+                    elif cond.operator in ('cross_up', 'cross_down'):
+                        prev_offset = total_offset + 1
+                        left_val_prev = get_indicator_value(df, cond.left_indicator, cond.left_param, prev_offset, bb_std=bb_std)
+                        right_val_prev = get_indicator_value(df, cond.right_indicator, cond.right_param, prev_offset, bb_std=bb_std)
+                        
+                        if left_val_prev is None or right_val_prev is None or pd.isna(left_val_prev) or pd.isna(right_val_prev):
+                            continue
+                            
+                        if cond.operator == 'cross_up':
+                            if left_val_prev <= right_val_prev and left_val > right_val:
+                                cond_met = True
+                                break
+                        elif cond.operator == 'cross_down':
+                            if left_val_prev >= right_val_prev and left_val < right_val:
+                                cond_met = True
+                                break
+                    else:
+                        op_map = {'gt': left_val > right_val, 'lt': left_val < right_val, 'gte': left_val >= right_val, 'lte': left_val <= right_val}
+                        if op_map.get(cond.operator):
+                            cond_met = True
+                            break
+                            
+                if not cond_met:
+                    return False
             return True
 
         # 1. 현재 봉(base_offset=0) 조건 확인
