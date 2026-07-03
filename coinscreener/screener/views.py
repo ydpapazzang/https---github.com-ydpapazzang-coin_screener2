@@ -282,8 +282,11 @@ def condition_delete(request, strategy_id, condition_id):
 # 3. 코인 검색 — SSE 스트리밍 버전
 # ──────────────────────────────────────────
 
+KOSPI_NAME_MAP = {}
+
 def _get_tickers(exchange, vol_limit):
     """거래소·거래대금 조건에 맞는 티커 목록 반환"""
+    global KOSPI_NAME_MAP
     if exchange == 'kospi':
         import FinanceDataReader as fdr
         try:
@@ -302,10 +305,14 @@ def _get_tickers(exchange, vol_limit):
             
             # 단일종목 + ETF 추출
             top_kospi = kospi_df['Code'].head(limit).tolist()
+            for _, row in kospi_df.head(limit).iterrows():
+                KOSPI_NAME_MAP[row['Code']] = row['Name']
             
             # ETF 코드는 최신 FDR에서 Symbol로 제공될 수 있음
             etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
             top_etf = etf_df[etf_code_col].head(limit).tolist()
+            for _, row in etf_df.head(limit).iterrows():
+                KOSPI_NAME_MAP[row[etf_code_col]] = row['Name']
             
             tickers = top_kospi + top_etf
         except Exception as e:
@@ -424,8 +431,10 @@ def coin_search_stream(request, strategy_id):
                     return "API_ERROR"
                 if is_match:
                     unique_details = list(dict.fromkeys(details))
+                    name = KOSPI_NAME_MAP.get(ticker, ticker.replace("KRW-", ""))
                     return {
                         'symbol':         ticker,
+                        'name':           name,
                         'price':          price,
                         'details':        ", ".join(unique_details),
                         'volume':         volume,
@@ -614,6 +623,7 @@ def process_scan_and_alert(strategy, tickers, conditions):
                 
                 # 알림 중복 차단 해제: 중복 차단 없이 항상 발송되도록 설정
                 should_notify = True
+                name = KOSPI_NAME_MAP.get(ticker, ticker.replace("KRW-", ""))
                 
                 # DB에 스캔 매칭 이력 기록 (항상 저장하되, 텔레그램 발송 여부 플래그 세팅)
                 AlertHistory.objects.create(
@@ -628,6 +638,7 @@ def process_scan_and_alert(strategy, tickers, conditions):
                 
                 return {
                     'symbol':         ticker,
+                    'name':           name,
                     'price':          price,
                     'volume':         volume,
                     'volume_display': f"{volume / 100_000_000:.1f}억",

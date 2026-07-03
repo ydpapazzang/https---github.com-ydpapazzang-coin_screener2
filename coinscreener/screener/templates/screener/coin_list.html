@@ -501,9 +501,15 @@ body::after {
                 <td class="num">{{ forloop.counter }}</td>
                 <td class="symbol">
                     <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}" target="_blank" title="업비트 차트 보기">
-                            {{ r.symbol }}
-                        </a>
+                        {% if request.GET.exchange == 'kospi' %}
+                            <a href="https://finance.naver.com/item/main.naver?code={{ r.symbol }}" target="_blank" title="네이버 증권 보기">
+                                {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
+                            </a>
+                        {% else %}
+                            <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}" target="_blank" title="업비트 차트 보기">
+                                {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
+                            </a>
+                        {% endif %}
                         {% if r.status == 'new' %}
                             <span class="status-badge new">신규</span>
                         {% elif r.status == 'maintained' %}
@@ -684,25 +690,36 @@ function openTradingViewChart(symbol) {
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
 
-    // Parse symbol name
-    const coinSymbol = symbol.split('-')[1]; // e.g. BTC
-    document.getElementById('tv-modal-title').textContent = `${coinSymbol}/KRW 실시간 차트`;
-
     // Resolve exchange
     const urlParams = new URLSearchParams(window.location.search);
     const exchange = urlParams.get('exchange') || 'upbit';
     const isUpbit = exchange.toLowerCase() === 'upbit';
+    const isKospi = exchange.toLowerCase() === 'kospi';
+
+    // Parse symbol name
+    let coinSymbol = symbol;
+    if (symbol.includes('-')) {
+        coinSymbol = symbol.split('-')[1]; // e.g. BTC
+    }
     
     const badge = document.getElementById('tv-modal-exchange-badge');
-    badge.textContent = isUpbit ? 'Upbit' : 'Bithumb';
-    if (isUpbit) {
-        badge.className = 'tv-modal-badge upbit';
-    } else {
+    if (isKospi) {
+        document.getElementById('tv-modal-title').textContent = `${symbol} 실시간 차트`;
+        badge.textContent = 'KRX';
         badge.className = 'tv-modal-badge';
+    } else {
+        document.getElementById('tv-modal-title').textContent = `${coinSymbol}/KRW 실시간 차트`;
+        badge.textContent = isUpbit ? 'Upbit' : 'Bithumb';
+        badge.className = isUpbit ? 'tv-modal-badge upbit' : 'tv-modal-badge';
     }
 
     // Build tradingview code
-    const tvSymbol = (isUpbit ? 'UPBIT:' : 'BITHUMB:') + coinSymbol + 'KRW';
+    let tvSymbol;
+    if (isKospi) {
+        tvSymbol = 'KRX:' + symbol;
+    } else {
+        tvSymbol = (isUpbit ? 'UPBIT:' : 'BITHUMB:') + coinSymbol + 'KRW';
+    }
 
     // Embed TradingView Widget
     new TradingView.widget({

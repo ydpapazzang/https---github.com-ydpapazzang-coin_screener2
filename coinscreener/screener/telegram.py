@@ -68,7 +68,8 @@ def send_alert(strategy_name: str, results: list, strategy_id: int = None) -> di
             vol         = r.get('volume_display', '')
             status_icon = '🆕' if r.get('status') == 'new' else '🔁'
             price_str   = f"{r['price']:,.0f}" if r.get('price') else '-'
-            lines.append(f"{status_icon} <b>{r['symbol']}</b>  {price_str}원  거래대금 {vol}")
+            name_str    = f"[{r.get('name')}] " if r.get('name') and r.get('name') != r['symbol'] else ""
+            lines.append(f"{status_icon} {name_str}<b>{r['symbol']}</b>  {price_str}원  거래대금 {vol}")
         if len(results) > 20:
             lines.append(f"... 외 {len(results) - 20}개")
         text = "\n".join(lines)
