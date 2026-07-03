@@ -540,7 +540,9 @@ body::after {
                 <th class="num">#</th>
                 <th onclick="sortTable(1, 'str')" style="cursor:pointer" title="클릭하여 정렬">종목 <span class="sort-icon"></span></th>
                 <th class="price" onclick="sortTable(2, 'num')" style="cursor:pointer" title="클릭하여 정렬">현재가 <span class="sort-icon"></span></th>
-                <th class="volume" onclick="sortTable(3, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래대금 <span class="sort-icon"></span></th>
+                <th class="amount" onclick="sortTable(3, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래대금 <span class="sort-icon"></span></th>
+                <th class="volume" onclick="sortTable(4, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래량 <span class="sort-icon"></span></th>
+                <th class="market_cap" onclick="sortTable(5, 'num')" style="cursor:pointer" title="클릭하여 정렬">시가총액 <span class="sort-icon"></span></th>
                 <th>관련 지표</th>
                 <th style="text-align: center;">실시간 차트</th>
                 <th style="text-align: center;">백테스트</th>
@@ -570,7 +572,9 @@ body::after {
                     </div>
                 </td>
                 <td class="price" data-val="{{ r.price }}">{{ r.price|floatformat:0 }}</td>
+                <td class="amount" data-val="{{ r.amount }}">{{ r.amount_display }}</td>
                 <td class="volume" data-val="{{ r.volume }}">{{ r.volume_display }}</td>
+                <td class="market_cap" data-val="{{ r.market_cap }}">{{ r.market_cap_display }}</td>
                 <td>{{ r.details }}</td>
                 <td style="text-align: center;">
                     <button class="btn-tv-chart" onclick="openTradingViewChart('{{ r.symbol }}')" title="실시간 차트 보기">📊 차트</button>

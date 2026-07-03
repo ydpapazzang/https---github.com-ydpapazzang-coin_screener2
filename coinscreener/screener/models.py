@@ -196,6 +196,26 @@ class AlertSetting(models.Model):
         return f"{self.strategy.name} 알림"
 
 
+class MarketData(models.Model):
+    exchange = models.CharField(max_length=20, db_index=True) # e.g. 'kospi', 'upbit', 'bithumb'
+    ticker = models.CharField(max_length=50, db_index=True)   # e.g. '005930', 'KRW-BTC'
+    name = models.CharField(max_length=100)
+    close_price = models.FloatField(default=0)
+    volume = models.FloatField(default=0)
+    amount = models.FloatField(default=0)
+    market_cap = models.BigIntegerField(null=True, blank=True)
+    last_updated = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('exchange', 'ticker')
+        indexes = [
+            models.Index(fields=['exchange', 'ticker']),
+        ]
+
+    def __str__(self):
+        return f"[{self.exchange}] {self.name} ({self.ticker})"
+
+
 class AlertHistory(models.Model):
     """알림 발송 및 스캔 매칭 이력"""
     strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='histories')

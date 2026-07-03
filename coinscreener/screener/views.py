@@ -282,83 +282,19 @@ def condition_delete(request, strategy_id, condition_id):
 # 3. 코인 검색 — SSE 스트리밍 버전
 # ──────────────────────────────────────────
 
-KOSPI_NAME_MAP = {}
-
 def _get_tickers(exchange, vol_limit):
-    """거래소·거래대금 조건에 맞는 티커 목록 반환"""
-    global KOSPI_NAME_MAP
-    if exchange == 'kospi':
-        import FinanceDataReader as fdr
-        try:
-            # 코스피 상장 종목
-            kospi_df = fdr.StockListing('KOSPI')
-            # ETF
-            etf_df = fdr.StockListing('ETF/KR')
-            
-            # 거래대금(Amount) 기준 내림차순 정렬
-            if 'Amount' in kospi_df.columns:
-                kospi_df = kospi_df.sort_values(by='Amount', ascending=False)
-            if 'Amount' in etf_df.columns:
-                etf_df = etf_df.sort_values(by='Amount', ascending=False)
-                
-            limit = vol_limit if vol_limit else 100
-            
-            # 단일종목 + ETF 추출
-            top_kospi = kospi_df['Code'].head(limit).tolist()
-            for _, row in kospi_df.head(limit).iterrows():
-                KOSPI_NAME_MAP[row['Code']] = row['Name']
-            
-            # ETF 코드는 최신 FDR에서 Symbol로 제공될 수 있음
-            etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
-            top_etf = etf_df[etf_code_col].head(limit).tolist()
-            for _, row in etf_df.head(limit).iterrows():
-                KOSPI_NAME_MAP[row[etf_code_col]] = row['Name']
-            
-            tickers = top_kospi + top_etf
-        except Exception as e:
-            print(f"KOSPI ticker fetch error: {e}")
-            tickers = []
-    elif exchange == 'bithumb':
-        import requests as req
-        try:
-            r = req.get('https://api.bithumb.com/public/ticker/ALL_KRW', timeout=5)
-            r.raise_for_status()
-            body = r.json()
-            # 빗썸 응답: {"status":"0000", "data":{"BTC":{...}, "date":"..."}}
-            raw = body.get('data', {})
-            tickers = [f"KRW-{k}" for k in raw if k != 'date']
-            if vol_limit:
-                def trade_val(ticker):
-                    coin = ticker.replace('KRW-', '')
-                    try:
-                        return float(raw.get(coin, {}).get('acc_trade_value_24H') or 0)
-                    except (TypeError, ValueError):
-                        return 0.0
-                tickers.sort(key=trade_val, reverse=True)
-                tickers = tickers[:vol_limit]
-        except Exception:
-            tickers = []
-    else:
-        # 업비트 기본
-        all_tickers = pyupbit.get_tickers(fiat="KRW") or []
-        if vol_limit:
-            # pyupbit으로 거래대금 순 정렬
-            try:
-                import requests as req
-                symbols = [t.replace('KRW-', '') for t in all_tickers]
-                r = req.get(
-                    'https://api.upbit.com/v1/ticker',
-                    params={'markets': ','.join(all_tickers)},
-                    timeout=5
-                )
-                data = r.json()
-                sorted_tickers = sorted(data, key=lambda x: x.get('acc_trade_price_24h', 0), reverse=True)
-                tickers = [d['market'] for d in sorted_tickers[:vol_limit]]
-            except Exception:
-                tickers = all_tickers[:vol_limit]
-        else:
-            tickers = all_tickers
-    return tickers
+    """거래소·거래대금 조건에 맞는 티커 목록 반환 (DB 최적화)"""
+    from screener.models import MarketData
+    
+    # Check if DB is empty, if so return empty and warn user to run update_market_data
+    if not MarketData.objects.exists():
+        return []
+        
+    qs = MarketData.objects.filter(exchange=exchange).order_by('-amount')
+    if vol_limit:
+        qs = qs[:vol_limit]
+        
+    return list(qs.values('ticker', 'name', 'market_cap', 'amount'))
 
 
 def coin_search(request, strategy_id):
@@ -429,27 +365,35 @@ def coin_search_stream(request, strategy_id):
             yield "data: " + json.dumps({"type": "error", "msg": "조건이 없습니다."}) + "\n\n"
             return
 
-        tickers = _get_tickers(exchange, vol_limit)
-        total   = len(tickers)
+        tickers_data = _get_tickers(exchange, vol_limit)
+        total   = len(tickers_data)
         results = []
         done    = 0
         error_occurred = False
 
-        def process_ticker(ticker):
+        def process_ticker(t_data):
+            ticker = t_data['ticker']
+            name = t_data['name']
+            market_cap = t_data.get('market_cap') or 0
+            amount = t_data.get('amount') or 0
+            
             try:
                 is_match, details, price, volume, status = check_strategy(ticker, conditions)
                 if price is None:
                     return "API_ERROR"
                 if is_match:
                     unique_details = list(dict.fromkeys(details))
-                    name = KOSPI_NAME_MAP.get(ticker, ticker.replace("KRW-", ""))
                     return {
                         'symbol':         ticker,
                         'name':           name,
+                        'market_cap':     market_cap,
+                        'market_cap_display': f"{market_cap / 100_000_000:.1f}억" if market_cap else "-",
+                        'amount':         amount,
+                        'amount_display': f"{amount / 100_000_000:.1f}억" if amount else "-",
                         'price':          price,
                         'details':        ", ".join(unique_details),
                         'volume':         volume,
-                        'volume_display': f"{volume / 100_000_000:.1f}억",
+                        'volume_display': f"{volume:.0f}" if volume else "0",
                         'status':         status,
                     }
             except Exception:
@@ -458,7 +402,7 @@ def coin_search_stream(request, strategy_id):
 
         # 스레드 개수를 10개로 조절하여 업비트 API 호출의 순간 폭주(Burst)를 완화하고 Rate Limit를 방어합니다.
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(process_ticker, t): t for t in tickers}
+            futures = {executor.submit(process_ticker, t): t for t in tickers_data}
             last_sent_pct = -1
             for future in concurrent.futures.as_completed(futures):
                 result = future.result()
