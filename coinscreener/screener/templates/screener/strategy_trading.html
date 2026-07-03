@@ -432,11 +432,7 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">④</span>기준값</div>
-                    <div class="slider-wrap">
-                        <input type="range" class="slider" id="rsi_thr_slider" min="0" max="100" value="30" oninput="syncSlider('rsi_threshold_input','rsi_thr_slider')">
-                        <span class="slider-val" id="rsi_thr_display">30</span>
-                    </div>
-                    <input type="number" name="rsi_threshold" id="rsi_threshold_input" value="30" min="0" max="100" class="wide" oninput="syncInputToSlider('rsi_threshold_input','rsi_thr_slider')">
+                    <input type="number" name="rsi_threshold" id="rsi_threshold_input" value="30" min="0" max="100" class="wide">
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">⑤</span>비교 조건</div>
@@ -453,11 +449,7 @@
                 </div>
                 <div class="field-row" id="rsi_thr_max_row" style="display:none;">
                     <div class="field-label"><span class="num">⑥</span>최대값</div>
-                    <div class="slider-wrap">
-                        <input type="range" class="slider" id="rsi_thr_max_slider" min="0" max="100" value="70" oninput="syncSlider('rsi_threshold_max_input','rsi_thr_max_slider')">
-                        <span class="slider-val" id="rsi_thr_max_display">70</span>
-                    </div>
-                    <input type="number" name="rsi_threshold_max" id="rsi_threshold_max_input" value="70" min="0" max="100" class="wide" oninput="syncInputToSlider('rsi_threshold_max_input','rsi_thr_max_slider')">
+                    <input type="number" name="rsi_threshold_max" id="rsi_threshold_max_input" value="70" min="0" max="100" class="wide">
                 </div>
             </div>
             <button type="submit" class="btn-add-cond">＋ RSI 조건 추가</button>
@@ -591,11 +583,7 @@
                 </div>
                 <div class="field-row" id="ha_n_wrap" style="display:none;">
                     <div class="field-label"><span class="num">④</span>연속 봉수</div>
-                    <div class="slider-wrap">
-                        <input type="range" class="slider" id="ha_n_slider" min="2" max="20" value="3" oninput="syncHaN(this.value)">
-                        <span class="slider-val" id="ha_n_display">3</span>
-                    </div>
-                    <input type="number" name="ha_n" id="ha_n_input" value="3" min="2" max="20" class="wide" oninput="syncHaNInput(this.value)">
+                    <input type="number" name="ha_n" id="ha_n_input" value="3" min="2" max="20" class="wide">
                 </div>
             </div>
             <button type="submit" class="btn-add-cond">＋ 하이킨아시 조건 추가</button>
@@ -724,21 +712,13 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">⑤</span>기준 비율</div>
-                    <div class="slider-wrap">
-                        <input type="range" class="slider" id="volume_pct_slider" min="10" max="1000" value="150" step="10" oninput="syncSlider('volume_pct_input','volume_pct_slider')">
-                        <span class="slider-val" id="volume_pct_display">150</span>
-                        <span class="slider-unit">%</span>
-                    </div>
-                    <input type="number" name="volume_pct" id="volume_pct_input" value="150" min="10" max="1000" class="wide" oninput="syncInputToSlider('volume_pct_input','volume_pct_slider')">
+                    <input type="number" name="volume_pct" id="volume_pct_input" value="150" min="10" max="1000" class="wide">
+                    <span class="helper">%</span>
                 </div>
                 <div class="field-row" id="volume_pct_max_row" style="display:none;">
                     <div class="field-label"><span class="num">⑥</span>최대 비율</div>
-                    <div class="slider-wrap">
-                        <input type="range" class="slider" id="volume_pct_max_slider" min="10" max="2000" value="300" step="10" oninput="syncSlider('volume_pct_max_input','volume_pct_max_slider')">
-                        <span class="slider-val" id="volume_pct_max_display">300</span>
-                        <span class="slider-unit">%</span>
-                    </div>
-                    <input type="number" name="volume_pct_max" id="volume_pct_max_input" value="300" min="10" max="2000" class="wide" oninput="syncInputToSlider('volume_pct_max_input','volume_pct_max_slider')">
+                    <input type="number" name="volume_pct_max" id="volume_pct_max_input" value="300" min="10" max="2000" class="wide">
+                    <span class="helper">%</span>
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">⑦</span>비교 조건</div>
