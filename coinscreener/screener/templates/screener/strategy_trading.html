@@ -170,15 +170,31 @@
 
   /* MOBILE RESPONSIVE */
   @media (max-width: 768px) {
-    .layout { flex-direction: column; }
-    .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border2); position: static; max-height: none; padding-bottom: 10px; }
-    .main-content { padding: 16px; margin-left: 0; }
+    .layout { flex-direction: column; display: flex; }
+    
+    /* Sidebar becomes a horizontal scrolling tab bar */
+    .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 10px; max-height: none; }
+    .sidebar-section-label { display: none; } /* Hide '내 전략' label to save space */
+    .strat-list { display: flex; flex-direction: row; overflow-x: auto; white-space: nowrap; gap: 8px; padding-bottom: 4px; }
+    .strat-item { display: inline-flex; width: auto; padding: 8px 12px; flex-shrink: 0; }
+    .add-strat { width: auto; display: inline-flex; flex-shrink: 0; margin-top: 0; padding: 8px 12px; }
+    
+    .main { padding: 12px 10px; }
     .form-grid { grid-template-columns: 1fr; }
-    .field-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .field-row { flex-direction: column; align-items: stretch; gap: 6px; }
     .field-label { min-width: auto; margin-bottom: 2px; }
     .cond-form select, .cond-form input.wide { width: 100%; text-align: left; }
-    .action-bar { flex-direction: column; }
-    .nav-right { display: none; /* simple fix for top nav to prevent overflow */ }
+    
+    /* Make buttons big and easy to tap */
+    .action-bar { flex-direction: column; gap: 10px; }
+    .abtn { width: 100%; padding: 14px; font-size: 15px; }
+    .btn-add-cond { width: 100%; padding: 12px; font-size: 14px; margin-top: 10px; }
+    
+    .nav-right { display: none; }
+    
+    /* Make tabs scrollable horizontally */
+    .tab-row { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+    .tab { white-space: nowrap; flex-shrink: 0; }
   }
 </style>
 </head>
@@ -228,55 +244,6 @@
       </div>
     </div>
 
-    {% if strategy %}
-    <div>
-      <div class="sidebar-section-label">리스크 설정 <span style="color:var(--red); font-size:9px; background:var(--red-dim); padding:1px 5px; border-radius:3px; font-weight:700;">필수</span></div>
-      <div class="risk-grid">
-        <div class="risk-box">
-          <div class="risk-label">손절 기준</div>
-          <div style="display:flex; align-items:center; gap:2px;">
-            <input class="risk-input r" id="risk-sl" type="text" value="{{ strategy.stop_loss|floatformat:0 }}" style="width:40px;" oninput="updateRR(); saveRiskSettings();">
-            <span style="font-size:12px; color:var(--red);">%</span>
-          </div>
-        </div>
-        <div class="risk-box">
-          <div class="risk-label">목표 익절</div>
-          <div style="display:flex; align-items:center; gap:2px;">
-            <input class="risk-input" id="risk-tp" type="text" value="{{ strategy.take_profit|floatformat:0 }}" style="width:40px;" oninput="updateRR(); saveRiskSettings();">
-            <span style="font-size:12px; color:var(--green);">%</span>
-          </div>
-        </div>
-        <div class="risk-box risk-full">
-          <div class="risk-label">RR 비율 (Risk:Reward)</div>
-          <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
-            <span class="risk-val y" id="risk-rr-val">1 : 3.0</span>
-            <span style="font-size:10px; color:var(--text3);">자동 계산</span>
-          </div>
-        </div>
-        <div class="risk-box risk-full">
-          <div class="risk-label">진입 자본 비율</div>
-          <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
-            <input type="range" id="risk-capital" min="5" max="100" value="{{ strategy.capital_pct }}" step="5" oninput="document.getElementById('capital-pct').textContent=this.value; saveRiskSettings();" style="flex:1; accent-color:var(--purple);">
-            <span id="capital-pct" style="font-size:13px; font-weight:600; color:var(--purple); min-width:32px;">{{ strategy.capital_pct }}</span>
-            <span style="font-size:11px; color:var(--text3);">%</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div>
-      <div class="sidebar-section-label">알림</div>
-      <div class="risk-box" id="tg-alert-box" style="cursor:pointer;" onclick="toggleTelegramAlert(this)">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <div style="font-size:12px; font-weight:500; color:var(--text);">텔레그램 알림</div>
-            <div class="risk-label" style="margin-top:2px;">조건 충족 시 즉시 발송</div>
-          </div>
-          <span class="toggle" style="font-size:11px; font-weight:600; color:var(--text3);">꺼짐</span>
-        </div>
-      </div>
-    </div>
-    {% endif %}
   </div>
 
   <!-- MAIN -->
