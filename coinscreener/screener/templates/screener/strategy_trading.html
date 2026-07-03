@@ -310,7 +310,6 @@
             <input type="hidden" name="ma_type_a" id="ma_type_a_val" value="MA">
             <input type="hidden" name="ma_type_b" id="ma_type_b_val" value="MA">
             <input type="hidden" name="ma_price_a_type" id="ma_price_a_type_val" value="MA">
-            <input type="hidden" name="offset" id="ma_offset" value="0">
 
             <div class="form-grid">
                 <div class="field-row">
@@ -332,15 +331,19 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">②</span>기간 선택</div>
-                    <select onchange="syncOffsetType('MA')" id="ma_offset_type">
-                        <option value="current">현재봉</option>
-                        <option value="before">봉 전</option>
+                    <select name="offset" id="ma_offset" style="width:140px;">
+                        <option value="0">0봉 전 (현재봉)</option>
+                        <option value="1">1봉 전</option>
+                        <option value="2">2봉 전</option>
+                        <option value="3">3봉 전</option>
+                        <option value="4">4봉 전</option>
+                        <option value="5">5봉 전</option>
+                        <option value="6">6봉 전</option>
+                        <option value="7">7봉 전</option>
+                        <option value="8">8봉 전</option>
+                        <option value="9">9봉 전</option>
+                        <option value="10">10봉 전</option>
                     </select>
-                    <div class="slider-wrap" id="ma_offset_slider_wrap" style="display:none;">
-                        <input type="range" class="slider" id="ma_offset_slider" min="0" max="100" value="0" oninput="syncSlider('ma_offset','ma_offset_slider')">
-                        <span class="slider-val" id="ma_offset_display">0</span>
-                        <span class="slider-unit">봉 전</span>
-                    </div>
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">③</span>이동평균 A</div>
@@ -385,7 +388,6 @@
         <form id="form-RSI" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateRSI()">
             {% csrf_token %}
             <input type="hidden" name="cond_type" value="RSI">
-            <input type="hidden" name="offset" id="rsi_offset" value="0">
 
             <div class="form-grid">
                 <div class="field-row">
@@ -406,15 +408,19 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">②</span>기간 선택</div>
-                    <select onchange="syncOffsetType('RSI')" id="rsi_offset_type">
-                        <option value="current">현재봉</option>
-                        <option value="before">봉 전</option>
+                    <select name="offset" id="rsi_offset" style="width:140px;">
+                        <option value="0">0봉 전 (현재봉)</option>
+                        <option value="1">1봉 전</option>
+                        <option value="2">2봉 전</option>
+                        <option value="3">3봉 전</option>
+                        <option value="4">4봉 전</option>
+                        <option value="5">5봉 전</option>
+                        <option value="6">6봉 전</option>
+                        <option value="7">7봉 전</option>
+                        <option value="8">8봉 전</option>
+                        <option value="9">9봉 전</option>
+                        <option value="10">10봉 전</option>
                     </select>
-                    <div class="slider-wrap" id="rsi_offset_slider_wrap" style="display:none;">
-                        <input type="range" class="slider" id="rsi_offset_slider" min="0" max="100" value="0" oninput="syncSlider('rsi_offset','rsi_offset_slider')">
-                        <span class="slider-val" id="rsi_offset_display">0</span>
-                        <span class="slider-unit">봉 전</span>
-                    </div>
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">③</span>RSI 기간</div>
@@ -455,7 +461,6 @@
         <form id="form-BB" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateBB()">
             {% csrf_token %}
             <input type="hidden" name="cond_type" value="BB">
-            <input type="hidden" name="offset" id="bb_offset" value="0">
             <input type="hidden" name="bb_target" id="bb_target_val" value="BB_UPPER">
 
             <div class="form-grid">
@@ -477,15 +482,19 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">②</span>기간 선택</div>
-                    <select onchange="syncOffsetType('BB')" id="bb_offset_type">
-                        <option value="current">현재봉</option>
-                        <option value="before">봉 전</option>
+                    <select name="offset" id="bb_offset" style="width:140px;">
+                        <option value="0">0봉 전 (현재봉)</option>
+                        <option value="1">1봉 전</option>
+                        <option value="2">2봉 전</option>
+                        <option value="3">3봉 전</option>
+                        <option value="4">4봉 전</option>
+                        <option value="5">5봉 전</option>
+                        <option value="6">6봉 전</option>
+                        <option value="7">7봉 전</option>
+                        <option value="8">8봉 전</option>
+                        <option value="9">9봉 전</option>
+                        <option value="10">10봉 전</option>
                     </select>
-                    <div class="slider-wrap" id="bb_offset_slider_wrap" style="display:none;">
-                        <input type="range" class="slider" id="bb_offset_slider" min="0" max="100" value="0" oninput="syncSlider('bb_offset','bb_offset_slider')">
-                        <span class="slider-val" id="bb_offset_display">0</span>
-                        <span class="slider-unit">봉 전</span>
-                    </div>
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">③</span>볼린저 밴드</div>
@@ -526,7 +535,6 @@
             {% csrf_token %}
             <input type="hidden" name="cond_type" value="HA">
             <input type="hidden" name="ha_pattern" id="ha_pattern_val" value="HA_BULL">
-            <input type="hidden" name="offset" id="ha_offset" value="0">
 
             <div class="form-grid">
                 <div class="field-row">
@@ -547,15 +555,19 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">②</span>기간 선택</div>
-                    <select onchange="syncOffsetType('HA')" id="ha_offset_type">
-                        <option value="current">현재봉</option>
-                        <option value="before">봉 전</option>
+                    <select name="offset" id="ha_offset" style="width:140px;">
+                        <option value="0">0봉 전 (현재봉)</option>
+                        <option value="1">1봉 전</option>
+                        <option value="2">2봉 전</option>
+                        <option value="3">3봉 전</option>
+                        <option value="4">4봉 전</option>
+                        <option value="5">5봉 전</option>
+                        <option value="6">6봉 전</option>
+                        <option value="7">7봉 전</option>
+                        <option value="8">8봉 전</option>
+                        <option value="9">9봉 전</option>
+                        <option value="10">10봉 전</option>
                     </select>
-                    <div class="slider-wrap" id="ha_offset_slider_wrap" style="display:none;">
-                        <input type="range" class="slider" id="ha_offset_slider" min="0" max="100" value="0" oninput="syncSlider('ha_offset','ha_offset_slider')">
-                        <span class="slider-val" id="ha_offset_display">0</span>
-                        <span class="slider-unit">봉 전</span>
-                    </div>
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">③</span>패턴 종류</div>
@@ -585,7 +597,6 @@
             {% csrf_token %}
             <input type="hidden" name="cond_type" value="IC">
             <input type="hidden" name="ic_comparison" id="ic_comparison_val" value="TENKAN_KIJUN">
-            <input type="hidden" name="offset" id="ic_offset" value="0">
 
             <div class="form-grid">
                 <div class="field-row">
@@ -606,15 +617,19 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">②</span>기간 선택</div>
-                    <select onchange="syncOffsetType('IC')" id="ic_offset_type">
-                        <option value="current">현재봉</option>
-                        <option value="before">봉 전</option>
+                    <select name="offset" id="ic_offset" style="width:140px;">
+                        <option value="0">0봉 전 (현재봉)</option>
+                        <option value="1">1봉 전</option>
+                        <option value="2">2봉 전</option>
+                        <option value="3">3봉 전</option>
+                        <option value="4">4봉 전</option>
+                        <option value="5">5봉 전</option>
+                        <option value="6">6봉 전</option>
+                        <option value="7">7봉 전</option>
+                        <option value="8">8봉 전</option>
+                        <option value="9">9봉 전</option>
+                        <option value="10">10봉 전</option>
                     </select>
-                    <div class="slider-wrap" id="ic_offset_slider_wrap" style="display:none;">
-                        <input type="range" class="slider" id="ic_offset_slider" min="0" max="100" value="0" oninput="syncSlider('ic_offset','ic_offset_slider')">
-                        <span class="slider-val" id="ic_offset_display">0</span>
-                        <span class="slider-unit">봉 전</span>
-                    </div>
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">③</span>비교 대상</div>
@@ -648,7 +663,6 @@
         <form id="form-VOLUME" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post" onsubmit="return validateVOLUME()">
             {% csrf_token %}
             <input type="hidden" name="cond_type" value="VOLUME">
-            <input type="hidden" name="offset" id="volume_offset" value="0">
             <input type="hidden" name="volume_target" id="volume_target_val" value="prev">
 
             <div class="form-grid">
@@ -670,15 +684,19 @@
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">②</span>기간 선택</div>
-                    <select onchange="syncOffsetType('VOLUME')" id="volume_offset_type">
-                        <option value="current">현재봉</option>
-                        <option value="before">봉 전</option>
+                    <select name="offset" id="volume_offset" style="width:140px;">
+                        <option value="0">0봉 전 (현재봉)</option>
+                        <option value="1">1봉 전</option>
+                        <option value="2">2봉 전</option>
+                        <option value="3">3봉 전</option>
+                        <option value="4">4봉 전</option>
+                        <option value="5">5봉 전</option>
+                        <option value="6">6봉 전</option>
+                        <option value="7">7봉 전</option>
+                        <option value="8">8봉 전</option>
+                        <option value="9">9봉 전</option>
+                        <option value="10">10봉 전</option>
                     </select>
-                    <div class="slider-wrap" id="volume_offset_slider_wrap" style="display:none;">
-                        <input type="range" class="slider" id="volume_offset_slider" min="0" max="100" value="0" oninput="syncSlider('volume_offset','volume_offset_slider')">
-                        <span class="slider-val" id="volume_offset_display">0</span>
-                        <span class="slider-unit">봉 전</span>
-                    </div>
                 </div>
                 <div class="field-row">
                     <div class="field-label"><span class="num">③</span>비교 대상</div>
@@ -1269,18 +1287,7 @@
     if (disp) disp.textContent = val;
   }
 
-  // Offset type sync for HA, RSI, MA etc.
-  function syncOffsetType(prefix) {
-    const sel = document.getElementById(prefix.toLowerCase() + '_offset_type');
-    const wrap = document.getElementById(prefix.toLowerCase() + '_offset_slider_wrap');
-    if (!sel || !wrap) return;
-    if (sel.value === 'before') {
-      wrap.style.display = 'flex';
-    } else {
-      wrap.style.display = 'none';
-      document.getElementById(prefix.toLowerCase() + '_offset').value = 0;
-    }
-  }
+  // Offset type sync removed as UI was simplified
 
   function toggleMaASource() {
     const src = document.getElementById('ma_a_source').value;
