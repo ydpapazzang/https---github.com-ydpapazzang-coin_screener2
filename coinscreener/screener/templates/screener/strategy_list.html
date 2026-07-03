@@ -619,6 +619,8 @@ select option, .scope-sel option, .time-sel option {
                                  onclick="selectEx({{ strategy.id }},'upbit','업비트',this)">업비트</div>
                             <div class="ex-opt"
                                  onclick="selectEx({{ strategy.id }},'bithumb','빗썸',this)">빗썸</div>
+                            <div class="ex-opt"
+                                 onclick="selectEx({{ strategy.id }},'kospi','코스피',this)">코스피</div>
                         </div>
                         <input type="hidden" id="ex-val-{{ strategy.id }}" value="upbit">
                     </div>
@@ -727,6 +729,7 @@ select option, .scope-sel option, .time-sel option {
             <select class="scope-sel" id="alert-exchange">
                 <option value="upbit">업비트</option>
                 <option value="bithumb">빗썸</option>
+                <option value="kospi">코스피 (주식/ETF)</option>
             </select>
             <select class="scope-sel" id="alert-vol">
                 <option value="30">거래대금 상위 30개</option>
