@@ -48,9 +48,20 @@ def _check_conditions_at(df_map, conditions, idx: int) -> bool:
         rv = get_indicator_value(df, cond.right_indicator, cond.right_param, offset, bb_std=bb_std)
         if lv is None or rv is None:
             return False
-        ops = {'gt': lv>rv, 'lt': lv<rv, 'gte': lv>=rv, 'lte': lv<=rv}
-        if not ops.get(cond.operator, False):
-            return False
+            
+        if cond.operator == 'btw':
+            if cond.left_indicator == 'VOLUME':
+                max_multiplier = cond.left_param / 100.0
+                max_val = get_indicator_value(df, cond.right_indicator, cond.right_param, offset, bb_std=max_multiplier)
+            else:
+                max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+            
+            if not (rv <= lv <= max_val):
+                return False
+        else:
+            ops = {'gt': lv>rv, 'lt': lv<rv, 'gte': lv>=rv, 'lte': lv<=rv}
+            if not ops.get(cond.operator, False):
+                return False
     return True
 
 
@@ -115,6 +126,8 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
 
     for i in range(start_idx, n):
         price = float(primary_df['close'].iloc[i])
+        high_price = float(primary_df['high'].iloc[i])
+        low_price  = float(primary_df['low'].iloc[i])
         date  = str(primary_df['date'].iloc[i])[:10]
 
         if not in_position:
@@ -127,18 +140,28 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
         else:
             # 매도 시그널 체크
             sell = False
+            exit_price = price  # 기본 매도가격은 종가
+
             if sell_mode == 'exit_n':
                 sell = (i - entry_idx) >= int(sell_param)
             elif sell_mode == 'tp_sl':
-                change = (price - entry_price) / entry_price * 100
-                sell = (change >= sell_param) or (change <= -sell_param)
+                high_change = (high_price - entry_price) / entry_price * 100
+                low_change  = (low_price - entry_price) / entry_price * 100
+
+                # 보수적 백테스팅을 위해 손절(SL)부터 평가
+                if low_change <= -sell_param:
+                    sell = True
+                    exit_price = entry_price * (1 - sell_param / 100.0)
+                elif high_change >= sell_param:
+                    sell = True
+                    exit_price = entry_price * (1 + sell_param / 100.0)
             elif sell_mode == 'cond_exit':
                 sell = not _check_conditions_at(df_map, conditions, i)
 
             if sell or i == n - 1:
                 # 수익률 계산 시 매매 수수료(fee_pct)를 양방향(매수, 매도)으로 적용
                 fee_ratio = fee_pct / 100.0
-                gross_ratio = price / entry_price
+                gross_ratio = exit_price / entry_price
                 # (1 - fee_ratio)가 두 번 곱해지는 것은 매수/매도 시 각각 수수료가 발생하기 때문
                 net_ratio = gross_ratio * ((1 - fee_ratio) ** 2)
                 ret = (net_ratio - 1) * 100
@@ -149,7 +172,7 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
                     'entry_date':  entry_date,
                     'exit_date':   date,
                     'entry_price': entry_price,
-                    'exit_price':  price,
+                    'exit_price':  exit_price,
                     'return_pct':  round(ret, 2),
                 })
                 in_position = False
