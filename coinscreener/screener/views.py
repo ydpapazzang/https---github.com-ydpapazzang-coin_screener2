@@ -284,7 +284,34 @@ def condition_delete(request, strategy_id, condition_id):
 
 def _get_tickers(exchange, vol_limit):
     """거래소·거래대금 조건에 맞는 티커 목록 반환"""
-    if exchange == 'bithumb':
+    if exchange == 'kospi':
+        import FinanceDataReader as fdr
+        try:
+            # 코스피 상장 종목
+            kospi_df = fdr.StockListing('KOSPI')
+            # ETF
+            etf_df = fdr.StockListing('ETF/KR')
+            
+            # 거래대금(Amount) 기준 내림차순 정렬
+            if 'Amount' in kospi_df.columns:
+                kospi_df = kospi_df.sort_values(by='Amount', ascending=False)
+            if 'Amount' in etf_df.columns:
+                etf_df = etf_df.sort_values(by='Amount', ascending=False)
+                
+            limit = vol_limit if vol_limit else 100
+            
+            # 단일종목 + ETF 추출
+            top_kospi = kospi_df['Code'].head(limit).tolist()
+            
+            # ETF 코드는 최신 FDR에서 Symbol로 제공될 수 있음
+            etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
+            top_etf = etf_df[etf_code_col].head(limit).tolist()
+            
+            tickers = top_kospi + top_etf
+        except Exception as e:
+            print(f"KOSPI ticker fetch error: {e}")
+            tickers = []
+    elif exchange == 'bithumb':
         import requests as req
         try:
             r = req.get('https://api.bithumb.com/public/ticker/ALL_KRW', timeout=5)

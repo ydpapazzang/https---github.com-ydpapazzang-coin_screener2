@@ -812,6 +812,7 @@
         <div class="filter-wrap">
           <div class="fchip exchange-chip on" data-val="upbit" onclick="selectExchange(this)">업비트</div>
           <div class="fchip exchange-chip" data-val="bithumb" onclick="selectExchange(this)">빗썸</div>
+          <div class="fchip exchange-chip" data-val="kospi" onclick="selectExchange(this)">코스피 (주식/ETF)</div>
           
           <div style="border-left: 1px solid var(--border); margin: 0 8px;"></div>
           
@@ -1010,10 +1011,8 @@
         
         // 동적으로 거래소/볼륨 칩스 선택 동기화
         if (data.exchange) {
-          document.querySelectorAll('.exchange-chip').forEach(c => {
-            if (c.dataset.val === data.exchange) c.classList.add('on');
-            else c.classList.remove('on');
-          });
+          const chip = document.querySelector(`.exchange-chip[data-val="${data.exchange}"]`);
+          if (chip) selectExchange(chip);
         }
         if (data.vol_limit !== undefined) {
           document.querySelectorAll('.vol-chip').forEach(c => {
@@ -1203,9 +1202,26 @@
   }
 
   // Exchange and Volume filter selection chips
+  let currentExchange = 'upbit';
   function selectExchange(el) {
     document.querySelectorAll('.exchange-chip').forEach(c => c.classList.remove('on'));
     el.classList.add('on');
+    currentExchange = el.getAttribute('data-val');
+    
+    // 코스피 선택 시 캔들 단위 제어 (분봉 숨기기)
+    const timeSelects = document.querySelectorAll('select[name="timeframe"]');
+    timeSelects.forEach(sel => {
+      Array.from(sel.options).forEach(opt => {
+        if (opt.value.startsWith('minute')) {
+          opt.style.display = currentExchange === 'kospi' ? 'none' : 'block';
+          // 만약 현재 선택된 값이 분봉이면 일봉으로 강제 변경
+          if (currentExchange === 'kospi' && sel.value.startsWith('minute')) {
+            sel.value = 'day';
+          }
+        }
+      });
+    });
+    
     saveAlertSettings();
   }
 

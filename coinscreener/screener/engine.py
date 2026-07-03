@@ -4,6 +4,8 @@ import time
 import numpy as np
 import threading
 import random
+import datetime
+import FinanceDataReader as fdr
 
 _rate_limit_lock = threading.Lock()
 _last_request_time = 0.0
@@ -29,11 +31,34 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
             time.sleep(sleep_time)
             
         try:
-            df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
-            if df is not None:
-                return df
+            if ticker.isdigit() and len(ticker) == 6:
+                # KOSPI / ETF 주식 처리
+                days_to_fetch = count * 2 if interval == 'day' else (count * 8 if interval == 'week' else count * 35)
+                start_date = (datetime.datetime.now() - datetime.timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
+                df = fdr.DataReader(ticker, start_date)
+                
+                if df is not None and not df.empty:
+                    df = df.rename(columns={
+                        'Open': 'open', 'High': 'high', 'Low': 'low', 
+                        'Close': 'close', 'Volume': 'volume', 'Change': 'change'
+                    })
+                    
+                    if interval == 'week':
+                        logic = {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}
+                        df = df.resample('W').apply(logic).dropna()
+                    elif interval == 'month':
+                        logic = {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}
+                        # 'ME' is Month End (standard in newer pandas)
+                        df = df.resample('ME').apply(logic).dropna()
+                        
+                    return df.tail(count)
+            else:
+                # 기존 코인 처리
+                df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
+                if df is not None:
+                    return df
         except Exception as e:
-            print(f"pyupbit get_ohlcv error for {ticker}: {e}")
+            print(f"get_ohlcv error for {ticker}: {e}")
             
         # 실패 시 랜덤 지터가 포함된 점진적 백오프 후 재시도
         time.sleep(delay * (i + 1) + random.uniform(0.1, 0.3))
