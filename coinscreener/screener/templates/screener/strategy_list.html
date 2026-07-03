@@ -159,11 +159,15 @@ body::after {
     margin-bottom: 14px;
     transition: var(--transition);
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+    position: relative;
+    z-index: 1;
 }
-.strategy-card:hover {
+.strategy-card:hover,
+.strategy-card:focus-within {
     border-color: rgba(124, 58, 237, 0.35);
     transform: translateY(-2px);
     box-shadow: 0 12px 32px rgba(124, 58, 237, 0.12), 0 0 20px rgba(124, 58, 237, 0.05);
+    z-index: 10;
 }
 
 .card-top { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
