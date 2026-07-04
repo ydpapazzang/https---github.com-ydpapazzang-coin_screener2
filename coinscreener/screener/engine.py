@@ -6,6 +6,7 @@ import threading
 import random
 import datetime
 import FinanceDataReader as fdr
+from django.core.cache import cache
 
 _rate_limit_lock = threading.Lock()
 _last_request_time = 0.0
@@ -14,6 +15,12 @@ _min_interval = 0.12  # 최소 0.12초 간격 (초당 최대 ~8.3회 요청)
 
 def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
     """API 호출 제한을 고려하여 글로벌 속도 제한 및 지터 재시도가 적용된 OHLCV 조회"""
+    # 1. 캐시 확인 (5분 타임아웃, 같은 종목/타임프레임 재요청 시 즉시 반환)
+    cache_key = f"ohlcv_{ticker}_{interval}_{count}"
+    cached_data = cache.get(cache_key)
+    if cached_data is not None:
+        return cached_data
+
     global _last_request_time
     
     for i in range(retries):
@@ -31,17 +38,18 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
             time.sleep(sleep_time)
             
         try:
+            df = None
             if ticker.isdigit() and len(ticker) == 6:
                 # KOSPI / ETF 주식 처리
                 days_to_fetch = count * 2 if interval == 'day' else (count * 8 if interval == 'week' else count * 35)
                 start_date = (datetime.datetime.now() - datetime.timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
-                df = fdr.DataReader(ticker, start_date)
+                raw_df = fdr.DataReader(ticker, start_date)
                 
-                if df is not None:
-                    if df.empty:
+                if raw_df is not None:
+                    if raw_df.empty:
                         return None # 빈 데이터는 재시도 없이 즉시 반환
                         
-                    df = df.rename(columns={
+                    df = raw_df.rename(columns={
                         'Open': 'open', 'High': 'high', 'Low': 'low', 
                         'Close': 'close', 'Volume': 'volume', 'Change': 'change'
                     })
@@ -54,12 +62,16 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
                         # 'ME' is Month End (standard in newer pandas)
                         df = df.resample('ME').apply(logic).dropna()
                         
-                    return df.tail(count)
+                    df = df.tail(count)
             else:
                 # 기존 코인 처리
                 df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
-                if df is not None:
-                    return df
+            
+            if df is not None:
+                # 2. 캐시에 저장 (3분: 180초) - 실시간성과 타임아웃 방지 사이의 타협점
+                cache.set(cache_key, df, 180)
+                return df
+                
         except Exception as e:
             print(f"get_ohlcv error for {ticker}: {e}")
             
