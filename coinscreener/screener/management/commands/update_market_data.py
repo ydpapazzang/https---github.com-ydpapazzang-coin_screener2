@@ -36,36 +36,58 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Successfully updated MarketData!"))
 
     def _update_fdr_data(self, exchange_name, df):
-        # FDR data columns: Code, Name, Close, Volume, Amount, Marcap
-        for index, row in df.iterrows():
-            ticker = str(row.get('Code', ''))
-            name = str(row.get('Name', ''))
-            if not ticker: continue
-            
-            # Handle NaN values
-            def _clean_val(v):
-                if v is None or (isinstance(v, float) and math.isnan(v)):
-                    return 0
-                return v
+        from django.db import transaction
+        
+        # Check if empty for fast path
+        is_empty = not MarketData.objects.filter(exchange=exchange_name).exists()
+        
+        objects_to_create = []
+        
+        with transaction.atomic():
+            for index, row in df.iterrows():
+                ticker = str(row.get('Code', ''))
+                name = str(row.get('Name', ''))
+                if not ticker: continue
+                
+                # Handle NaN values
+                def _clean_val(v):
+                    if v is None or (isinstance(v, float) and math.isnan(v)):
+                        return 0
+                    return v
 
-            close_price = _clean_val(row.get('Close', 0))
-            volume = _clean_val(row.get('Volume', 0))
-            amount = _clean_val(row.get('Amount', 0))
-            marcap = _clean_val(row.get('Marcap', 0))
+                close_price = _clean_val(row.get('Close', 0))
+                volume = _clean_val(row.get('Volume', 0))
+                amount = _clean_val(row.get('Amount', 0))
+                marcap = _clean_val(row.get('Marcap', 0))
+                
+                if is_empty:
+                    objects_to_create.append(MarketData(
+                        exchange=exchange_name,
+                        ticker=ticker,
+                        name=name,
+                        close_price=float(close_price),
+                        volume=float(volume),
+                        amount=float(amount),
+                        market_cap=int(marcap) if marcap else None,
+                    ))
+                else:
+                    MarketData.objects.update_or_create(
+                        exchange=exchange_name,
+                        ticker=ticker,
+                        defaults={
+                            'name': name,
+                            'close_price': float(close_price),
+                            'volume': float(volume),
+                            'amount': float(amount),
+                            'market_cap': int(marcap) if marcap else None,
+                        }
+                    )
             
-            MarketData.objects.update_or_create(
-                exchange=exchange_name,
-                ticker=ticker,
-                defaults={
-                    'name': name,
-                    'close_price': float(close_price),
-                    'volume': float(volume),
-                    'amount': float(amount),
-                    'market_cap': int(marcap) if marcap else None,
-                }
-            )
+            if is_empty and objects_to_create:
+                MarketData.objects.bulk_create(objects_to_create, batch_size=500)
 
     def _update_upbit_data(self):
+        from django.db import transaction
         # 1. Get Korean Names
         market_all_url = 'https://api.upbit.com/v1/market/all'
         market_all_data = requests.get(market_all_url).json()
@@ -75,27 +97,45 @@ class Command(BaseCommand):
         tickers = list(name_dict.keys())
         chunk_size = 100
         
-        for i in range(0, len(tickers), chunk_size):
-            chunk = tickers[i:i+chunk_size]
-            markets = ','.join(chunk)
-            url = f'https://api.upbit.com/v1/ticker?markets={markets}'
-            resp = requests.get(url).json()
-            
-            for item in resp:
-                ticker = item['market']
-                name = name_dict.get(ticker, ticker)
-                close_price = float(item.get('trade_price', 0))
-                volume = float(item.get('acc_trade_volume_24h', 0))
-                amount = float(item.get('acc_trade_price_24h', 0))
+        is_empty = not MarketData.objects.filter(exchange='upbit').exists()
+        objects_to_create = []
+        
+        with transaction.atomic():
+            for i in range(0, len(tickers), chunk_size):
+                chunk = tickers[i:i+chunk_size]
+                markets = ','.join(chunk)
+                url = f'https://api.upbit.com/v1/ticker?markets={markets}'
+                resp = requests.get(url).json()
                 
-                MarketData.objects.update_or_create(
-                    exchange='upbit',
-                    ticker=ticker,
-                    defaults={
-                        'name': name,
-                        'close_price': close_price,
-                        'volume': volume,
-                        'amount': amount,
-                        'market_cap': None,
-                    }
-                )
+                for item in resp:
+                    ticker = item['market']
+                    name = name_dict.get(ticker, ticker)
+                    close_price = float(item.get('trade_price', 0))
+                    volume = float(item.get('acc_trade_volume_24h', 0))
+                    amount = float(item.get('acc_trade_price_24h', 0))
+                    
+                    if is_empty:
+                        objects_to_create.append(MarketData(
+                            exchange='upbit',
+                            ticker=ticker,
+                            name=name,
+                            close_price=close_price,
+                            volume=volume,
+                            amount=amount,
+                            market_cap=None,
+                        ))
+                    else:
+                        MarketData.objects.update_or_create(
+                            exchange='upbit',
+                            ticker=ticker,
+                            defaults={
+                                'name': name,
+                                'close_price': close_price,
+                                'volume': volume,
+                                'amount': amount,
+                                'market_cap': None,
+                            }
+                        )
+            
+            if is_empty and objects_to_create:
+                MarketData.objects.bulk_create(objects_to_create, batch_size=500)
