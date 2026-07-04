@@ -333,9 +333,13 @@ def coin_search(request, strategy_id):
     tf_override = request.GET.get('timeframe')
     tf_suffix = f"_{tf_override}" if tf_override else ""
 
+    # Ensure session cookie exists before SSE stream starts
+    if not request.session.session_key:
+        request.session.create()
+
     # 캐시 확인 (파라미터 기반 Key)
     cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
-    cached_data = cache.get(cache_key)
+    cached_data = request.session.get(cache_key)
 
     if cached_data and request.GET.get('refresh') != '1':
         return render(request, 'screener/coin_list.html', {
