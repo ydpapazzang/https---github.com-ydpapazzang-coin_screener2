@@ -282,36 +282,88 @@ def condition_delete(request, strategy_id, condition_id):
 # 3. 코인 검색 — SSE 스트리밍 버전
 # ──────────────────────────────────────────
 
+KOSPI_NAME_MAP = {}
+
 def _get_tickers(exchange, vol_limit):
-    """거래소·거래대금 조건에 맞는 티커 목록 반환 (DB 최적화)"""
-    from screener.models import MarketData
-    from django.core.management import call_command
-    from django.db.utils import ProgrammingError, OperationalError
-    
-    # If DB is completely empty (e.g. fresh Vercel deploy with Neon DB), auto-populate it
-    # We also catch missing table errors and run migrate automatically.
+    """거래소·거래대금 조건에 맞는 티커 목록 반환 (API 직접 호출, DB는 보조)"""
+    global KOSPI_NAME_MAP
+
+    # 먼저 DB에 데이터가 있으면 DB에서 가져오기 (market_cap, amount 등 추가 정보 포함)
     try:
-        exists = MarketData.objects.exists()
-    except (ProgrammingError, OperationalError):
+        from screener.models import MarketData
+        db_count = MarketData.objects.filter(exchange=exchange).count()
+        if db_count > 0:
+            qs = MarketData.objects.filter(exchange=exchange).order_by('-amount')
+            if vol_limit:
+                qs = qs[:vol_limit]
+            return list(qs.values('ticker', 'name', 'market_cap', 'amount'))
+    except Exception:
+        pass  # DB 사용 불가 시 아래 API 직접 호출로 폴백
+
+    # DB에 데이터가 없으면 원래 방식대로 API 직접 호출
+    if exchange == 'kospi':
+        import FinanceDataReader as fdr
         try:
-            call_command('migrate', interactive=False)
-            exists = MarketData.objects.exists()
+            kospi_df = fdr.StockListing('KOSPI')
+            etf_df = fdr.StockListing('ETF/KR')
+            
+            if 'Amount' in kospi_df.columns:
+                kospi_df = kospi_df.sort_values(by='Amount', ascending=False)
+            if 'Amount' in etf_df.columns:
+                etf_df = etf_df.sort_values(by='Amount', ascending=False)
+                
+            limit = vol_limit if vol_limit else 100
+            
+            result = []
+            for _, row in kospi_df.head(limit).iterrows():
+                ticker = str(row.get('Code', ''))
+                name = str(row.get('Name', ''))
+                KOSPI_NAME_MAP[ticker] = name
+                result.append({'ticker': ticker, 'name': name, 'market_cap': 0, 'amount': 0})
+
+            etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
+            for _, row in etf_df.head(limit).iterrows():
+                ticker = str(row.get(etf_code_col, ''))
+                name = str(row.get('Name', ''))
+                KOSPI_NAME_MAP[ticker] = name
+                result.append({'ticker': ticker, 'name': name, 'market_cap': 0, 'amount': 0})
+
+            return result
         except Exception as e:
-            print(f"Error running migrations: {e}")
+            print(f"Error fetching KOSPI tickers: {e}")
+            return []
+    else:
+        # 업비트/빗썸 — pyupbit로 직접 가져오기
+        try:
+            all_tickers = pyupbit.get_tickers(fiat="KRW")
+            if not all_tickers:
+                return []
+            
+            # 이름 매핑을 위해 업비트 API 호출
+            import requests
+            name_dict = {}
+            try:
+                market_all = requests.get('https://api.upbit.com/v1/market/all', timeout=5).json()
+                name_dict = {item['market']: item['korean_name'] for item in market_all if item['market'].startswith('KRW-')}
+            except Exception:
+                pass
+
+            if vol_limit:
+                all_tickers = all_tickers[:vol_limit]
+
+            result = []
+            for t in all_tickers:
+                result.append({
+                    'ticker': t,
+                    'name': name_dict.get(t, t.replace("KRW-", "")),
+                    'market_cap': 0,
+                    'amount': 0,
+                })
+            return result
+        except Exception as e:
+            print(f"Error fetching tickers: {e}")
             return []
 
-    if not exists:
-        try:
-            call_command('update_market_data')
-        except Exception as e:
-            print(f"Error auto-populating market data: {e}")
-            return []
-        
-    qs = MarketData.objects.filter(exchange=exchange).order_by('-amount')
-    if vol_limit:
-        qs = qs[:vol_limit]
-        
-    return list(qs.values('ticker', 'name', 'market_cap', 'amount'))
 
 
 def coin_search(request, strategy_id):
