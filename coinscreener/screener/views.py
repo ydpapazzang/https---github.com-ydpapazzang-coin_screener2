@@ -333,13 +333,9 @@ def coin_search(request, strategy_id):
     tf_override = request.GET.get('timeframe')
     tf_suffix = f"_{tf_override}" if tf_override else ""
 
-    # Ensure session cookie exists before SSE stream starts
-    if not request.session.session_key:
-        request.session.create()
-
     # 캐시 확인 (파라미터 기반 Key)
     cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
-    cached_data = request.session.get(cache_key)
+    cached_data = cache.get(cache_key)
 
     if cached_data and request.GET.get('refresh') != '1':
         return render(request, 'screener/coin_list.html', {
@@ -448,18 +444,16 @@ def coin_search_stream(request, strategy_id):
                     }) + "\n\n"
 
         results.sort(key=lambda x: x.get('volume', 0), reverse=True)
-        last_updated = timezone.now().isoformat()
+        last_updated = timezone.now()
         cache_key = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
         if tf_override:
             cache_key += f"_{tf_override}"
 
-        # Save to request.session so it persists across Vercel serverless instances (in DB)
-        request.session[cache_key] = {
+        cache.set(cache_key, {
             'results':            results,
             'rate_limit_warning': error_occurred,
             'last_updated':       last_updated,
-        }
-        request.session.save()
+        }, timeout=300)
 
         # 만약 자동 반복 스캔에서 텔레그램 전송이 활성화되었고, 조회된 건이 있으면 즉시 발송
         if send_telegram and results and tg.is_configured():
@@ -498,11 +492,10 @@ def coin_search_results(request, strategy_id):
     tf_suffix = f"_{tf_override}" if tf_override else ""
     
     cache_key  = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
-    cached_data = request.session.get(cache_key)
+    cached_data = cache.get(cache_key)
 
     if not cached_data:
-        messages.error(request, "결과 데이터가 없습니다. 검색을 다시 시도하거나 서버 상태를 확인해주세요.")
-        return redirect('strategy_detail', strategy_id=strategy_id)
+        return redirect('coin_search', strategy_id=strategy_id)
 
     return render(request, 'screener/coin_list.html', {
         'results':            cached_data['results'],
