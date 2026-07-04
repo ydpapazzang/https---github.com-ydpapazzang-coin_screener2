@@ -286,9 +286,21 @@ def _get_tickers(exchange, vol_limit):
     """거래소·거래대금 조건에 맞는 티커 목록 반환 (DB 최적화)"""
     from screener.models import MarketData
     from django.core.management import call_command
+    from django.db.utils import ProgrammingError, OperationalError
     
-    # If DB is completely empty (e.g. fresh Vercel deploy), auto-populate it
-    if not MarketData.objects.exists():
+    # If DB is completely empty (e.g. fresh Vercel deploy with Neon DB), auto-populate it
+    # We also catch missing table errors and run migrate automatically.
+    try:
+        exists = MarketData.objects.exists()
+    except (ProgrammingError, OperationalError):
+        try:
+            call_command('migrate', interactive=False)
+            exists = MarketData.objects.exists()
+        except Exception as e:
+            print(f"Error running migrations: {e}")
+            return []
+
+    if not exists:
         try:
             call_command('update_market_data')
         except Exception as e:
