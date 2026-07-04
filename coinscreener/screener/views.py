@@ -285,10 +285,15 @@ def condition_delete(request, strategy_id, condition_id):
 def _get_tickers(exchange, vol_limit):
     """거래소·거래대금 조건에 맞는 티커 목록 반환 (DB 최적화)"""
     from screener.models import MarketData
+    from django.core.management import call_command
     
-    # Check if DB is empty, if so return empty and warn user to run update_market_data
+    # If DB is completely empty (e.g. fresh Vercel deploy), auto-populate it
     if not MarketData.objects.exists():
-        return []
+        try:
+            call_command('update_market_data')
+        except Exception as e:
+            print(f"Error auto-populating market data: {e}")
+            return []
         
     qs = MarketData.objects.filter(exchange=exchange).order_by('-amount')
     if vol_limit:
@@ -427,16 +432,18 @@ def coin_search_stream(request, strategy_id):
                     }) + "\n\n"
 
         results.sort(key=lambda x: x.get('volume', 0), reverse=True)
-        last_updated = timezone.now()
+        last_updated = timezone.now().isoformat()
         cache_key = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
         if tf_override:
             cache_key += f"_{tf_override}"
 
-        cache.set(cache_key, {
+        # Save to request.session so it persists across Vercel serverless instances (in DB)
+        request.session[cache_key] = {
             'results':            results,
             'rate_limit_warning': error_occurred,
             'last_updated':       last_updated,
-        }, timeout=300)
+        }
+        request.session.save()
 
         # 만약 자동 반복 스캔에서 텔레그램 전송이 활성화되었고, 조회된 건이 있으면 즉시 발송
         if send_telegram and results and tg.is_configured():
@@ -475,10 +482,11 @@ def coin_search_results(request, strategy_id):
     tf_suffix = f"_{tf_override}" if tf_override else ""
     
     cache_key  = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
-    cached_data = cache.get(cache_key)
+    cached_data = request.session.get(cache_key)
 
     if not cached_data:
-        return redirect('coin_search', strategy_id=strategy_id)
+        messages.error(request, "결과 데이터가 없습니다. 검색을 다시 시도하거나 서버 상태를 확인해주세요.")
+        return redirect('strategy_detail', strategy_id=strategy_id)
 
     return render(request, 'screener/coin_list.html', {
         'results':            cached_data['results'],
