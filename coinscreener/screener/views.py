@@ -651,11 +651,23 @@ def coin_search_stream(request, strategy_id):
         if tf_override:
             cache_key += f"_{tf_override}"
 
-        cache.set(cache_key, {
-            'results':            results,
-            'rate_limit_warning': error_occurred,
-            'last_updated':       last_updated,
-        }, timeout=300)
+        # Vercel 서버리스 환경에서는 컨테이너 간 LocMemCache가 공유되지 않으므로, 
+        # 검색 결과를 DB(OHLCVCache)를 활용하여 임시 저장합니다. (무한 리다이렉트 방지)
+        from .models import OHLCVCache
+        try:
+            OHLCVCache.objects.update_or_create(
+                ticker=cache_key,
+                timeframe="RESULT",
+                defaults={
+                    "data": {
+                        'results': results,
+                        'rate_limit_warning': error_occurred,
+                        'last_updated': last_updated.isoformat()
+                    }
+                }
+            )
+        except Exception as e:
+            print(f"결과 저장 실패: {e}")
 
         # 만약 자동 반복 스캔에서 텔레그램 전송이 활성화되었고, 조회된 건이 있으면 즉시 발송
         if send_telegram and results and tg.is_configured():
@@ -694,7 +706,17 @@ def coin_search_results(request, strategy_id):
     tf_suffix = f"_{tf_override}" if tf_override else ""
     
     cache_key  = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
-    cached_data = cache.get(cache_key)
+    
+    # DB(OHLCVCache)에서 결과 읽어오기 (Vercel 환경 지원)
+    from .models import OHLCVCache
+    import dateutil.parser
+    try:
+        obj = OHLCVCache.objects.get(ticker=cache_key, timeframe="RESULT")
+        cached_data = obj.data
+        if 'last_updated' in cached_data and isinstance(cached_data['last_updated'], str):
+            cached_data['last_updated'] = dateutil.parser.isoparse(cached_data['last_updated'])
+    except Exception:
+        cached_data = None
 
     if not cached_data:
         return redirect('coin_search', strategy_id=strategy_id)
