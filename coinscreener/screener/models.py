@@ -216,6 +216,29 @@ class MarketData(models.Model):
         return f"[{self.exchange}] {self.name} ({self.ticker})"
 
 
+class OHLCVCache(models.Model):
+    """
+    백그라운드 사전 수집(Pre-fetching)을 위한 차트 데이터 캐시
+    ticker: 'KRW-BTC'
+    timeframe: 'day', 'minute15' 등
+    data: OHLCV Pandas DataFrame을 JSON(orient='split')으로 변환한 문자열/Dict
+    """
+    ticker = models.CharField(max_length=50, db_index=True)
+    timeframe = models.CharField(max_length=50, db_index=True)
+    data = models.JSONField(verbose_name="OHLCV JSON Data")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('ticker', 'timeframe')
+        indexes = [
+            models.Index(fields=['ticker', 'timeframe']),
+            models.Index(fields=['updated_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.ticker} ({self.timeframe}) - {self.updated_at}"
+
+
 class AlertHistory(models.Model):
     """알림 발송 및 스캔 매칭 이력"""
     strategy = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='histories')

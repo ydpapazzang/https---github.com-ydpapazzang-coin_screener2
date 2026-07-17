@@ -21,6 +21,26 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
     if cached_data is not None:
         return cached_data
 
+    # 1.5. DB 사전 캐시 확인 (Pre-fetching)
+    try:
+        from screener.models import OHLCVCache
+        import json
+        cached_obj = OHLCVCache.objects.filter(ticker=ticker, timeframe=interval).first()
+        if cached_obj and cached_obj.data:
+            # Check if it's too old (e.g., > 10 minutes)
+            # Since Vercel Cron might not run, we want fresh data.
+            # But if we rely on cron-job.org, it's 1 minute.
+            # Let's accept up to 15 minutes old data as "fresh enough" for a fallback.
+            now = datetime.datetime.now(datetime.timezone.utc)
+            if (now - cached_obj.updated_at).total_seconds() < 900:
+                json_str = json.dumps(cached_obj.data)
+                df = pd.read_json(json_str, orient='split')
+                df.index.name = None # Upbit df has no index name
+                cache.set(cache_key, df.tail(count), 180)
+                return df.tail(count)
+    except Exception as e:
+        print(f"OHLCVCache read error for {ticker}: {e}")
+
     global _last_request_time
     
     for i in range(retries):

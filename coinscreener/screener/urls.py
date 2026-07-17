@@ -34,4 +34,5 @@ urlpatterns = [
     path('cron/scan/',                               views.cron_scan,      name='cron_scan'),
     path('cron/scan-debug',                          views.cron_scan,      name='cron_scan_debug_no_slash'),
     path('cron/scan-debug/',                         views.cron_scan,      name='cron_scan_debug'),
+    path('cron/prefetch/',                           views.cron_prefetch,  name='cron_prefetch'),
 ]
