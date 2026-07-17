@@ -593,6 +593,31 @@ def coin_search_stream(request, strategy_id):
             except Exception:
                 pass
             return None
+        # N+1 쿼리 방지를 위한 bulk pre-fetch (Django LocMemCache 활용)
+        try:
+            from screener.models import OHLCVCache
+            from django.core.cache import cache
+            import pandas as pd
+            import datetime
+            
+            active_timeframes = set(c.timeframe for c in conditions)
+            tickers = [t['ticker'] for t in tickers_data]
+            
+            cached_qs = OHLCVCache.objects.filter(ticker__in=tickers, timeframe__in=active_timeframes)
+            now = datetime.datetime.now(datetime.timezone.utc)
+            
+            for obj in cached_qs:
+                if (now - obj.updated_at).total_seconds() < 3600:
+                    data_dict = obj.data
+                    try:
+                        df = pd.DataFrame(data_dict['data'], index=pd.to_datetime(data_dict['index'], unit='ms'), columns=data_dict['columns'])
+                        df.index.name = None
+                        cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_200"
+                        cache.set(cache_key, df.tail(200), 180)
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Bulk cache prefetch error: {e}")
 
         # 스레드 개수를 10개로 조절하여 업비트 API 호출의 순간 폭주(Burst)를 완화하고 Rate Limit를 방어합니다.
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
