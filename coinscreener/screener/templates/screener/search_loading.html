@@ -2,220 +2,151 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>검색 중... — {{ strategy.name }}</title>
     <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #2d7bfe;
+            --text-primary: #ffffff;
+            --text-secondary: #9090a8;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --up-color: #ff4d4f;
+            --down-color: #2d7bfe;
+        }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root {
-    --bg:      #07090e;
-    --surface: rgba(16, 20, 33, 0.65);
-    --border:  rgba(255, 255, 255, 0.06);
-    --blue:    #7c3aed; /* Electric Violet */
-    --blue-glow: rgba(124, 58, 237, 0.35);
-    --text:    #e4e7ec;
-    --muted:   #9ca3af;
-    --green:   #10b981;
-    --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
+        body {
+            background: var(--bg-color);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
 
-body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    overflow-x: hidden;
-}
+        .overlay {
+            position: fixed; inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 10;
+        }
 
-/* Ambient Glow spots */
-body::before {
-    content: "";
-    position: fixed;
-    top: -15%;
-    left: -10%;
-    width: 50vw;
-    height: 50vh;
-    background: radial-gradient(circle, rgba(124, 58, 237, 0.12) 0%, rgba(124, 58, 237, 0) 70%);
-    z-index: -2;
-    pointer-events: none;
-}
-body::after {
-    content: "";
-    position: fixed;
-    bottom: -15%;
-    right: -10%;
-    width: 60vw;
-    height: 60vh;
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0) 70%);
-    z-index: -2;
-    pointer-events: none;
-}
+        .modal {
+            position: relative;
+            z-index: 20;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 32px 24px;
+            width: min(400px, 90vw);
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            animation: popIn 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
+        }
 
-/* ── BLUR OVERLAY ── */
-.overlay {
-    position: fixed; inset: 0;
-    background: rgba(7, 9, 14, 0.8);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    z-index: 10;
-    pointer-events: all;
-}
+        @keyframes popIn {
+            0% { opacity: 0; transform: scale(0.95) translateY(10px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
 
-/* ── MODAL CARD ── */
-.modal {
-    position: fixed;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 20;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-radius: 20px;
-    padding: 40px 48px;
-    width: min(480px, 92vw);
-    text-align: center;
-    box-shadow: 0 30px 60px rgba(0,0,0,0.6), 0 0 40px rgba(124, 58, 237, 0.15);
-}
+        .spinner {
+            width: 48px; height: 48px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin .8s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-/* spinner */
-.spinner {
-    width: 52px; height: 52px;
-    border: 3px solid var(--border);
-    border-top-color: var(--blue);
-    border-radius: 50%;
-    animation: spin .8s linear infinite;
-    margin: 0 auto 24px;
-    box-shadow: 0 0 15px var(--blue-glow);
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+        .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+        .modal-sub { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; line-height: 1.4; }
 
-.modal-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 19px;
-    font-weight: 700;
-    color: #fff;
-    margin-bottom: 6px;
-}
-.modal-sub {
-    font-size: 13.5px;
-    color: var(--muted);
-    margin-bottom: 28px;
-}
+        .bar-wrap {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            height: 8px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 8px;
+            background: var(--primary-color);
+            width: 0%;
+            transition: width .3s ease;
+        }
 
-/* ── PROGRESS BAR ── */
-.bar-wrap {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border);
-    border-radius: 99px;
-    height: 10px;
-    overflow: hidden;
-    margin-bottom: 14px;
-}
-.bar-fill {
-    height: 100%;
-    border-radius: 99px;
-    background: linear-gradient(90deg, #7c3aed 0%, #3b82f6 100%);
-    width: 0%;
-    transition: width .3s ease;
-    box-shadow: 0 0 10px var(--blue-glow);
-}
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .stats .hit { color: var(--up-color); }
 
-/* ── STATS ROW ── */
-.stats {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12.5px;
-    color: var(--muted);
-    margin-bottom: 22px;
-    font-weight: 600;
-}
-.stats .hit { color: var(--green); font-weight: 700; text-shadow: 0 0 8px rgba(16, 185, 129, 0.2); }
+        .ticker-list {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            height: 100px;
+            overflow: hidden;
+            position: relative;
+        }
+        .ticker-inner {
+            padding: 8px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .ticker-item { font-size: 12px; font-family: monospace; color: var(--text-secondary); white-space: nowrap; text-align: left; }
+        .ticker-item.match { color: var(--up-color); font-weight: 700; }
+        .ticker-item.match::before { content: '✓ '; }
+        
+        .ticker-list::before, .ticker-list::after {
+            content: ''; position: absolute; left: 0; right: 0; height: 20px; z-index: 1; pointer-events: none;
+        }
+        .ticker-list::before { top: 0; background: linear-gradient(to bottom, var(--surface-color), transparent); }
+        .ticker-list::after { bottom: 0; background: linear-gradient(to top, var(--surface-color), transparent); }
 
-/* ── TICKER SCROLL ── */
-.ticker-list {
-    background: rgba(7, 9, 14, 0.4);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    height: 110px;
-    overflow: hidden;
-    position: relative;
-}
-.ticker-inner {
-    padding: 10px 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    transition: transform .2s ease;
-}
-.ticker-item {
-    font-size: 12.5px;
-    font-family: monospace;
-    color: var(--muted);
-    white-space: nowrap;
-    text-align: left;
-}
-.ticker-item.match {
-    color: var(--green);
-    font-weight: 700;
-}
-.ticker-item.match::before { content: '✓ '; }
-
-/* fade top/bottom */
-.ticker-list::before, .ticker-list::after {
-    content: '';
-    position: absolute;
-    left: 0; right: 0;
-    height: 28px;
-    z-index: 1;
-    pointer-events: none;
-}
-.ticker-list::before { top: 0;    background: linear-gradient(to bottom, #07090e, transparent); }
-.ticker-list::after  { bottom: 0; background: linear-gradient(to top,   #07090e, transparent); }
-
-/* ── CANCEL BUTTON ── */
-.btn-cancel {
-    margin-top: 24px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 10px 28px;
-    border-radius: 10px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: var(--transition);
-}
-.btn-cancel:hover { border-color: var(--border-hover); background: rgba(255, 255, 255, 0.08); color: #fff; }
-
+        .btn-cancel {
+            margin-top: 20px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 10px 0;
+            width: 100%;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-cancel:active { background: rgba(255, 255, 255, 0.05); }
     </style>
 </head>
 <body>
-
 <div class="overlay"></div>
-
 <div class="modal">
     <div class="spinner"></div>
-    <div class="modal-title">{% if exchange == 'kospi' %}주식/ETF 스크리닝 중...{% else %}코인 스크리닝 중...{% endif %}</div>
-    <div class="modal-sub" id="sub-text">{% if exchange == 'kospi' %}코스피 주식 및 ETF 데이터를 분석하고 있습니다{% else %}선택한 거래소의 전체 코인을 분석하고 있습니다{% endif %}</div>
+    <div class="modal-title">{% if exchange == "kospi" %}주식/ETF 스크리닝 중...{% else %}코인 스크리닝 중...{% endif %}</div>
+    <div class="modal-sub" id="sub-text">{% if exchange == "kospi" %}코스피 주식 및 ETF 데이터를 분석하고 있습니다{% else %}선택한 거래소의 전체 코인을 분석하고 있습니다{% endif %}</div>
 
-    <div class="bar-wrap">
-        <div class="bar-fill" id="bar"></div>
-    </div>
-
+    <div class="bar-wrap"><div class="bar-fill" id="bar"></div></div>
     <div class="stats">
         <span id="stat-left">0 / 0 종목 검사 중</span>
         <span class="hit" id="stat-right">✓ 0개 매칭</span>
     </div>
 
-    <div class="ticker-list">
-        <div class="ticker-inner" id="ticker-inner"></div>
-    </div>
+    <div class="ticker-list"><div class="ticker-inner" id="ticker-inner"></div></div>
 
     <button class="btn-cancel" onclick="cancel()">취소</button>
 </div>
@@ -244,10 +175,7 @@ body::after {
         el.textContent = symbol;
         tickerItems.push(el);
         tickerWrap.appendChild(el);
-
-        if (tickerItems.length > MAX_TICKERS) {
-            tickerItems.shift().remove();
-        }
+        if (tickerItems.length > MAX_TICKERS) tickerItems.shift().remove();
     }
 
     function cancel() {
@@ -256,47 +184,38 @@ body::after {
     }
 
     es = new EventSource(streamUrl);
-
     es.onmessage = function(e) {
         const data = JSON.parse(e.data);
-
         if (data.type === 'progress') {
             const pct = data.pct;
             bar.style.width = pct + '%';
-            statLeft.textContent  = `${data.done.toLocaleString()} / ${data.total.toLocaleString()} 코인 검사 중`;
+            statLeft.textContent  = `${data.done.toLocaleString()} / ${data.total.toLocaleString()} 검사 중`;
             statRight.textContent = `✓ ${data.matched}개 매칭`;
 
-            if (pct < 30)       subText.textContent = '업비트 전체 코인을 분석하고 있습니다';
+            if (pct < 30)       subText.textContent = '데이터를 분석하고 있습니다';
             else if (pct < 70)  subText.textContent = '절반 넘었어요, 조금만 기다려 주세요 ☕';
             else if (pct < 95)  subText.textContent = '거의 다 왔습니다!';
             else                subText.textContent = '마무리 중...';
 
-            // 실제 매칭된 코인명 표시
             if (data.last_match) {
                 const prevMatched = tickerItems.filter(t => t.classList.contains('match')).length;
-                if (data.matched > prevMatched) {
-                    addTicker(data.last_match, true);
-                }
+                if (data.matched > prevMatched) addTicker(data.last_match, true);
             }
         }
-
         if (data.type === 'done') {
             es.close();
             bar.style.width = '100%';
             subText.textContent = '완료! 결과 페이지로 이동합니다...';
             setTimeout(() => { window.location.href = resultUrl; }, 400);
         }
-
         if (data.type === 'error') {
             es.close();
             alert(data.msg);
             history.back();
         }
     };
-
     es.onerror = function() {
         es.close();
-        // SSE 연결 실패 시 결과 페이지로 그냥 이동 시도
         window.location.href = resultUrl;
     };
 </script>
