@@ -512,6 +512,21 @@ def cron_prefetch(request):
         'total': total_tasks
     })
 
+@csrf_exempt
+def trigger_migrate(request):
+    if request.GET.get('secret') != 'wonii_cron_debug':
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden("권한이 없습니다.")
+        
+    from django.core.management import call_command
+    import io
+    out = io.StringIO()
+    try:
+        call_command('migrate', interactive=False, stdout=out)
+        return JsonResponse({'ok': True, 'log': out.getvalue()})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)})
+
 
 def coin_search_stream(request, strategy_id):
     """SSE: 검색 진행률 + 최종 결과 스트리밍"""
