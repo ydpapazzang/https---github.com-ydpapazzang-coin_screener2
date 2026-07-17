@@ -253,10 +253,10 @@
 {% block content %}
 <!-- Tabs -->
 <div class="tabs">
-    <div class="tab active">거래량</div>
-    <div class="tab">상승</div>
-    <div class="tab">하락</div>
-    <div class="tab">최신순</div>
+    <div class="tab active" onclick="sortList('volume', this)">거래량</div>
+    <div class="tab" onclick="sortList('up', this)">상승</div>
+    <div class="tab" onclick="sortList('down', this)">하락</div>
+    <div class="tab" onclick="sortList('name', this)">이름순</div>
 </div>
 
 <!-- List Controls -->
@@ -276,7 +276,7 @@
 <div class="coin-list">
     {% if results %}
         {% for r in results %}
-        <div class="coin-card" onclick="this.classList.toggle('expanded')">
+        <div class="coin-card" data-volume="{{ r.volume|default:0 }}" data-change="{{ r.change_rate|default:0 }}" data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}" onclick="this.classList.toggle('expanded')">
             <div class="card-left">
                 <div class="rank">{{ forloop.counter }}</div>
                 <div class="coin-info">
@@ -288,9 +288,8 @@
                 </div>
             </div>
             <div class="card-right">
-                <!-- Using up/down class. Placeholder change rate since backend doesn't provide it yet -->
-                <div class="price-change {% if forloop.counter|divisibleby:2 %}up{% else %}down{% endif %}">
-                    {% if forloop.counter|divisibleby:2 %}+1.57%{% else %}-1.22%{% endif %}
+                <div class="price-change {% if r.change_rate > 0 %}up{% elif r.change_rate < 0 %}down{% endif %}">
+                    {% if r.change_rate > 0 %}+{% endif %}{{ r.change_rate|default:0|floatformat:2 }}%
                 </div>
                 <div class="current-price">{{ r.price|floatformat:0 }}원</div>
             </div>
@@ -379,6 +378,55 @@
         const s = remainingSeconds % 60;
         document.getElementById('countdown-text').textContent = 
             `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function sortList(type, tabElem) {
+        // 탭 활성화 처리
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tabElem.classList.add('active');
+
+        const list = document.querySelector('.coin-list');
+        const cards = Array.from(list.querySelectorAll('.coin-card'));
+        const emptyState = list.querySelector('.empty-state');
+
+        if (cards.length === 0) return;
+
+        cards.sort((a, b) => {
+            if (type === 'volume') {
+                const volA = parseFloat(a.dataset.volume) || 0;
+                const volB = parseFloat(b.dataset.volume) || 0;
+                return volB - volA; // 내림차순
+            } else if (type === 'up') {
+                const chgA = parseFloat(a.dataset.change) || 0;
+                const chgB = parseFloat(b.dataset.change) || 0;
+                return chgB - chgA; // 내림차순
+            } else if (type === 'down') {
+                const chgA = parseFloat(a.dataset.change) || 0;
+                const chgB = parseFloat(b.dataset.change) || 0;
+                return chgA - chgB; // 오름차순 (하락률 높은 순 = 값이 작은 순)
+            } else if (type === 'name') {
+                const nameA = a.dataset.name.toLowerCase();
+                const nameB = b.dataset.name.toLowerCase();
+                return nameA.localeCompare(nameB);
+            }
+            return 0;
+        });
+
+        // DOM 재정렬 및 순위(rank) 업데이트
+        cards.forEach((card, index) => {
+            // 카드가 삭제되지 않고 위치만 이동하도록 함
+            // 단, DOM 구조상 card 다음에 card-actions 가 오므로 형제 요소를 함께 이동시켜야 함
+            const actionCard = card.nextElementSibling;
+            list.appendChild(card);
+            if (actionCard && actionCard.classList.contains('card-actions')) {
+                list.appendChild(actionCard);
+            }
+            card.querySelector('.rank').textContent = index + 1;
+        });
+        
+        if (emptyState) {
+            list.appendChild(emptyState);
+        }
     }
 </script>
 {% endblock %}

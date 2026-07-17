@@ -212,6 +212,7 @@ def check_strategy(ticker, conditions, current_price=None):
         details = []
         last_price = None
         volume = 0
+        change_rate = 0.0
 
         def _check_for_offset(base_offset):
             """Helper to check all conditions for a given base offset."""
@@ -296,9 +297,22 @@ def check_strategy(ticker, conditions, current_price=None):
             if not df.empty:
                 last_price = df['close'].iloc[-1]
                 volume = df['value'].iloc[-1] if 'value' in df.columns else df['volume'].iloc[-1]
+                
+        # 등락률(change_rate) 계산을 위해 'day' 데이터 강제 로드
+        day_df = data_cache.get('day')
+        if day_df is None:
+            day_df = get_ohlcv_with_retry(ticker, interval='day')
+            if day_df is not None:
+                data_cache['day'] = day_df
+
+        if day_df is not None and len(day_df) > 1:
+            current_close = day_df['close'].iloc[-1]
+            prev_close = day_df['close'].iloc[-2]
+            if prev_close > 0:
+                change_rate = (current_close - prev_close) / prev_close * 100.0
 
         if not is_match_current:
-            return False, [], last_price, volume, None
+            return False, [], last_price, volume, change_rate, None
 
         # 2. 이전 봉(base_offset=1) 조건 확인
         is_match_previous = _check_for_offset(1)

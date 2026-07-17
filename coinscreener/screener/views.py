@@ -624,7 +624,7 @@ def coin_search_stream(request, strategy_id):
             amount = t_data.get('amount') or 0
             
             try:
-                is_match, details, price, volume, status = check_strategy(ticker, conditions)
+                is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
                 if price is None:
                     return "API_ERROR"
                 if is_match:
@@ -637,6 +637,7 @@ def coin_search_stream(request, strategy_id):
                         'amount':         amount,
                         'amount_display': f"{amount / 100_000_000:.1f}억" if amount else "-",
                         'price':          price,
+                        'change_rate':    change_rate,
                         'details':        ", ".join(unique_details),
                         'volume':         volume,
                         'volume_display': f"{volume:.0f}" if volume else "0",
@@ -653,6 +654,7 @@ def coin_search_stream(request, strategy_id):
             import datetime
             
             active_timeframes = set(c.timeframe for c in conditions)
+            active_timeframes.add('day')
             tickers = [t['ticker'] for t in tickers_data]
             
             cached_qs = OHLCVCache.objects.filter(ticker__in=tickers, timeframe__in=active_timeframes)
