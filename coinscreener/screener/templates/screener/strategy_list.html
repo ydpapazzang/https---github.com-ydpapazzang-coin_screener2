@@ -349,9 +349,7 @@
     /* ── Search & Scan ── */
     function runSearch(id) {
         const ex = document.getElementById('ex-val-' + id).value;
-        let url = `/strategy/${id}/search/?exchange=${ex}&vol_limit=0`;
-        
-        document.getElementById('spinner-' + id).style.display = 'inline-block';
+        const url = `/strategy/${id}/search/?exchange=${ex}&vol_limit=0&refresh=1`;
         window.location.href = url;
     }
     function goToResults(id) {
