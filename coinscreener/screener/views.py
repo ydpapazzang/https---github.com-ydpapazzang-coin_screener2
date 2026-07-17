@@ -425,7 +425,7 @@ def cron_prefetch(request):
         return HttpResponseForbidden("Forbidden")
         
     try:
-        limit = 15
+        limit = 25
         
         index_cache, _ = OHLCVCache.objects.get_or_create(
             ticker="__PREFETCH_INDEX__", 
@@ -444,7 +444,7 @@ def cron_prefetch(request):
             for c in s.conditions.all():
                 active_timeframes.add(c.timeframe)
                 
-        tickers_info = _get_tickers("upbit", 150)
+        tickers_info = _get_tickers("upbit", 0)
         
         tasks = []
         for t_info in tickers_info:
