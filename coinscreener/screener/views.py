@@ -427,8 +427,8 @@ def cron_prefetch(request):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden("권한이 없습니다.")
         
-    # Vercel 10초 제한에 맞게 한 번 호출에 40개씩 수집 (max_workers=10 기준 2~3초 소요 예상)
-    limit = 40
+    # Vercel 10초 제한에 맞게 한 번 호출에 15개씩 수집 (5 workers)
+    limit = 15
     
     # 2. DB에서 현재 진행 중인 인덱스를 가져옴 (상태 저장)
     index_cache, _ = OHLCVCache.objects.get_or_create(
@@ -497,7 +497,7 @@ def cron_prefetch(request):
             print(f"Prefetch Error: {ticker} {tf} - {e}")
         return False
         
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(fetch_and_save, t) for t in batch_tasks]
         for future in concurrent.futures.as_completed(futures):
             if future.result():
@@ -610,7 +610,7 @@ def coin_search_stream(request, strategy_id):
             return None
 
         # 스레드 개수를 10개로 조절하여 업비트 API 호출의 순간 폭주(Burst)를 완화하고 Rate Limit를 방어합니다.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(process_ticker, t): t for t in tickers_data}
             last_sent_pct = -1
             for future in concurrent.futures.as_completed(futures):
@@ -1509,7 +1509,7 @@ def strategy_scan_count(request, strategy_id):
             pass
         return None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(process_ticker, t): t for t in tickers}
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
@@ -1535,4 +1535,4 @@ def strategy_scan_count(request, strategy_id):
 
 
 
-
+
