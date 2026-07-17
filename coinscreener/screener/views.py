@@ -1589,7 +1589,7 @@ def strategy_scan_count(request, strategy_id):
 
     def process_ticker(ticker):
         try:
-            is_match, details, price, volume, status = check_strategy(ticker, conditions)
+            is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
             if price is None:
                 return "API_ERROR"
             if is_match:
