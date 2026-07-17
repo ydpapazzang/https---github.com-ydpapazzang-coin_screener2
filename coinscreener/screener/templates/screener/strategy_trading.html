@@ -246,13 +246,6 @@
          <div class="fchip exchange-chip" data-val="bithumb" onclick="selectExchange(this)">빗썸</div>
          <div class="fchip exchange-chip" data-val="kospi" onclick="selectExchange(this)">코스피</div>
       </div>
-      
-      <div class="filter-title" style="margin-top: 16px;">종목 필터 (거래대금 기준)</div>
-      <div class="filter-chips">
-         <div class="fchip vol-chip" data-val="30" onclick="selectVol(this)">상위 30</div>
-         <div class="fchip vol-chip on" data-val="100" onclick="selectVol(this)">상위 100</div>
-         <div class="fchip vol-chip" data-val="0" onclick="selectVol(this)">전체 종목</div>
-      </div>
     </div>
 
     <!-- Conditions -->
@@ -602,7 +595,6 @@
             .then(data => {
                 if (data.enabled) document.querySelector('.toggle-switch').classList.add('on');
                 if (data.exchange) selectExchange(document.querySelector(`.exchange-chip[data-val="${data.exchange}"]`), false);
-                if (data.vol_limit !== undefined) selectVol(document.querySelector(`.vol-chip[data-val="${data.vol_limit}"]`), false);
             });
     });
 
@@ -613,28 +605,20 @@
         el.classList.add('on');
         if(save) saveAlertSettings();
     }
-    function selectVol(el, save=true) {
-        if(!el) return;
-        document.querySelectorAll('.vol-chip').forEach(c => c.classList.remove('on'));
-        el.classList.add('on');
-        if(save) saveAlertSettings();
-    }
     function saveAlertSettings() {
         const ex = document.querySelector('.exchange-chip.on').dataset.val;
-        const vl = document.querySelector('.vol-chip.on').dataset.val;
         const tg = document.querySelector('.toggle-switch').classList.contains('on');
         fetch('{% url "alert_save" strategy.id %}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-            body: JSON.stringify({ enabled: tg, exchange: ex, vol_limit: vl })
+            body: JSON.stringify({ enabled: tg, exchange: ex, vol_limit: 0 })
         });
     }
 
     // Search execute
     function runSearch() {
         const ex = document.querySelector('.exchange-chip.on').dataset.val;
-        const vl = document.querySelector('.vol-chip.on').dataset.val;
-        window.location.href = `{% url 'coin_search' strategy.id %}?exchange=${ex}&vol_limit=${vl}`;
+        window.location.href = `{% url 'coin_search' strategy.id %}?exchange=${ex}&vol_limit=0`;
     }
 
     // Strategy rename

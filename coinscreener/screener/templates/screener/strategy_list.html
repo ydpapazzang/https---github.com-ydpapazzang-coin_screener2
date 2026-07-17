@@ -56,7 +56,7 @@
     /* ── CONTROLS ── */
     .controls-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
         gap: 8px;
         margin-bottom: 16px;
     }
@@ -234,15 +234,9 @@
                     <span class="control-val" id="extf-label-{{ strategy.id }}">업비트 / 기본</span>
                     <span style="font-size:10px;">▼</span>
                 </div>
+                </div>
                 <input type="hidden" id="ex-val-{{ strategy.id }}" value="upbit">
                 <input type="hidden" id="tf-val-{{ strategy.id }}" value="">
-
-                <!-- 거래대금 -->
-                <div class="control-btn" onclick="openSheet('vol', {{ strategy.id }})">
-                    <span class="control-val" id="vol-label-{{ strategy.id }}">상위 100개</span>
-                    <span style="font-size:10px;">▼</span>
-                </div>
-                <input type="hidden" id="vol-val-{{ strategy.id }}" value="100">
             </div>
 
             <div class="action-row">
@@ -278,16 +272,6 @@
     <div class="sheet-opt tf-opt tf-coin" onclick="selectTf('minute240', '4시간')">4시간</div>
     <div class="sheet-opt tf-opt tf-coin" onclick="selectTf('day', '일')">일</div>
 </div>
-
-<!-- 거래대금 시트 -->
-<div class="bottom-sheet" id="sheet-vol">
-    <div class="sheet-handle"></div>
-    <div class="sheet-title">거래대금 범위 지정</div>
-    <div class="sheet-opt vol-opt" onclick="selectVol('30', '상위 30개')">상위 30개</div>
-    <div class="sheet-opt vol-opt" onclick="selectVol('50', '상위 50개')">상위 50개</div>
-    <div class="sheet-opt vol-opt selected" onclick="selectVol('100', '상위 100개')">상위 100개</div>
-    <div class="sheet-opt vol-opt" onclick="selectVol('200', '상위 200개')">상위 200개</div>
-    <div class="sheet-opt vol-opt" onclick="selectVol('0', '전체 코인')">전체 코인</div>
 </div>
 
 <!-- ── MODALS ── -->
@@ -323,17 +307,11 @@
         </div>
 
         <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">스캔 범위 설정</div>
-        <select id="alert-exchange" style="width:100%; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); color:#fff; padding:10px; border-radius:8px; margin-bottom:8px;">
+        <select id="alert-exchange" style="width:100%; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); color:#fff; padding:10px; border-radius:8px; margin-bottom:16px;">
             <option value="upbit">업비트</option>
             <option value="bithumb">빗썸</option>
             <option value="kospi">코스피 (주식/ETF)</option>
         </select>
-        <select id="alert-vol" style="width:100%; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); color:#fff; padding:10px; border-radius:8px; margin-bottom:16px;">
-            <option value="30">상위 30개</option>
-            <option value="100" selected>상위 100개</option>
-            <option value="0">전체 코인</option>
-        </select>
-
         <div id="tg-status" style="margin-bottom:16px; font-size:12px; padding:10px; border-radius:8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color);">상태 불러오는 중...</div>
 
         <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:20px; cursor:pointer;">
@@ -386,30 +364,20 @@
         }
     }
     function selectTf(val, text) {
-        activeTf = val; activeTfName = text;
-        updateExTfUI();
-        closeSheet(); // Auto close on selecting timeframe
-    }
-    function updateExTfUI() {
         if(!targetStrategyId) return;
-        document.getElementById('ex-val-' + targetStrategyId).value = activeEx;
-        document.getElementById('tf-val-' + targetStrategyId).value = activeTf;
-        document.getElementById('extf-label-' + targetStrategyId).textContent = activeExName + ' / ' + activeTfName;
-    }
-    
-    function selectVol(val, text) {
-        if(!targetStrategyId) return;
-        document.getElementById('vol-val-' + targetStrategyId).value = val;
-        document.getElementById('vol-label-' + targetStrategyId).textContent = text;
+        document.getElementById('tf-val-' + targetStrategyId).value = val;
+        
+        const ex = document.getElementById('ex-val-' + targetStrategyId).value;
+        const exText = (ex === 'upbit') ? '업비트' : (ex === 'bithumb' ? '빗썸' : '코스피');
+        document.getElementById('extf-label-' + targetStrategyId).textContent = exText + ' / ' + text;
         closeSheet();
     }
 
     /* ── Search & Scan ── */
     function runSearch(id) {
         const ex = document.getElementById('ex-val-' + id).value;
-        const vol = document.getElementById('vol-val-' + id).value;
         const tf = document.getElementById('tf-val-' + id).value;
-        let url = `/strategy/${id}/search/?exchange=${ex}&vol_limit=${vol}`;
+        let url = `/strategy/${id}/search/?exchange=${ex}&vol_limit=0`;
         if (tf) url += `&timeframe=${tf}`;
         
         document.getElementById('spinner-' + id).style.display = 'inline-block';
@@ -417,9 +385,8 @@
     }
     function goToResults(id) {
         const ex = document.getElementById('ex-val-' + id).value;
-        const vol = document.getElementById('vol-val-' + id).value;
         const tf = document.getElementById('tf-val-' + id).value;
-        let url = `/strategy/${id}/results/?exchange=${ex}&vol_limit=${vol}`;
+        let url = `/strategy/${id}/results/?exchange=${ex}&vol_limit=0`;
         if (tf) url += `&timeframe=${tf}`;
         window.location.href = url;
     }
@@ -441,9 +408,8 @@
             badge.style.display = 'none';
             
             const ex = document.getElementById('ex-val-' + id).value;
-            const vol = document.getElementById('vol-val-' + id).value;
             const tf = document.getElementById('tf-val-' + id).value;
-            let url = `/strategy/${id}/scan-count/?exchange=${ex}&vol_limit=${vol}`;
+            let url = `/strategy/${id}/scan-count/?exchange=${ex}&vol_limit=0`;
             if(tf) url += `&timeframe=${tf}`;
             
             try {
@@ -488,7 +454,6 @@
             const data = await res.json();
             document.getElementById('alert-enabled').checked = data.enabled;
             document.getElementById('alert-exchange').value = data.exchange;
-            document.getElementById('alert-vol').value = data.vol_limit;
             const tgEl = document.getElementById('tg-status');
             tgEl.innerHTML = data.tg_configured ? '<span style="color:#10b981;">✅ 텔레그램 봇 연결됨</span>' : '<span style="color:#ff4d4f;">❌ 텔레그램 환경변수 누락</span>';
         } catch(e) {}
@@ -501,7 +466,7 @@
             enabled: document.getElementById('alert-enabled').checked,
             alert_hour: 9, alert_min: 0,
             exchange: document.getElementById('alert-exchange').value,
-            vol_limit: parseInt(document.getElementById('alert-vol').value),
+            vol_limit: 0,
             send_test: document.getElementById('alert-test').checked
         };
         try {
@@ -523,7 +488,7 @@
         if(!currentAlertId) return;
         const btn = document.getElementById('alert-sendnow-btn');
         btn.textContent = '발송 중...';
-        const body = { exchange: document.getElementById('alert-exchange').value, vol_limit: parseInt(document.getElementById('alert-vol').value) };
+        const body = { exchange: document.getElementById('alert-exchange').value, vol_limit: 0 };
         try {
             const res = await fetch(`/strategy/${currentAlertId}/alert/send-now/`, {
                 method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
