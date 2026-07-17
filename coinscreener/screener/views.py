@@ -537,6 +537,20 @@ def trigger_migrate(request):
     except Exception as e:
         return JsonResponse({'ok': False, 'error': str(e)})
 
+@csrf_exempt
+def trigger_debug(request):
+    if request.GET.get('secret') != 'wonii_cron_debug':
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden("권한이 없습니다.")
+        
+    try:
+        from .models import OHLCVCache
+        count = OHLCVCache.objects.count()
+        return JsonResponse({'ok': True, 'count': count})
+    except Exception as e:
+        import traceback
+        return JsonResponse({'ok': False, 'error': str(e), 'trace': traceback.format_exc()})
+
 
 def coin_search_stream(request, strategy_id):
     """SSE: 검색 진행률 + 최종 결과 스트리밍"""
