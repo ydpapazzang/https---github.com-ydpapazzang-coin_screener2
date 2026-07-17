@@ -402,28 +402,7 @@ def coin_search(request, strategy_id):
     tf_override = request.GET.get('timeframe')
     tf_suffix = f"_{tf_override}" if tf_override else ""
 
-    # 캐시 확인 (파라미터 기반 Key)
-    cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
-    cached_data = cache.get(cache_key)
-
-    if not cached_data:
-        try:
-            from .models import OHLCVCache
-            db_cache = OHLCVCache.objects.filter(ticker=cache_key, timeframe="RESULT").first()
-            if db_cache and db_cache.data:
-                cached_data = db_cache.data
-        except Exception as e:
-            pass
-
-
-    if cached_data and request.GET.get('refresh') != '1':
-        return render(request, 'screener/coin_list.html', {
-            'results':            cached_data['results'],
-            'strategy':           strategy,
-            'rate_limit_warning': cached_data['rate_limit_warning'],
-            'is_cached':          True,
-            'last_updated':       cached_data.get('last_updated'),
-        })
+    # 무조건 새로 검색하기 위해 캐시 조회를 제거하고 로딩 페이지로 바로 진입합니다.
 
     # 캐시 없음 → 로딩 페이지 (JS가 SSE로 진행)
     send_telegram = request.GET.get('send_telegram', '0')
