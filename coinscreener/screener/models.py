@@ -86,6 +86,8 @@ class Condition(models.Model):
         ('IC_SPAN_B',      '일목 선행스팬2'),
         ('IC_CHIKOU',      '일목 후행스팬'),
         ('IC_CHIKOU_REF',  '26봉 전 종가'),
+        ('IC_CLOUD_TOP',   '일목 구름대 상단'),
+        ('IC_CLOUD_BOTTOM','일목 구름대 하단'),
         ('VAL',       '고정값'),
         ('CLOSE',     '종가'),
         # 거래량 지표

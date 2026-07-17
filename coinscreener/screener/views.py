@@ -187,7 +187,7 @@ def condition_add(request, strategy_id):
 
     elif cond_type == 'IC':
         ic_comparison = request.POST.get('ic_comparison', 'TENKAN_KIJUN')
-        valid_ic = ('TENKAN_KIJUN', 'CLOSE_SPAN_A', 'CLOSE_SPAN_B', 'SPAN_A_SPAN_B', 'CHIKOU_CLOSE')
+        valid_ic = ('TENKAN_KIJUN', 'CLOSE_SPAN_A', 'CLOSE_SPAN_B', 'SPAN_A_SPAN_B', 'CHIKOU_CLOSE', 'CLOSE_KIJUN', 'CLOSE_CLOUD')
         if ic_comparison not in valid_ic:
             messages.error(request, "올바르지 않은 일목균형표 비교 유형입니다.")
             return redirect('strategy_detail', strategy_id=strategy_id)
@@ -207,6 +207,16 @@ def condition_add(request, strategy_id):
         elif ic_comparison == 'CHIKOU_CLOSE':
             left_indicator, left_param = 'IC_CHIKOU', 0
             right_indicator, right_param = 'IC_CHIKOU_REF', 26
+        elif ic_comparison == 'CLOSE_KIJUN':
+            left_indicator, left_param = 'CLOSE', 0
+            right_indicator, right_param = 'IC_KIJUN', 26
+        elif ic_comparison == 'CLOSE_CLOUD':
+            left_indicator, left_param = 'CLOSE', 0
+            if operator in ('cross_up', 'gte', 'gt'):
+                right_indicator = 'IC_CLOUD_TOP'
+            else:
+                right_indicator = 'IC_CLOUD_BOTTOM'
+            right_param = 26
 
     elif cond_type == 'VOLUME':
         volume_target = request.POST.get('volume_target', 'prev')
@@ -1195,6 +1205,7 @@ def ai_strategy_create(request):
             'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 
             'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER',
             'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF',
+            'IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM',
             'VAL', 'CLOSE',
             'VOLUME', 'VOLUME_PREV', 'VOLUME_MA'
         ]
@@ -1293,6 +1304,7 @@ def ai_strategy_add_conditions(request):
             'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 
             'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER',
             'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF',
+            'IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM',
             'VAL', 'CLOSE',
             'VOLUME', 'VOLUME_PREV', 'VOLUME_MA'
         ]

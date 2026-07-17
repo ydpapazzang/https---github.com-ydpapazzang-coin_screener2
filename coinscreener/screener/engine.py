@@ -486,6 +486,32 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
         val = span_b_shifted.iloc[target_idx]
         return None if pd.isna(val) else float(val)
 
+    elif indicator_type in ('IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM'):
+        import numpy as np
+        high_9 = df['high'].rolling(window=9).max()
+        low_9 = df['low'].rolling(window=9).min()
+        tenkan = (high_9 + low_9) / 2
+
+        high_26 = df['high'].rolling(window=26).max()
+        low_26 = df['low'].rolling(window=26).min()
+        kijun = (high_26 + low_26) / 2
+
+        span_a = (tenkan + kijun) / 2
+        span_a_shifted = span_a.shift(param)
+
+        high_52 = df['high'].rolling(window=52).max()
+        low_52 = df['low'].rolling(window=52).min()
+        span_b = (high_52 + low_52) / 2
+        span_b_shifted = span_b.shift(param)
+
+        if indicator_type == 'IC_CLOUD_TOP':
+            cloud = np.maximum(span_a_shifted, span_b_shifted)
+        else:
+            cloud = np.minimum(span_a_shifted, span_b_shifted)
+            
+        val = cloud.iloc[target_idx]
+        return None if pd.isna(val) else float(val)
+
     elif indicator_type == 'IC_CHIKOU':
         val = df['close'].iloc[target_idx]
         return None if pd.isna(val) else float(val)
