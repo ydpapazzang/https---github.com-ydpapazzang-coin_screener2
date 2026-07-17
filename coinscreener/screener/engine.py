@@ -358,12 +358,12 @@ def check_strategy(ticker, conditions, current_price=None):
                             details.append(f"{cond.right_indicator}: {right_val:,.0f}")
                         else:
                             details.append(f"{cond.right_indicator}({cond.right_param}): {right_val:.2f}")
-        
-        return True, details, last_price, volume, status
+
+        return True, details, last_price, volume, change_rate, status
 
     except Exception as e:
         print(f"Error checking {ticker}: {e}")
-        return False, [], None, 0, None
+        return False, [], None, 0, 0.0, None
 
 
 def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
