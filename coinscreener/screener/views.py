@@ -427,8 +427,8 @@ def cron_prefetch(request):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden("권한이 없습니다.")
         
-    # Vercel 10초 제한에 맞게 한 번 호출에 15개씩만 수집
-    limit = 15
+    # Vercel 10초 제한에 맞게 한 번 호출에 40개씩 수집 (max_workers=10 기준 2~3초 소요 예상)
+    limit = 40
     
     # 2. DB에서 현재 진행 중인 인덱스를 가져옴 (상태 저장)
     index_cache, _ = OHLCVCache.objects.get_or_create(
@@ -496,7 +496,7 @@ def cron_prefetch(request):
             print(f"Prefetch Error: {ticker} {tf} - {e}")
         return False
         
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(fetch_and_save, t) for t in batch_tasks]
         for future in concurrent.futures.as_completed(futures):
             if future.result():
