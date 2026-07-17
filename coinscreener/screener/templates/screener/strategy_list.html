@@ -230,7 +230,7 @@
 
             <div class="controls-grid">
                 <!-- 거래소/시간 -->
-                <div class="control-btn" onclick="openSheet('ex-tf', {{ strategy.id }})">
+                <div class="control-btn" onclick="openSheet('extf', {{ strategy.id }})">
                     <span class="control-val" id="extf-label-{{ strategy.id }}">업비트 / 기본</span>
                     <span style="font-size:10px;">▼</span>
                 </div>
@@ -364,7 +364,7 @@
         document.getElementById('sheet-' + type).classList.add('open');
         
         // Load current selection UI state
-        if(type === 'ex-tf') {
+        if(type === 'extf') {
             activeEx = document.getElementById('ex-val-' + stId).value;
             activeTf = document.getElementById('tf-val-' + stId).value;
             // update UI highlights would go here...
