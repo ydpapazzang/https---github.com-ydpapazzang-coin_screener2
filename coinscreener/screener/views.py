@@ -527,7 +527,8 @@ def trigger_debug(request):
     try:
         from .models import OHLCVCache
         count = OHLCVCache.objects.count()
-        return JsonResponse({'ok': True, 'count': count})
+        timeframes = list(OHLCVCache.objects.values_list('timeframe', flat=True).distinct())
+        return JsonResponse({'ok': True, 'count': count, 'timeframes': timeframes})
     except Exception as e:
         import traceback
         return JsonResponse({'ok': False, 'error': str(e), 'trace': traceback.format_exc()})
