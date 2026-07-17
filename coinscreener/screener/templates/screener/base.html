@@ -3,48 +3,172 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% block title %}wonii -screener{% endblock %}</title>
+    <!-- Pretendard Font -->
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
     <style>
-        /* Basic styles for the layout */
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #2d7bfe;
+            --text-primary: #ffffff;
+            --text-secondary: #9e9e9e;
+            --border-color: #2c2c2c;
+            --up-color: #f23645;
+            --down-color: #2962ff;
+            --nav-height: 60px;
+        }
+        
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         body {
             margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: #131722;
-            color: #d1d4dc;
+            padding: 0;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+            background-color: #000000; /* Desktop background */
+            color: var(--text-primary);
+            display: flex;
+            justify-content: center;
         }
-        .header {
+
+        /* Mobile Container */
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            min-height: 100vh;
+            background-color: var(--bg-color);
+            position: relative;
+            box-shadow: 0 0 20px rgba(255,255,255,0.05);
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        main {
+            flex: 1;
+            padding-bottom: var(--nav-height); /* Space for bottom nav */
+            overflow-y: auto;
+        }
+
+        /* Top App Bar (Common Styles) */
+        .top-app-bar {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 16px 24px;
-            background-color: #1e222d;
-            border-bottom: 1px solid #363a45;
+            padding: 16px 20px;
+            background-color: var(--bg-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
-        .header-logo a {
-            font-size: 20px;
-            font-weight: 800;
-            color: #fff;
+        
+        .top-app-bar .title {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Bottom Navigation Bar */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            max-width: 480px;
+            height: var(--nav-height);
+            background-color: var(--bg-color);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
             text-decoration: none;
+            font-size: 10px;
+            gap: 4px;
+            width: 20%;
         }
-        .container {
-            padding: 24px;
+
+        .nav-item.active {
+            color: var(--text-primary);
         }
+
+        .nav-icon {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
+        }
+        
+        /* Utility classes */
+        .hidden { display: none !important; }
+        
+        /* Typography */
+        h1, h2, h3, h4, h5, h6, p { margin: 0; }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <header class="header">
-        <div class="header-logo">
-            <a href="{% url 'strategy_list' %}">wonii -screener</a>
-        </div>
-        <!-- Other header items can go here -->
-    </header>
-
-    <main class="container">
-        {% block content %}
+    <div class="app-container">
+        <!-- Top App Bar can be injected by child templates -->
+        {% block topbar %}
+        <header class="top-app-bar">
+            <div class="title">wonii -screener</div>
+        </header>
         {% endblock %}
-    </main>
+
+        <main>
+            {% block content %}
+            {% endblock %}
+        </main>
+
+        {% block bottom_nav %}
+        <nav class="bottom-nav">
+            <a href="{% url 'strategy_list' %}" class="nav-item active">
+                <svg class="nav-icon" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+                <span>홈</span>
+            </a>
+            <a href="#" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24"><path d="M16 11V3H8v6H2v12h20V11h-6zm-6-6h4v14h-4V5zm-6 6h4v8H4v-8zm16 8h-4v-6h4v6z"/></svg>
+                <span>순위</span>
+            </a>
+            <a href="#" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>
+                <span>알림</span>
+            </a>
+            <a href="#" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H4V5h16v14zM14 7h4v2h-4V7zm0 4h4v2h-4v-2zM6 7h6v6H6V7zm0 8h12v2H6v-2z"/></svg>
+                <span>뉴스</span>
+            </a>
+            <a href="#" class="nav-item">
+                <svg class="nav-icon" viewBox="0 0 24 24"><path d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                <span>더보기</span>
+            </a>
+        </nav>
+        {% endblock %}
+    </div>
 
     {% block extra_js %}{% endblock %}
 </body>

@@ -1,845 +1,384 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ strategy.name }} - 검색 결과</title>
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+{% extends 'screener/base.html' %}
+{% load static %}
 
-<script>
-// Table Sorting Logic
-let sortOrders = {}; // Keep track of sort direction per column
+{% block title %}{{ strategy.name }} - 검색 결과{% endblock %}
 
-function sortTable(colIndex, type) {
-    const table = document.querySelector('.result-table');
-    const tbody = table.querySelector('tbody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
+{% block extra_head %}
+<style>
+    /* Top App Bar Overrides */
+    .top-app-bar {
+        border-bottom: 1px solid var(--border-color);
+        padding: 16px 20px;
+    }
     
-    // Toggle sort order
-    const currentOrder = sortOrders[colIndex] || 'asc';
-    const newOrder = currentOrder === 'asc' ? 'desc' : 'asc';
-    sortOrders[colIndex] = newOrder;
+    .title-dropdown {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+    }
     
-    // Update icons
-    const headers = table.querySelectorAll('th');
-    headers.forEach(th => {
-        const icon = th.querySelector('.sort-icon');
-        if (icon) icon.textContent = '';
-    });
-    const activeHeader = headers[colIndex];
-    if (activeHeader) {
-        const icon = activeHeader.querySelector('.sort-icon');
-        if (icon) icon.textContent = newOrder === 'asc' ? ' ▲' : ' ▼';
+    .badge-count {
+        background-color: transparent;
+        border: 1px solid var(--primary-color);
+        color: var(--primary-color);
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 600;
+        margin-right: 12px;
+    }
+    
+    .settings-btn {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--text-primary);
+        text-decoration: none;
     }
 
-    rows.sort((a, b) => {
-        const aCell = a.querySelectorAll('td')[colIndex];
-        const bCell = b.querySelectorAll('td')[colIndex];
-        
-        let aVal = aCell.getAttribute('data-val') || aCell.textContent.trim();
-        let bVal = bCell.getAttribute('data-val') || bCell.textContent.trim();
-        
-        if (type === 'num') {
-            aVal = parseFloat(aVal) || 0;
-            bVal = parseFloat(bVal) || 0;
-            return newOrder === 'asc' ? aVal - bVal : bVal - aVal;
-        } else {
-            return newOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-        }
-    });
-    
-    // Re-append sorted rows and update counter
-    rows.forEach((row, index) => {
-        row.querySelector('.num').textContent = index + 1;
-        tbody.appendChild(row);
-    });
-}
-</script>
-
-    <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
-    --bg:      #07090e;
-    --surface: rgba(16, 20, 33, 0.65);
-    --surface-hover: rgba(26, 32, 53, 0.8);
-    --surface2: rgba(255, 255, 255, 0.05);
-    --border:  rgba(255, 255, 255, 0.06);
-    --border-hover: rgba(255, 255, 255, 0.15);
-    --text:    #e4e7ec;
-    --muted:   #9ca3af;
-    --blue:    #7c3aed; /* Electric Violet */
-    --blue-glow: rgba(124, 58, 237, 0.35);
-    --gold:    #f5a623;
-    --red:     #f43f5e;
-    --green:   #10b981;
-    --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
-    min-height: 100vh;
-    position: relative;
-    overflow-x: hidden;
-}
-
-/* Ambient Glow spots */
-body::before {
-    content: "";
-    position: fixed;
-    top: -15%;
-    left: -10%;
-    width: 50vw;
-    height: 50vh;
-    background: radial-gradient(circle, rgba(124, 58, 237, 0.12) 0%, rgba(124, 58, 237, 0) 70%);
-    z-index: -2;
-    pointer-events: none;
-}
-body::after {
-    content: "";
-    position: fixed;
-    bottom: -15%;
-    right: -10%;
-    width: 60vw;
-    height: 60vh;
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.08) 0%, rgba(59, 130, 246, 0) 70%);
-    z-index: -2;
-    pointer-events: none;
-}
-
-/* NAV */
-.topnav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 32px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(7, 9, 14, 0.75);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-}
-.topnav a { text-decoration: none; }
-.logo {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 22px;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: -0.5px;
-}
-.logo span {
-    color: var(--blue);
-    background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-/* PAGE */
-.page { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
-
-.back-link {
-    display: inline-flex; align-items: center; gap: 6px;
-    color: var(--text); opacity: 0.7; text-decoration: none; font-size: 13px;
-    margin-bottom: 20px; transition: var(--transition);
-}
-.back-link:hover { opacity: 1; color: var(--blue); }
-
-.page-title { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px; }
-.page-sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
-.page-sub a { color: var(--blue); text-decoration: none; font-weight: 600; }
-.page-sub a:hover { text-decoration: underline; }
-
-/* ALERT */
-.alert { background: var(--gold); color: #000; padding: 12px 16px; border-radius: 10px; font-size: 13px; margin-bottom: 18px; font-weight: 600; }
-.alert.error { background: var(--red); color: #fff; }
-
-/* TABLE */
-.result-table { width: 100%; border-collapse: collapse; }
-.result-table th, .result-table td {
-    padding: 16px 14px; text-align: left;
-    border-bottom: 1px solid var(--border);
-}
-.result-table th {
-    font-size: 11px; color: var(--muted); font-weight: 600;
-    text-transform: uppercase; letter-spacing: 1px;
-}
-.result-table td { font-size: 14.5px; }
-.result-table tr:hover { background: rgba(255, 255, 255, 0.02); }
-.result-table .num { color: var(--muted); text-align: right; }
-.result-table .symbol { font-weight: 700; color: #fff; }
-.result-table .price { text-align: right; font-family: monospace; font-size: 15px; }
-.result-table .volume { text-align: right; color: var(--muted); font-family: monospace; }
-.result-table .symbol a {
-    color: inherit;
-    text-decoration: none;
-    transition: var(--transition);
-}
-.result-table .symbol a:hover {
-    color: #a78bfa;
-}
-
-.btn-bt-small {
-    background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); color: var(--text);
-    border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600;
-    cursor: pointer; display: flex; align-items: center; gap: 6px;
-    transition: var(--transition);
-}
-.btn-bt-small:hover {
-    border-color: var(--border-hover);
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-}
-
-.btn-tv-chart {
-    background: rgba(124, 58, 237, 0.1); border: 1px solid rgba(124, 58, 237, 0.3); color: #a78bfa;
-    border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600;
-    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
-    transition: var(--transition);
-}
-.btn-tv-chart:hover {
-    background: var(--blue);
-    border-color: var(--blue);
-    color: #fff;
-    box-shadow: 0 0 12px var(--blue-glow);
-    transform: scale(1.03);
-}
-
-.btn-why-selected {
-    background: rgba(124, 58, 237, 0.15);
-    border: 1px solid rgba(124, 58, 237, 0.35);
-    color: #a78bfa;
-    border-radius: 6px;
-    padding: 3px 8px;
-    font-size: 11.5px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: var(--transition);
-    vertical-align: middle;
-}
-.btn-why-selected:hover {
-    background: var(--blue);
-    border-color: var(--blue);
-    color: #fff;
-    box-shadow: 0 0 10px var(--blue-glow);
-    transform: scale(1.03);
-}
-
-/* TRADINGVIEW MODAL OVERLAY */
-.tv-modal-overlay {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(8, 10, 16, 0.85);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    z-index: 2000;
-    display: none; align-items: center; justify-content: center;
-    opacity: 0; transition: opacity 0.25s ease;
-}
-.tv-modal-overlay.active {
-    display: flex;
-    opacity: 1;
-}
-.tv-modal-container {
-    width: 90%; max-width: 1000px;
-    background: rgba(16, 20, 33, 0.95);
-    border: 1px solid var(--border);
-    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6), 0 0 45px rgba(124, 58, 237, 0.18);
-    border-radius: 20px;
-    overflow: hidden;
-    display: flex; flex-direction: column;
-    transform: scale(0.95); transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.1);
-}
-.tv-modal-overlay.active .tv-modal-container {
-    transform: scale(1);
-}
-.tv-modal-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 24px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(7, 9, 14, 0.5);
-}
-.tv-modal-title-wrap {
-    display: flex; align-items: center; gap: 10px;
-}
-.tv-modal-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 17px; font-weight: 700; color: #fff;
-}
-.tv-modal-badge {
-    font-size: 11px; font-weight: 700; padding: 4px 10px;
-    border-radius: 20px; background: rgba(16, 185, 129, 0.15);
-    color: var(--green); border: 1px solid rgba(16, 185, 129, 0.3);
-}
-.tv-modal-badge.upbit {
-    background: rgba(124, 58, 237, 0.15);
-    color: #a78bfa; border: 1px solid rgba(124, 58, 237, 0.3);
-}
-.tv-modal-close {
-    background: rgba(255, 255, 255, 0.05); border: none; color: var(--muted);
-    font-size: 20px; cursor: pointer; transition: var(--transition);
-    width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-}
-.tv-modal-close:hover { color: #fff; text-shadow: 0 0 10px rgba(255, 255, 255, 0.5); }
-
-/* MOBILE RESPONSIVE */
-@media (max-width: 768px) {
-    .page { padding: 20px 12px 60px; }
-    .topnav { padding: 12px 16px; }
-    .logo { font-size: 18px; }
-    
-    .panel-body { flex-direction: column; align-items: stretch; gap: 12px; }
-    .ctrl-group { width: 100%; }
-    .ctrl-group select { width: 100%; }
-    .checkbox-group { width: 100%; max-width: 100%; }
-    
-    .table-responsive {
+    /* Tabs */
+    .tabs {
+        display: flex;
+        border-bottom: 1px solid var(--border-color);
+        background-color: var(--bg-color);
+        position: sticky;
+        top: 60px;
+        z-index: 90;
+    }
+    .tab {
+        flex: 1;
+        text-align: center;
+        padding: 14px 0;
+        color: var(--text-secondary);
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        position: relative;
+    }
+    .tab.active {
+        color: var(--text-primary);
+    }
+    .tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0;
         width: 100%;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        margin-bottom: 20px;
+        height: 2px;
+        background-color: var(--text-primary);
+    }
+
+    /* List Controls */
+    .list-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        font-size: 13px;
+    }
+    .toggle-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--primary-color);
+        font-weight: 600;
+    }
+    .toggle-icon {
+        width: 18px;
+        height: 18px;
+        background-color: var(--primary-color);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+    }
+    .toggle-icon svg { width: 12px; height: 12px; fill: currentColor; }
+    
+    .stats { color: var(--text-secondary); }
+
+    /* Coin List */
+    .coin-list {
+        display: flex;
+        flex-direction: column;
+    }
+    .coin-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+        cursor: pointer;
+        -webkit-tap-highlight-color: rgba(255,255,255,0.05);
+    }
+    .coin-card:active {
+        background-color: var(--surface-color);
+    }
+    .card-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    .rank {
+        color: var(--primary-color);
+        font-size: 15px;
+        font-weight: 700;
+        width: 20px;
+    }
+    .coin-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .coin-name {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+    }
+    .coin-symbol {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+    .coin-volume {
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+    .card-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+    }
+    .price-change {
+        font-size: 14px;
+        font-weight: 700;
+    }
+    .price-change.up { color: var(--up-color); }
+    .price-change.down { color: var(--down-color); }
+    
+    .current-price {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+    
+    /* Action Buttons hidden visually on mobile unless tapped */
+    .card-actions {
+        display: none;
+        width: 100%;
+        padding: 12px 20px;
+        background: var(--surface-color);
+        gap: 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .coin-card.expanded + .card-actions {
+        display: flex;
+    }
+    .btn-action {
+        flex: 1;
+        padding: 10px 0;
         border-radius: 8px;
-        border: 1px solid var(--border);
-    }
-    .result-table {
-        min-width: 800px; /* Forces horizontal scroll on mobile */
+        background: rgba(255,255,255,0.05);
+        color: var(--text-primary);
+        border: none;
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+        cursor: pointer;
     }
     
-    .tv-modal-container {
-        width: 95%;
-        height: 90vh;
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-secondary);
+        font-size: 15px;
     }
-    #tv-chart-container {
-        height: calc(90vh - 60px);
+
+    /* Auto Scan Minimal Panel */
+    .auto-scan-minimal {
+        padding: 16px 20px;
+        background: rgba(45, 123, 254, 0.05);
+        border-top: 1px solid rgba(45, 123, 254, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 20px;
     }
-}
+    .auto-scan-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+    .auto-scan-info select {
+        background: var(--surface-color);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+</style>
+{% endblock %}
 
-.tv-modal-body {
-    position: relative; width: 100%; height: 550px;
-    background: #07090e;
-}
-#tv-chart-container {
-    width: 100%; height: 100%;
-}
-
-/* STATUS BADGE */
-.status-badge {
-    font-size: 10px; font-weight: 700; padding: 4px 8px;
-    border-radius: 6px; margin-left: 8px; vertical-align: middle;
-    display: inline-block; line-height: 1.2; text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.status-badge.new { background: var(--blue); color: #fff; box-shadow: 0 0 10px var(--blue-glow); }
-.status-badge.maintained { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid var(--border); }
-
-/* EMPTY */
-.empty { text-align: center; padding: 60px 20px; color: var(--muted); font-size: 15px;
-         background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-         backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
-
-/* ── AUTO SCAN PANEL ── */
-.auto-scan-panel {
-    background: var(--surface);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 24px;
-    margin-bottom: 28px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.15);
-}
-.panel-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 14px;
-}
-.pulse-icon {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--blue);
-    box-shadow: 0 0 0 0 var(--blue-glow);
-    animation: pulse-blue 1.5s infinite;
-}
-@keyframes pulse-blue {
-    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.7); }
-    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(124, 58, 237, 0); }
-    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(124, 58, 237, 0); }
-}
-.pulse-icon.active {
-    background: var(--green);
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-    animation: pulse-green 1.5s infinite;
-}
-@keyframes pulse-green {
-    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-}
-.panel-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 15px;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-}
-.panel-body {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 20px;
-}
-.ctrl-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.ctrl-group label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--muted);
-}
-.ctrl-group select {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-size: 13.5px;
-    font-weight: 600;
-    outline: none;
-    cursor: pointer;
-    transition: var(--transition);
-}
-.ctrl-group select:focus {
-    border-color: var(--blue);
-    box-shadow: 0 0 10px var(--blue-glow);
-}
-.ctrl-group select option {
-    color: #111827 !important;
-    background-color: #ffffff !important;
-}
-.checkbox-group {
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    max-width: 350px;
-}
-.checkbox-group input {
-    accent-color: var(--blue);
-    width: 18px;
-    height: 18px;
-    cursor: pointer;
-    flex-shrink: 0;
-}
-.checkbox-group label {
-    font-size: 13.5px;
-    color: #fff;
-    cursor: pointer;
-    user-select: none;
-}
-.ctrl-desc {
-    display: block;
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 3px;
-    font-weight: 500;
-}
-.timer-display {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(124, 58, 237, 0.08);
-    border: 1px solid rgba(124, 58, 237, 0.2);
-    padding: 8px 16px;
-    border-radius: 30px;
-}
-.timer-display.running {
-    background: rgba(16, 185, 129, 0.08);
-    border-color: rgba(16, 185, 129, 0.25);
-}
-.timer-circle {
-    background: var(--blue);
-    color: #fff;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-family: monospace;
-    font-size: 14px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-}
-.timer-display.running .timer-circle {
-    background: var(--green);
-}
-.timer-status {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text);
-}
-
-    </style>
-</head>
-<body>
-
-<!-- NAV -->
-<nav class="topnav" style="display: flex; align-items: center; justify-content: space-between;">
-    <a href="{% url 'strategy_list' %}" title="홈으로 가기" style="text-decoration: none;">
-        <div class="logo">wonii -screener<span>.</span></div>
-    </a>
-    <div class="nav-right" style="display: flex; gap: 8px; align-items: center;">
-        <a href="{% url 'strategy_list' %}" style="text-decoration: none;">
-            <button class="nav-btn" style="background: transparent; border: 0.5px solid rgba(255,255,255,0.22); border-radius: 8px; color: #9090a8; font-size: 12px; padding: 6px 14px; cursor: pointer; transition: all 0.15s; font-family: inherit; font-weight: 600;">전략 리스트</button>
+{% block topbar %}
+<header class="top-app-bar">
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <a href="{% url 'strategy_list' %}" class="icon-btn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         </a>
-        <a href="{% url 'strategy_trading' strategy.id %}" style="text-decoration: none;">
-            <button class="nav-btn" style="background: transparent; border: 0.5px solid rgba(255,255,255,0.22); border-radius: 8px; color: #9090a8; font-size: 12px; padding: 6px 14px; cursor: pointer; transition: all 0.15s; font-family: inherit; font-weight: 600;">전략 설정</button>
-        </a>
-    </div>
-</nav>
-
-<div class="page">
-    <a href="{% url 'strategy_detail' strategy.id %}" class="back-link">← '{{ strategy.name }}' 전략으로 돌아가기</a>
-
-    <div class="page-title">검색 결과</div>
-    <div class="page-sub">
-        {{ results|length }}개 {% if request.GET.exchange == 'kospi' %}종목이{% else %}코인이{% endif %} 조건에 맞습니다.
-        {% if is_cached %}
-            (캐시된 결과, {{ last_updated|date:"H:i" }} 기준)
-            <a href="?refresh=1&exchange={{ request.GET.exchange }}&vol_limit={{ request.GET.vol_limit }}">새로고침</a>
-        {% else %}
-            ({{ last_updated|date:"Y-m-d H:i" }} 기준)
-        {% endif %}
-    </div>
-
-    <!-- ── 실시간 반복 스캔 & 텔레그램 알림 컨트롤러 ── -->
-    <div class="auto-scan-panel">
-        <div class="panel-header">
-            <div class="pulse-icon"></div>
-            <span class="panel-title">🔄 실시간 주기적 반복 스캔 및 알림 (단타 전용)</span>
-        </div>
-        
-        <div class="panel-body">
-            <!-- 반복 주기 설정 -->
-            <div class="ctrl-group">
-                <label for="scan-interval">자동 스캔 주기</label>
-                <select id="scan-interval" onchange="changeInterval()">
-                    <option value="0">비활성화</option>
-                    <option value="1">1분마다</option>
-                    <option value="3">3분마다</option>
-                    <option value="5">5분마다</option>
-                    <option value="10">10분마다</option>
-                    <option value="30">30분마다</option>
-                </select>
-            </div>
-            
-            <!-- 텔레그램 전송 토글 -->
-            <div class="ctrl-group checkbox-group">
-                <input type="checkbox" id="telegram-alert" onchange="toggleTelegramCheckbox()">
-                <label for="telegram-alert">
-                    조회 건 발생 시 텔레그램 알림
-                    <span class="ctrl-desc">매칭되는 {% if request.GET.exchange == 'kospi' %}종목이{% else %}코인이{% endif %} 1개 이상 검색되면 즉시 텔레그램 발송</span>
-                </label>
-            </div>
-            
-            <!-- 타이머 카운트다운 표시 -->
-            <div class="timer-display" id="timer-box" style="display: none;">
-                <div class="timer-circle">
-                    <span class="timer-time" id="countdown-text">05:00</span>
-                </div>
-                <div class="timer-status">다음 자동 스캔 대기 중...</div>
-            </div>
+        <div class="title-dropdown">
+            {{ strategy.name }}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
         </div>
     </div>
-
-    {% if rate_limit_warning %}
-    <div class="alert error">
-        ⚠️ API 호출 제한으로 일부 데이터를 가져오지 못했습니다. 결과가 누락되었을 수 있습니다.
+    <div style="display: flex; align-items: center;">
+        <div class="badge-count">{{ results|length }}</div>
+        <a href="{% url 'strategy_trading' strategy.id %}" class="settings-btn">설정</a>
     </div>
-    {% endif %}
+</header>
+{% endblock %}
 
+{% block content %}
+<!-- Tabs -->
+<div class="tabs">
+    <div class="tab active">거래량</div>
+    <div class="tab">상승</div>
+    <div class="tab">하락</div>
+    <div class="tab">최신순</div>
+</div>
+
+<!-- List Controls -->
+<div class="list-controls">
+    <div class="toggle-wrap">
+        <div class="toggle-icon">
+            <svg viewBox="0 0 24 24"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
+        </div>
+        이탈 종목 숨기기
+    </div>
+    <div class="stats">
+        포착: {{ results|length }} 이탈: 0
+    </div>
+</div>
+
+<!-- Coin List -->
+<div class="coin-list">
     {% if results %}
-    <div class="table-responsive">
-        <table class="result-table">
-            <thead>
-                <tr>
-                    <th class="num">#</th>
-                    <th onclick="sortTable(1, 'str')" style="cursor:pointer" title="클릭하여 정렬">종목 <span class="sort-icon"></span></th>
-                    <th class="price" onclick="sortTable(2, 'num')" style="cursor:pointer" title="클릭하여 정렬">현재가 <span class="sort-icon"></span></th>
-                    <th class="amount" onclick="sortTable(3, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래대금 <span class="sort-icon"></span></th>
-                    <th class="volume" onclick="sortTable(4, 'num')" style="cursor:pointer" title="클릭하여 정렬">거래량 <span class="sort-icon"></span></th>
-                    <th class="market_cap" onclick="sortTable(5, 'num')" style="cursor:pointer" title="클릭하여 정렬">시가총액 <span class="sort-icon"></span></th>
-                    <th>관련 지표</th>
-                    <th style="text-align: center;">실시간 차트</th>
-                    <th style="text-align: center;">백테스트</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for r in results %}
-                <tr>
-                    <td class="num">{{ forloop.counter }}</td>
-                    <td class="symbol" data-val="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}">
-                        <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                            {% if request.GET.exchange == 'kospi' %}
-                                <a href="https://finance.naver.com/item/main.naver?code={{ r.symbol }}" target="_blank" title="네이버 증권 보기">
-                                    {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
-                                </a>
-                            {% else %}
-                                <a href="https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}" target="_blank" title="업비트 차트 보기">
-                                    {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
-                                </a>
-                            {% endif %}
-                            {% if r.status == 'new' %}
-                                <span class="status-badge new">신규</span>
-                            {% elif r.status == 'maintained' %}
-                                <span class="status-badge maintained">유지</span>
-                            {% endif %}
-                            <button class="btn-why-selected" onclick="askAIWhySelected('{{ r.symbol }}', '{{ r.price }}', '{{ r.volume_display }}', '{{ r.details }}')" title="AI에게 왜 선택되었는지 질문">❓ 왜 잡혔어?</button>
-                        </div>
-                    </td>
-                    <td class="price" data-val="{{ r.price }}">{{ r.price|floatformat:0 }}</td>
-                    <td class="amount" data-val="{{ r.amount }}">{{ r.amount_display }}</td>
-                    <td class="volume" data-val="{{ r.volume }}">{{ r.volume_display }}</td>
-                    <td class="market_cap" data-val="{{ r.market_cap }}">{{ r.market_cap_display }}</td>
-                    <td>{{ r.details }}</td>
-                    <td style="text-align: center;">
-                        <button class="btn-tv-chart" onclick="openTradingViewChart('{{ r.symbol }}')" title="실시간 차트 보기">📊 차트</button>
-                    </td>
-                    <td style="text-align: center;">
-                        <button class="btn-bt-small" style="display: inline-flex;" onclick="triggerBacktest('{{ r.symbol }}', '{{ r.symbol|slice:'4:' }}')" title="백테스팅">📈 백테스트</button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <div class="empty">조건에 맞는 코인이 없습니다.</div>
-    {% endif %}
-
-</div>
-
-<!-- TRADINGVIEW CHART MODAL -->
-<div class="tv-modal-overlay" id="tv-chart-modal" onclick="closeTradingViewChart(event)">
-    <div class="tv-modal-container" onclick="event.stopPropagation()">
-        <div class="tv-modal-header">
-            <div class="tv-modal-title-wrap">
-                <span class="tv-modal-title" id="tv-modal-title">BTC/KRW 실시간 차트</span>
-                <span class="tv-modal-badge" id="tv-modal-exchange-badge">Upbit</span>
+        {% for r in results %}
+        <div class="coin-card" onclick="this.classList.toggle('expanded')">
+            <div class="card-left">
+                <div class="rank">{{ forloop.counter }}</div>
+                <div class="coin-info">
+                    <div class="coin-name">
+                        {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
+                        <span class="coin-symbol">{{ r.symbol|slice:"4:"|default:r.symbol }}</span>
+                    </div>
+                    <div class="coin-volume">{{ r.amount_display|default:r.volume_display }}</div>
+                </div>
             </div>
-            <button class="tv-modal-close" onclick="closeTradingViewChart()" title="닫기">&times;</button>
+            <div class="card-right">
+                <!-- Using up/down class. Placeholder change rate since backend doesn't provide it yet -->
+                <div class="price-change {% if forloop.counter|divisibleby:2 %}up{% else %}down{% endif %}">
+                    {% if forloop.counter|divisibleby:2 %}+1.57%{% else %}-1.22%{% endif %}
+                </div>
+                <div class="current-price">{{ r.price|floatformat:0 }}원</div>
+            </div>
         </div>
-        <div class="tv-modal-body">
-            <div id="tv-chart-container"></div>
+        <!-- Expandable actions -->
+        <div class="card-actions">
+            {% if request.GET.exchange == 'kospi' %}
+                <button class="btn-action" onclick="window.open('https://finance.naver.com/item/main.naver?code={{ r.symbol }}', '_blank')">차트 보기</button>
+            {% else %}
+                <button class="btn-action" onclick="window.open('https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}', '_blank')">차트 보기</button>
+            {% endif %}
+            <button class="btn-action" onclick="alert('사유: {{ r.details }}')">검색 사유</button>
         </div>
-    </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">검색 결과가 없습니다.</div>
+    {% endif %}
 </div>
 
-{% include "screener/backtest_modal.html" %}
+<!-- Auto Scan Minimal Form -->
+<div class="auto-scan-minimal">
+    <div class="auto-scan-info">
+        <span>🔄 자동 스캔:</span>
+        <select id="scan-interval" onchange="changeInterval()">
+            <option value="0">비활성화</option>
+            <option value="1">1분마다</option>
+            <option value="3">3분마다</option>
+            <option value="5">5분마다</option>
+        </select>
+    </div>
+    <div id="countdown-text" style="font-family: monospace; font-size: 14px; font-weight: bold; color: var(--primary-color);">00:00</div>
+</div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-function triggerBacktest(ticker, tickerLabel) {
-    const strategyId   = {{ strategy.id }};
-    const strategyName = '{{ strategy.name|escapejs }}';
+    const strategyId = {{ strategy.id }};
+    let autoScanTimer = null;
+    let remainingSeconds = 0;
+    const STORAGE_INTERVAL = `auto_scan_interval_${strategyId}`;
 
-    const tickerSelect = document.getElementById('bt-ticker');
-
-    // 드롭다운에 해당 티커가 없으면 동적으로 추가
-    let optionExists = false;
-    for (let i = 0; i < tickerSelect.options.length; i++) {
-        if (tickerSelect.options[i].value === ticker) {
-            optionExists = true;
-            break;
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedInterval = localStorage.getItem(STORAGE_INTERVAL) || "0";
+        document.getElementById('scan-interval').value = savedInterval;
+        if (savedInterval !== "0") {
+            startTimer(parseInt(savedInterval, 10));
         }
-    }
-    if (!optionExists) {
-        const opt = document.createElement('option');
-        opt.value       = ticker;
-        opt.textContent = tickerLabel;
-        opt.dataset.dynamic = '1';   // 나중에 정리할 수 있도록 표시
-        // 맨 앞에 삽입해서 선택이 잘 되도록
-        tickerSelect.insertBefore(opt, tickerSelect.firstChild);
-    }
-
-    // 모달 열기 → 코인 선택 → 바로 실행
-    openBT(strategyId, strategyName, '{{ strategy.conditions.first.timeframe|default:'day' }}');
-    tickerSelect.value = ticker;
-    runBT();
-}
-
-/* ── 주기적 반복 스캔 및 텔레그램 발송 클라이언트 로직 ── */
-const strategyId = {{ strategy.id }};
-let autoScanTimer = null;
-let remainingSeconds = 0;
-
-// LocalStorage 키 정의
-const STORAGE_INTERVAL = `auto_scan_interval_${strategyId}`;
-const STORAGE_TELEGRAM = `auto_scan_telegram_${strategyId}`;
-
-window.addEventListener('DOMContentLoaded', () => {
-    // 1. 기존 설정 복구
-    const savedInterval = localStorage.getItem(STORAGE_INTERVAL) || "0";
-    const savedTelegram = localStorage.getItem(STORAGE_TELEGRAM) === "true";
-    
-    document.getElementById('scan-interval').value = savedInterval;
-    document.getElementById('telegram-alert').checked = savedTelegram;
-    
-    // 2. 이전에 실행 중인 타이머가 있었다면 복구
-    if (savedInterval !== "0") {
-        startTimer(parseInt(savedInterval, 10));
-    }
-});
-
-function changeInterval() {
-    const val = document.getElementById('scan-interval').value;
-    localStorage.setItem(STORAGE_INTERVAL, val);
-    
-    if (val === "0") {
-        stopTimer();
-    } else {
-        startTimer(parseInt(val, 10));
-    }
-}
-
-function toggleTelegramCheckbox() {
-    const isChecked = document.getElementById('telegram-alert').checked;
-    localStorage.setItem(STORAGE_TELEGRAM, isChecked);
-}
-
-function startTimer(minutes) {
-    stopTimer();
-    
-    const panelHeader = document.querySelector('.pulse-icon');
-    const timerBox = document.getElementById('timer-box');
-    const timerDisplay = document.querySelector('.timer-display');
-    
-    if (panelHeader) panelHeader.classList.add('active');
-    if (timerBox) timerBox.style.display = 'flex';
-    if (timerDisplay) timerDisplay.classList.add('running');
-    
-    remainingSeconds = minutes * 60;
-    updateTimerText();
-    
-    autoScanTimer = setInterval(() => {
-        remainingSeconds--;
-        if (remainingSeconds <= 0) {
-            clearInterval(autoScanTimer);
-            executeAutoScan();
-        } else {
-            updateTimerText();
-        }
-    }, 1000);
-}
-
-function stopTimer() {
-    if (autoScanTimer) {
-        clearInterval(autoScanTimer);
-        autoScanTimer = null;
-    }
-    
-    const panelHeader = document.querySelector('.pulse-icon');
-    const timerBox = document.getElementById('timer-box');
-    const timerDisplay = document.querySelector('.timer-display');
-    
-    if (panelHeader) panelHeader.classList.remove('active');
-    if (timerBox) timerBox.style.display = 'none';
-    if (timerDisplay) timerDisplay.classList.remove('running');
-}
-
-function updateTimerText() {
-    const m = Math.floor(remainingSeconds / 60);
-    const s = remainingSeconds % 60;
-    const mStr = String(m).padStart(2, '0');
-    const sStr = String(s).padStart(2, '0');
-    document.getElementById('countdown-text').textContent = `${mStr}:${sStr}`;
-}
-
-function executeAutoScan() {
-    const exchange = "{{ request.GET.exchange }}" || "upbit";
-    const volLimit = "{{ request.GET.vol_limit }}" || "100";
-    const telegramAlert = document.getElementById('telegram-alert').checked ? "1" : "0";
-    
-    // 만약 텔레그램 전송이 켜져있고 결과가 존재하면 발송하도록 파라미터 세팅하며 강제 새로고침
-    window.location.href = `/strategy/${strategyId}/search/?exchange=${exchange}&vol_limit=${volLimit}&send_telegram=${telegramAlert}&refresh=1`;
-}
-
-/* ── TRADINGVIEW CHART CONTROLLERS ── */
-function openTradingViewChart(symbol) {
-    const modal = document.getElementById('tv-chart-modal');
-    modal.style.display = 'flex';
-    // Trigger CSS reflow
-    modal.offsetHeight;
-    modal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-
-    // Resolve exchange
-    const urlParams = new URLSearchParams(window.location.search);
-    const exchange = urlParams.get('exchange') || 'upbit';
-    const isUpbit = exchange.toLowerCase() === 'upbit';
-    const isKospi = exchange.toLowerCase() === 'kospi';
-
-    // Parse symbol name
-    let coinSymbol = symbol;
-    if (symbol.includes('-')) {
-        coinSymbol = symbol.split('-')[1]; // e.g. BTC
-    }
-    
-    const badge = document.getElementById('tv-modal-exchange-badge');
-    if (isKospi) {
-        document.getElementById('tv-modal-title').textContent = `${symbol} 실시간 차트`;
-        badge.textContent = 'KRX';
-        badge.className = 'tv-modal-badge';
-    } else {
-        document.getElementById('tv-modal-title').textContent = `${coinSymbol}/KRW 실시간 차트`;
-        badge.textContent = isUpbit ? 'Upbit' : 'Bithumb';
-        badge.className = isUpbit ? 'tv-modal-badge upbit' : 'tv-modal-badge';
-    }
-
-    // Build tradingview code
-    let tvSymbol;
-    if (isKospi) {
-        tvSymbol = 'KRX:' + symbol;
-    } else {
-        tvSymbol = (isUpbit ? 'UPBIT:' : 'BITHUMB:') + coinSymbol + 'KRW';
-    }
-
-    // Embed TradingView Widget
-    new TradingView.widget({
-        "autosize": true,
-        "symbol": tvSymbol,
-        "interval": "15",
-        "timezone": "Asia/Seoul",
-        "theme": "dark",
-        "style": "1",
-        "locale": "ko",
-        "toolbar_bg": "#1e222d",
-        "enable_publishing": false,
-        "hide_side_toolbar": false,
-        "allow_symbol_change": true,
-        "container_id": "tv-chart-container"
     });
-}
 
-function closeTradingViewChart(event) {
-    if (event && event.target !== event.currentTarget) return;
-    
-    const modal = document.getElementById('tv-chart-modal');
-    modal.classList.remove('active');
-    
-    setTimeout(() => {
-        if (!modal.classList.contains('active')) {
-            modal.style.display = 'none';
-            document.body.style.overflow = '';
-            document.getElementById('tv-chart-container').innerHTML = ''; // Kill Iframe and clean memory
+    function changeInterval() {
+        const val = document.getElementById('scan-interval').value;
+        localStorage.setItem(STORAGE_INTERVAL, val);
+        if (val === "0") {
+            stopTimer();
+            document.getElementById('countdown-text').textContent = "00:00";
+        } else {
+            startTimer(parseInt(val, 10));
         }
-    }, 300);
-}
+    }
+
+    function startTimer(minutes) {
+        stopTimer();
+        remainingSeconds = minutes * 60;
+        updateTimerText();
+        
+        autoScanTimer = setInterval(() => {
+            remainingSeconds--;
+            if (remainingSeconds <= 0) {
+                clearInterval(autoScanTimer);
+                window.location.href = `/strategy/${strategyId}/search/?refresh=1`;
+            } else {
+                updateTimerText();
+            }
+        }, 1000);
+    }
+
+    function stopTimer() {
+        if (autoScanTimer) {
+            clearInterval(autoScanTimer);
+            autoScanTimer = null;
+        }
+    }
+
+    function updateTimerText() {
+        const m = Math.floor(remainingSeconds / 60);
+        const s = remainingSeconds % 60;
+        document.getElementById('countdown-text').textContent = 
+            `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
 </script>
-{% include "screener/ai_assistant.html" %}
-</body>
-</html>
+{% endblock %}
