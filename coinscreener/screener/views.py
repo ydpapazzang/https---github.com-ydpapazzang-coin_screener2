@@ -595,7 +595,7 @@ def coin_search_stream(request, strategy_id):
             return None
         # N+1 쿼리 방지를 위한 bulk pre-fetch (Django LocMemCache 활용)
         try:
-            from screener.models import OHLCVCache
+            from .models import OHLCVCache
             from django.core.cache import cache
             import pandas as pd
             import datetime

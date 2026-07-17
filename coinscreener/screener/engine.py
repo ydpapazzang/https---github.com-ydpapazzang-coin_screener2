@@ -23,7 +23,7 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
 
     # 1.5. DB 사전 캐시 확인 (Pre-fetching)
     try:
-        from screener.models import OHLCVCache
+        from .models import OHLCVCache
         import json
         cached_obj = OHLCVCache.objects.filter(ticker=ticker, timeframe=interval).first()
         if cached_obj and cached_obj.data:
