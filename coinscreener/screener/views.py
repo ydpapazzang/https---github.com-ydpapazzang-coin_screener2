@@ -678,8 +678,8 @@ def coin_search_stream(request, strategy_id):
                 pct = int(done / total * 100) if total else 100
                 if pct >= last_sent_pct + 2 or done == total:
                     last_sent_pct = pct
-                    # 마지막 매칭 코인 심볼 전송 (로딩 화면 ticker 표시용)
-                    last_match = results[-1]['symbol'] if results else None
+                    # 마지막 매칭 코인 이름 전송 (로딩 화면 표시용)
+                    last_match = (results[-1].get('name') or results[-1]['symbol']) if results else None
                     yield "data: " + json.dumps({
                         "type":    "progress",
                         "done":    done,

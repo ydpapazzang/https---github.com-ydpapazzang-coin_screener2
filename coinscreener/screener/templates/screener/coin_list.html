@@ -276,13 +276,13 @@
 <div class="coin-list">
     {% if results %}
         {% for r in results %}
-        <div class="coin-card" data-volume="{{ r.volume|default:0 }}" data-change="{{ r.change_rate|default:0 }}" data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}" onclick="this.classList.toggle('expanded')">
+        <div class="coin-card" data-volume="{{ r.volume|default:0 }}" data-change="{{ r.change_rate|default:0 }}" data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}" onclick="window.open('{% if request.GET.exchange == "kospi" %}https://finance.naver.com/item/main.naver?code={{ r.symbol }}{% elif request.GET.exchange == "bithumb" %}https://www.bithumb.com/react/trade/order/{{ r.symbol }}_KRW{% else %}https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}{% endif %}', '_blank')">
             <div class="card-left">
                 <div class="rank">{{ forloop.counter }}</div>
                 <div class="coin-info">
                     <div class="coin-name">
                         {% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}
-                        <span class="coin-symbol">{{ r.symbol|slice:"4:"|default:r.symbol }}</span>
+                        <span class="coin-symbol">{% if request.GET.exchange == 'upbit' %}{{ r.symbol|slice:"4:"|default:r.symbol }}{% else %}{{ r.symbol }}{% endif %}</span>
                     </div>
                     <div class="coin-volume">{{ r.amount_display|default:r.volume_display }}</div>
                 </div>
@@ -293,15 +293,6 @@
                 </div>
                 <div class="current-price">{{ r.price|floatformat:0 }}원</div>
             </div>
-        </div>
-        <!-- Expandable actions -->
-        <div class="card-actions">
-            {% if request.GET.exchange == 'kospi' %}
-                <button class="btn-action" onclick="window.open('https://finance.naver.com/item/main.naver?code={{ r.symbol }}', '_blank')">차트 보기</button>
-            {% else %}
-                <button class="btn-action" onclick="window.open('https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}', '_blank')">차트 보기</button>
-            {% endif %}
-            <button class="btn-action" onclick="alert('사유: {{ r.details }}')">검색 사유</button>
         </div>
         {% endfor %}
     {% else %}
