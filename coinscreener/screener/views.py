@@ -291,7 +291,7 @@ def _get_tickers(exchange, vol_limit):
 
     # 먼저 DB에 데이터가 있으면 DB에서 가져오기 (market_cap, amount 등 추가 정보 포함)
     try:
-        from screener.models import MarketData
+        from .models import MarketData
         db_count = MarketData.objects.filter(exchange=exchange).count()
         if db_count > 0:
             qs = MarketData.objects.filter(exchange=exchange).order_by('-amount')
@@ -395,9 +395,9 @@ def coin_search(request, strategy_id):
     # 사용자가 선택한 스캔 범위를 그대로 사용합니다. (0인 경우 전체 코인 스캔)
     try:
         vol_limit_param = request.GET.get('vol_limit')
-        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 100
+        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 0
     except (ValueError, TypeError):
-        vol_limit = 100
+        vol_limit = 0
 
     tf_override = request.GET.get('timeframe')
     tf_suffix = f"_{tf_override}" if tf_override else ""
@@ -405,6 +405,16 @@ def coin_search(request, strategy_id):
     # 캐시 확인 (파라미터 기반 Key)
     cache_key   = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
     cached_data = cache.get(cache_key)
+
+    if not cached_data:
+        try:
+            from .models import OHLCVCache
+            db_cache = OHLCVCache.objects.filter(ticker=cache_key, timeframe="RESULT").first()
+            if db_cache and db_cache.data:
+                cached_data = db_cache.data
+        except Exception as e:
+            pass
+
 
     if cached_data and request.GET.get('refresh') != '1':
         return render(request, 'screener/coin_list.html', {
@@ -595,9 +605,9 @@ def coin_search_stream(request, strategy_id):
     exchange   = request.GET.get('exchange', 'upbit')
     try:
         vol_limit_param = request.GET.get('vol_limit')
-        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 100
+        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 0
     except (ValueError, TypeError):
-        vol_limit = 100
+        vol_limit = 0
     
     tf_override = request.GET.get('timeframe')
     if tf_override:
@@ -814,7 +824,7 @@ def alert_get(request, strategy_id):
         # RelatedObjectDoesNotExist (AlertSetting.DoesNotExist의 서브클래스)를 포함한
         # 모든 "alert 없음" 예외를 안전하게 처리
         data = {'enabled': False, 'alert_hour': 9, 'alert_min': 0,
-                'exchange': 'upbit', 'vol_limit': 100}
+                'exchange': 'upbit', 'vol_limit': 0}
     data['tg_configured'] = tg.is_configured()
     return JsonResponse(data)
 
@@ -832,7 +842,7 @@ def alert_save(request, strategy_id):
     try:
         alert_hour = 9  # Vercel Hobby 크론 제한(하루 1회)으로 오전 9시 고정
         alert_min  = 0  # 30분 단위 제외, 정각만 사용
-        vol_limit  = int(body.get('vol_limit', 100))
+        vol_limit  = int(body.get('vol_limit', 0))
     except (ValueError, TypeError) as e:
         return JsonResponse({'ok': False, 'error': f'숫자 형식 오류: {e}'}, status=400)
 
@@ -943,9 +953,9 @@ def alert_send_now(request, strategy_id):
     exchange  = body.get('exchange', 'upbit') or 'upbit'
     try:
         vol_limit_val = body.get('vol_limit')
-        vol_limit = int(vol_limit_val) if vol_limit_val is not None else 100
+        vol_limit = int(vol_limit_val) if vol_limit_val is not None else 0
     except (ValueError, TypeError):
-        vol_limit = 100
+        vol_limit = 0
 
     tickers = _get_tickers(exchange, vol_limit)
     results, tg_results = process_scan_and_alert(strategy, tickers, conditions)
@@ -980,7 +990,7 @@ def backtest_run(request, strategy_id):
         return JsonResponse({'error': '조건이 없습니다.'}, status=400)
 
     try:
-        body         = _json.loads(request.body)
+        body = _json.loads(request.body)
         ticker       = body.get('ticker', 'KRW-BTC')
         candle_count = int(body.get('candle_count', 200))
         sell_mode    = body.get('sell_mode', 'cond_exit')
@@ -1564,9 +1574,9 @@ def strategy_scan_count(request, strategy_id):
     exchange = request.GET.get('exchange', 'upbit')
     try:
         vol_limit_param = request.GET.get('vol_limit')
-        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 100
+        vol_limit = int(vol_limit_param) if vol_limit_param is not None else 0
     except (ValueError, TypeError):
-        vol_limit = 100
+        vol_limit = 0
         
     tf_override = request.GET.get('timeframe')
     if tf_override:
