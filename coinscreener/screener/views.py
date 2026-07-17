@@ -6,6 +6,7 @@ import concurrent.futures
 from django.utils import timezone
 from django.contrib import messages
 from django.core.cache import cache
+from django.views.decorators.csrf import csrf_exempt
 import json
 
 
