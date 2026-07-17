@@ -427,16 +427,23 @@ def cron_prefetch(request):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden("권한이 없습니다.")
         
-    # Vercel 10초 제한에 맞게 한 번 호출에 15개씩만 수집
-    limit = 15
-    
-    # 2. DB에서 현재 진행 중인 인덱스를 가져옴 (상태 저장)
-    index_cache, _ = OHLCVCache.objects.get_or_create(
-        ticker='__PREFETCH_INDEX__', 
-        timeframe='system',
-        defaults={'data': {'start': 0}}
-    )
-    start_idx = index_cache.data.get('start', 0)
+    try:
+        # Vercel 10초 제한에 맞게 한 번 호출에 15개씩만 수집
+        limit = 15
+        
+        # 2. DB에서 현재 진행 중인 인덱스를 가져옴 (상태 저장)
+        index_cache, _ = OHLCVCache.objects.get_or_create(
+            ticker='__PREFETCH_INDEX__', 
+            timeframe='system',
+            defaults={'data': {'start': 0}}
+        )
+        
+        # 만약 문자열로 디코딩 되었다면 dict로 변환
+        if isinstance(index_cache.data, str):
+            index_cache.data = json.loads(index_cache.data)
+            
+        start_idx = index_cache.data.get('start', 0)
+
         
     # 수집해야 할 타임프레임 정리 (사용자가 만든 전략에서 사용하는 것 + 기본 일봉)
     active_timeframes = {'day'}
@@ -498,19 +505,22 @@ def cron_prefetch(request):
             else:
                 error_count += 1
                 
-    # 3. 다음 호출을 위해 next_start를 DB에 갱신
-    next_start = end_idx if end_idx < total_tasks else 0
-    index_cache.data = {'start': next_start}
-    index_cache.save()
-    
-    from django.http import JsonResponse
-    return JsonResponse({
-        'ok': True,
-        'message': f"Prefetched {success_count}/{len(batch_tasks)} items",
-        'start_idx': start_idx,
-        'next_start': next_start,
-        'total': total_tasks
-    })
+        # 3. 다음 호출을 위해 next_start를 DB에 갱신
+        next_start = end_idx if end_idx < total_tasks else 0
+        index_cache.data = {'start': next_start}
+        index_cache.save()
+        
+        from django.http import JsonResponse
+        return JsonResponse({
+            'ok': True,
+            'message': f"Prefetched {success_count}/{len(batch_tasks)} items",
+            'start_idx': start_idx,
+            'next_start': next_start,
+            'total': total_tasks
+        })
+    except Exception as e:
+        import traceback
+        return JsonResponse({'ok': False, 'error': str(e), 'trace': traceback.format_exc()})
 
 @csrf_exempt
 def trigger_migrate(request):
