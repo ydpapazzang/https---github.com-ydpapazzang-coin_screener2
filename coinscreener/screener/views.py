@@ -305,37 +305,53 @@ def _get_tickers(exchange, vol_limit):
     if exchange == 'kospi':
         import FinanceDataReader as fdr
         try:
-            kospi_df = fdr.StockListing('KOSPI')
             etf_df = fdr.StockListing('ETF/KR')
             
-            if 'Amount' in kospi_df.columns:
-                kospi_df = kospi_df.sort_values(by='Amount', ascending=False)
             if 'Amount' in etf_df.columns:
                 etf_df = etf_df.sort_values(by='Amount', ascending=False)
                 
-            limit = vol_limit if vol_limit else 100
+            limit = vol_limit if vol_limit else len(etf_df)
             
             result = []
-            for _, row in kospi_df.head(limit).iterrows():
-                ticker = str(row.get('Code', ''))
-                name = str(row.get('Name', ''))
-                KOSPI_NAME_MAP[ticker] = name
-                result.append({'ticker': ticker, 'name': name, 'market_cap': 0, 'amount': 0})
-
             etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
             for _, row in etf_df.head(limit).iterrows():
                 ticker = str(row.get(etf_code_col, ''))
                 name = str(row.get('Name', ''))
                 KOSPI_NAME_MAP[ticker] = name
                 result.append({'ticker': ticker, 'name': name, 'market_cap': 0, 'amount': 0})
-
+            
             return result
         except Exception as e:
             print(f"Error fetching KOSPI tickers: {e}")
             return []
-    else:
-        # 업비트/빗썸 — pyupbit로 직접 가져오기
+    elif exchange == 'bithumb':
         try:
+            import pybithumb
+            all_tickers = pybithumb.get_tickers()
+            if not all_tickers:
+                return []
+            
+            if vol_limit:
+                all_tickers = all_tickers[:vol_limit]
+
+            result = []
+            for t in all_tickers:
+                # 빗썸은 별도 한글명 API가 없으므로 티커 그대로 사용하거나 하드코딩 필요
+                # 편의상 티커를 이름으로 사용
+                result.append({
+                    'ticker': t,
+                    'name': t,
+                    'market_cap': 0,
+                    'amount': 0,
+                })
+            return result
+        except Exception as e:
+            print(f"Error fetching Bithumb tickers: {e}")
+            return []
+    else:
+        # 업비트 — pyupbit로 직접 가져오기
+        try:
+            import pyupbit
             all_tickers = pyupbit.get_tickers(fiat="KRW")
             if not all_tickers:
                 return []
@@ -362,7 +378,7 @@ def _get_tickers(exchange, vol_limit):
                 })
             return result
         except Exception as e:
-            print(f"Error fetching tickers: {e}")
+            print(f"Error fetching Upbit tickers: {e}")
             return []
 
 
@@ -444,12 +460,14 @@ def cron_prefetch(request):
             for c in s.conditions.all():
                 active_timeframes.add(c.timeframe)
                 
-        tickers_info = _get_tickers("upbit", 0)
-        
         tasks = []
-        for t_info in tickers_info:
-            for tf in active_timeframes:
-                tasks.append({"ticker": t_info["ticker"], "timeframe": tf})
+        for ex in ['upbit', 'bithumb', 'kospi']:
+            tickers_info = _get_tickers(ex, 0)
+            for t_info in tickers_info:
+                for tf in active_timeframes:
+                    if ex == 'kospi' and tf not in ['day', 'week', 'month']:
+                        continue
+                    tasks.append({"exchange": ex, "ticker": t_info["ticker"], "timeframe": tf})
                 
         total_tasks = len(tasks)
         
@@ -464,12 +482,46 @@ def cron_prefetch(request):
         
         import concurrent.futures
         import pyupbit
-        
+        import pandas as pd
+
+        def _resample(df, rule):
+            if df is None or df.empty: return df
+            if not isinstance(df.index, pd.DatetimeIndex):
+                df.index = pd.to_datetime(df.index)
+            res = df.resample(rule).agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
+            return res.dropna()
+
         def fetch_and_save(task):
+            ex = task["exchange"]
             ticker = task["ticker"]
             tf = task["timeframe"]
+            df = None
             try:
-                df = pyupbit.get_ohlcv(ticker, interval=tf, count=200)
+                if ex == 'upbit':
+                    df = pyupbit.get_ohlcv(ticker, interval=tf, count=200)
+                elif ex == 'bithumb':
+                    import pybithumb
+                    bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
+                    btf = bithumb_tf_map.get(tf, 'day')
+                    df = pybithumb.get_ohlcv(ticker, interval=btf)
+                    if df is not None and not df.empty:
+                        df.index.name = None
+                        if tf == 'minute15': df = _resample(df, '15min')
+                        elif tf == 'minute240': df = _resample(df, '4h')
+                        elif tf == 'week': df = _resample(df, 'W-MON')
+                        elif tf == 'month': df = _resample(df, 'ME')
+                        df = df.tail(200)
+                elif ex == 'kospi':
+                    import FinanceDataReader as fdr
+                    df = fdr.DataReader(ticker)
+                    if df is not None and not df.empty:
+                        df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
+                        if 'Change' in df.columns:
+                            df.drop(columns=['Change'], inplace=True)
+                        if tf == 'week': df = _resample(df, 'W-FRI')
+                        elif tf == 'month': df = _resample(df, 'ME')
+                        df = df.tail(200)
+
                 if df is not None and not df.empty:
                     json_data = json.loads(df.to_json(orient="split"))
                     OHLCVCache.objects.update_or_create(

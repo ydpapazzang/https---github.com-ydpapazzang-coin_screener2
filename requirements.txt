@@ -6,3 +6,4 @@ python-dotenv==1.0.0
 dj-database-url
 psycopg2-binary
 finance-datareader
+pybithumb
