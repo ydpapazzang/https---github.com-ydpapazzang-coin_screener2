@@ -359,7 +359,19 @@ def check_strategy(ticker, conditions, current_price=None):
                         else:
                             details.append(f"{cond.right_indicator}({cond.right_param}): {right_val:.2f}")
 
-        return True, details, last_price, volume, change_rate, status
+        import math
+        def safe_float(v):
+            if v is None:
+                return None
+            try:
+                f = float(v)
+                if math.isnan(f) or math.isinf(f):
+                    return 0.0
+                return f
+            except (TypeError, ValueError):
+                return 0.0
+
+        return True, details, safe_float(last_price), safe_float(volume), safe_float(change_rate), status
 
     except Exception as e:
         print(f"Error checking {ticker}: {e}")
