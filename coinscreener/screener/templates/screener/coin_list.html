@@ -229,6 +229,27 @@
         border-radius: 4px;
         font-size: 12px;
     }
+    
+    .result-search-bar {
+        padding: 12px 20px 0 20px;
+    }
+    .result-search-input {
+        width: 100%;
+        background: var(--surface-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 12px 16px;
+        border-radius: 12px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    .result-search-input:focus {
+        border-color: var(--primary-color);
+    }
+    .result-search-input::placeholder {
+        color: var(--text-secondary);
+    }
 </style>
 {% endblock %}
 
@@ -251,6 +272,11 @@
 {% endblock %}
 
 {% block content %}
+<!-- Search Bar -->
+<div class="result-search-bar">
+    <input type="text" id="result-search" class="result-search-input" placeholder="종목명 또는 코드로 검색..." onkeyup="filterResults()">
+</div>
+
 <!-- Tabs -->
 <div class="tabs">
     <div class="tab active" onclick="sortList('volume', this)">거래량</div>
@@ -415,8 +441,39 @@
             card.querySelector('.rank').textContent = index + 1;
         });
         
-        if (emptyState) {
-            list.appendChild(emptyState);
+        Array.from(list.children).forEach(item => {
+            if (item.classList.contains('coin-card')) {
+                list.appendChild(item);
+            }
+        });
+    }
+
+    function filterResults() {
+        const query = document.getElementById('result-search').value.toLowerCase();
+        const cards = document.querySelectorAll('.coin-card');
+        let visibleCount = 0;
+        
+        cards.forEach(card => {
+            const name = card.dataset.name.toLowerCase();
+            const symbolEl = card.querySelector('.coin-symbol');
+            const symbol = symbolEl ? symbolEl.textContent.toLowerCase() : '';
+            
+            if (name.includes(query) || symbol.includes(query)) {
+                card.style.display = 'flex';
+                visibleCount++;
+            } else {
+                card.style.display = 'none';
+            }
+        });
+        
+        // Update stats
+        const statsEl = document.querySelector('.list-controls .stats');
+        if (statsEl) {
+            if (query) {
+                statsEl.textContent = `검색결과: ${visibleCount} / 포착: {{ results|length }}`;
+            } else {
+                statsEl.textContent = `포착: {{ results|length }} 이탈: 0`;
+            }
         }
     }
 </script>
