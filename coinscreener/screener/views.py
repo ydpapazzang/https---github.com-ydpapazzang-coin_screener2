@@ -412,112 +412,97 @@ def coin_search(request, strategy_id):
 
 @csrf_exempt
 def cron_prefetch(request):
-    """
-    Vercel Timeout (10초) 우회를 위해 페이지네이션 방식(start, limit)으로 차트 데이터를 수집하고
-    OHLCVCache DB에 저장하는 뷰. 외부 크론(1분 주기)이 호출함.
-    """
+    import traceback
+    from django.http import JsonResponse, HttpResponseForbidden
     from .models import OHLCVCache
     from .engine import get_ohlcv_with_retry
     import json
     
-    is_cron = request.headers.get('x-vercel-cron') == '1'
-    is_debug = request.GET.get('secret') == 'wonii_cron_debug'
+    is_cron = request.headers.get("x-vercel-cron") == "1"
+    is_debug = request.GET.get("secret") == "wonii_cron_debug"
     
     if not is_cron and not is_debug:
-        from django.http import HttpResponseForbidden
-        return HttpResponseForbidden("권한이 없습니다.")
+        return HttpResponseForbidden("Forbidden")
         
-    # Vercel 10초 제한에 맞게 한 번 호출에 15개씩 수집 (5 workers)
-    limit = 15
-    
-    # 2. DB에서 현재 진행 중인 인덱스를 가져옴 (상태 저장)
-    index_cache, _ = OHLCVCache.objects.get_or_create(
-        ticker='__PREFETCH_INDEX__', 
-        timeframe='system',
-        defaults={'data': {'start': 0}}
-    )
-    
-    # 만약 문자열로 디코딩 되었다면 dict로 변환
-    if isinstance(index_cache.data, str):
-        index_cache.data = json.loads(index_cache.data)
+    try:
+        limit = 15
         
-    start_idx = index_cache.data.get('start', 0)
-
+        index_cache, _ = OHLCVCache.objects.get_or_create(
+            ticker="__PREFETCH_INDEX__", 
+            timeframe="system",
+            defaults={"data": {"start": 0}}
+        )
         
-    # 수집해야 할 타임프레임 정리 (사용자가 만든 전략에서 사용하는 것 + 기본 일봉)
-    active_timeframes = {'day'}
-
-    for s in Strategy.objects.all():
-        for c in s.conditions.all():
-            active_timeframes.add(c.timeframe)
+        if isinstance(index_cache.data, str):
+            index_cache.data = json.loads(index_cache.data)
             
-    # 전체 코인 목록 (상위 150개) - 한 번만 호출
-    tickers_info = _get_tickers('upbit', 150)
-    
-    # 해야 할 전체 작업(티커 x 타임프레임) 리스트 생성
-    tasks = []
-    for t_info in tickers_info:
-        for tf in active_timeframes:
-            tasks.append({'ticker': t_info['ticker'], 'timeframe': tf})
-            
-    total_tasks = len(tasks)
-    
-    # 인덱스 순환 처리 (끝에 도달하면 0으로)
-    if start_idx >= total_tasks:
-        start_idx = 0
-        
-    end_idx = min(start_idx + limit, total_tasks)
-    batch_tasks = tasks[start_idx:end_idx]
-    
-    success_count = 0
-    error_count = 0
-    
-    # 1. 캐시된 데이터를 무시하고 강제로 최신 데이터를 가져오도록 
-    # get_ohlcv_with_retry가 아닌 직접 pyupbit를 쓰거나 파라미터로 무시하도록 설계
-    # 하지만 Vercel 환경에서는 pyupbit 호출 자체가 느리므로 ThreadPoolExecutor를 사용
-    import concurrent.futures
-    import pyupbit
-    
-    def fetch_and_save(task):
-        ticker = task['ticker']
-        tf = task['timeframe']
-        try:
-            # API 직접 호출
-            df = pyupbit.get_ohlcv(ticker, interval=tf, count=200)
-            if df is not None and not df.empty:
-                # JSON(orient='split') 포맷이 pandas 복원에 가장 안전함
-                json_data = json.loads(df.to_json(orient='split'))
-                OHLCVCache.objects.update_or_create(
-                    ticker=ticker,
-                    timeframe=tf,
-                    defaults={'data': json_data}
-                )
-                return True
-        except Exception as e:
-            print(f"Prefetch Error: {ticker} {tf} - {e}")
-        return False
-        
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(fetch_and_save, t) for t in batch_tasks]
-        for future in concurrent.futures.as_completed(futures):
-            if future.result():
-                success_count += 1
-            else:
-                error_count += 1
+        start_idx = index_cache.data.get("start", 0)
+
+        active_timeframes = {"day"}
+        from .models import Strategy
+        for s in Strategy.objects.all():
+            for c in s.conditions.all():
+                active_timeframes.add(c.timeframe)
                 
-    # 3. 다음 호출을 위해 next_start를 DB에 갱신
-    next_start = end_idx if end_idx < total_tasks else 0
-    index_cache.data = {'start': next_start}
-    index_cache.save()
-    
-    from django.http import JsonResponse
-    return JsonResponse({
-        'ok': True,
-        'message': f"Prefetched {success_count}/{len(batch_tasks)} items",
-        'start_idx': start_idx,
-        'next_start': next_start,
-        'total': total_tasks
-    })
+        tickers_info = _get_tickers("upbit", 150)
+        
+        tasks = []
+        for t_info in tickers_info:
+            for tf in active_timeframes:
+                tasks.append({"ticker": t_info["ticker"], "timeframe": tf})
+                
+        total_tasks = len(tasks)
+        
+        if start_idx >= total_tasks:
+            start_idx = 0
+            
+        end_idx = min(start_idx + limit, total_tasks)
+        batch_tasks = tasks[start_idx:end_idx]
+        
+        success_count = 0
+        error_count = 0
+        
+        import concurrent.futures
+        import pyupbit
+        
+        def fetch_and_save(task):
+            ticker = task["ticker"]
+            tf = task["timeframe"]
+            try:
+                df = pyupbit.get_ohlcv(ticker, interval=tf, count=200)
+                if df is not None and not df.empty:
+                    json_data = json.loads(df.to_json(orient="split"))
+                    OHLCVCache.objects.update_or_create(
+                        ticker=ticker,
+                        timeframe=tf,
+                        defaults={"data": json_data}
+                    )
+                    return True
+            except Exception as e:
+                pass
+            return False
+            
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(fetch_and_save, t) for t in batch_tasks]
+            for future in concurrent.futures.as_completed(futures):
+                if future.result():
+                    success_count += 1
+                else:
+                    error_count += 1
+                    
+        next_start = end_idx if end_idx < total_tasks else 0
+        index_cache.data = {"start": next_start}
+        index_cache.save()
+        
+        return JsonResponse({
+            "ok": True,
+            "message": f"Prefetched {success_count}/{len(batch_tasks)} items",
+            "start_idx": start_idx,
+            "next_start": next_start,
+            "total": total_tasks
+        })
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e), "trace": traceback.format_exc()})
 
 @csrf_exempt
 def trigger_migrate(request):
