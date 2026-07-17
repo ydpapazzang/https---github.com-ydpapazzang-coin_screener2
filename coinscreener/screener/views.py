@@ -607,7 +607,8 @@ def coin_search_stream(request, strategy_id):
             now = datetime.datetime.now(datetime.timezone.utc)
             
             for obj in cached_qs:
-                if (now - obj.updated_at).total_seconds() < 3600:
+                # API 폴백이 차단되었으므로, 캐시가 조금 오래되었더라도 무조건 사용합니다 (최대 7일 허용)
+                if (now - obj.updated_at).total_seconds() < 604800:
                     data_dict = obj.data
                     try:
                         df = pd.DataFrame(data_dict['data'], index=pd.to_datetime(data_dict['index'], unit='ms'), columns=data_dict['columns'])

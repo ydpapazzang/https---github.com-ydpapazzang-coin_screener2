@@ -31,9 +31,9 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
             # Since Vercel Cron might not run, we want fresh data.
             # But if we rely on cron-job.org, it's 1 minute.
             # Let's accept up to 15 minutes old data as "fresh enough" for a fallback.
-            # 1시간(3600초) 이내 데이터면 유효한 것으로 간주 (무료 티어 속도 향상을 위해 넉넉하게 잡음)
+            # API 폴백이 차단되었으므로 캐시 유효기간을 넉넉히(7일) 잡아 무조건 캐시를 활용하도록 합니다.
             now = datetime.datetime.now(datetime.timezone.utc)
-            if (now - cached_obj.updated_at).total_seconds() < 3600:
+            if (now - cached_obj.updated_at).total_seconds() < 604800:
                 json_str = json.dumps(cached_obj.data)
                 import io
                 df = pd.read_json(io.StringIO(json_str), orient='split')
