@@ -511,13 +511,8 @@ def trigger_migrate(request):
         return HttpResponseForbidden("권한이 없습니다.")
         
     from django.core.management import call_command
-    import io
     out = io.StringIO()
     try:
-        from django.db import connection
-        with connection.cursor() as cursor:
-            cursor.execute('DROP TABLE IF EXISTS screener_ohlcvcache CASCADE;')
-            
         call_command('migrate', interactive=False, stdout=out)
         return JsonResponse({'ok': True, 'log': out.getvalue()})
     except Exception as e:
