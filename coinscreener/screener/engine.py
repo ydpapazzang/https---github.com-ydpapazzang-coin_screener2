@@ -43,63 +43,8 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
     except Exception as e:
         print(f"OHLCVCache read error for {ticker}: {e}")
 
-    global _last_request_time
-    
-    for i in range(retries):
-        # 글로벌 요청 간격 조절 (최소 0.12초 간격 보장)
-        with _rate_limit_lock:
-            now = time.time()
-            elapsed = now - _last_request_time
-            if elapsed < _min_interval:
-                sleep_time = _min_interval - elapsed
-            else:
-                sleep_time = 0.0
-            _last_request_time = now + sleep_time
-            
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-            
-        try:
-            df = None
-            if ticker.isdigit() and len(ticker) == 6:
-                # KOSPI / ETF 주식 처리
-                days_to_fetch = count * 2 if interval == 'day' else (count * 8 if interval == 'week' else count * 35)
-                start_date = (datetime.datetime.now() - datetime.timedelta(days=days_to_fetch)).strftime('%Y-%m-%d')
-                raw_df = fdr.DataReader(ticker, start_date)
-                
-                if raw_df is not None:
-                    if raw_df.empty:
-                        return None # 빈 데이터는 재시도 없이 즉시 반환
-                        
-                    df = raw_df.rename(columns={
-                        'Open': 'open', 'High': 'high', 'Low': 'low', 
-                        'Close': 'close', 'Volume': 'volume', 'Change': 'change'
-                    })
-                    
-                    if interval == 'week':
-                        logic = {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}
-                        df = df.resample('W').apply(logic).dropna()
-                    elif interval == 'month':
-                        logic = {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}
-                        # 'ME' is Month End (standard in newer pandas)
-                        df = df.resample('ME').apply(logic).dropna()
-                        
-                    df = df.tail(count)
-            else:
-                # 기존 코인 처리
-                df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
-            
-            if df is not None:
-                # 2. 캐시에 저장 (3분: 180초) - 실시간성과 타임아웃 방지 사이의 타협점
-                cache.set(cache_key, df, 180)
-                return df
-                
-        except Exception as e:
-            print(f"get_ohlcv error for {ticker}: {e}")
-            
-        # 실패 시 랜덤 지터가 포함된 점진적 백오프 후 재시도
-        time.sleep(delay * (i + 1) + random.uniform(0.1, 0.3))
-        
+    # 사용자 요청에 따라 실시간 외부 API(업비트, FDR) 조회 통신을 전면 차단하고 오직 캐시만 의존하도록 변경
+    # (실시간 통신 대기로 인한 스크리닝 지연 완벽 차단)
     return None
 
 
