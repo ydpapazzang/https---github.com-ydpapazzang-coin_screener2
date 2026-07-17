@@ -229,13 +229,12 @@
             </div>
 
             <div class="controls-grid">
-                <!-- 거래소/시간 -->
+                <!-- 거래소 -->
                 <div class="control-btn" onclick="openSheet('extf', {{ strategy.id }})">
-                    <span class="control-val" id="extf-label-{{ strategy.id }}">업비트 / 기본</span>
+                    <span class="control-val" id="extf-label-{{ strategy.id }}">업비트</span>
                     <span style="font-size:10px;">▼</span>
                 </div>
                 <input type="hidden" id="ex-val-{{ strategy.id }}" value="upbit">
-                <input type="hidden" id="tf-val-{{ strategy.id }}" value="">
             </div>
 
             <div class="action-row">
@@ -253,24 +252,14 @@
 <!-- ── BOTTOM SHEETS ── -->
 <div class="sheet-overlay" id="sheet-overlay" onclick="closeSheet()"></div>
 
-<!-- 거래소/단위 시트 -->
+<!-- 거래소 시트 -->
 <div class="bottom-sheet" id="sheet-extf">
     <div class="sheet-handle"></div>
-    <div class="sheet-title">거래소 및 분봉 단위</div>
+    <div class="sheet-title">거래소 선택</div>
     
-    <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">거래소</div>
     <div class="sheet-opt ex-opt selected" onclick="selectEx('upbit', '업비트')">업비트</div>
     <div class="sheet-opt ex-opt" onclick="selectEx('bithumb', '빗썸')">빗썸</div>
     <div class="sheet-opt ex-opt" onclick="selectEx('kospi', '코스피')">코스피</div>
-    
-    <div style="font-size:12px; color:var(--text-secondary); margin: 16px 0 8px;">단위 (코스피는 기본만)</div>
-    <div class="sheet-opt tf-opt selected" onclick="selectTf('', '기본')">기본(조건 유지)</div>
-    <div class="sheet-opt tf-opt tf-coin" onclick="selectTf('minute15', '15분')">15분</div>
-    <div class="sheet-opt tf-opt tf-coin" onclick="selectTf('minute30', '30분')">30분</div>
-    <div class="sheet-opt tf-opt tf-coin" onclick="selectTf('minute60', '1시간')">1시간</div>
-    <div class="sheet-opt tf-opt tf-coin" onclick="selectTf('minute240', '4시간')">4시간</div>
-    <div class="sheet-opt tf-opt tf-coin" onclick="selectTf('day', '일')">일</div>
-</div>
 </div>
 
 <!-- ── MODALS ── -->
@@ -343,8 +332,6 @@
         // Load current selection UI state
         if(type === 'extf') {
             activeEx = document.getElementById('ex-val-' + stId).value;
-            activeTf = document.getElementById('tf-val-' + stId).value;
-            // update UI highlights would go here...
         }
     }
     function closeSheet() {
@@ -353,40 +340,23 @@
     }
 
     function selectEx(val, text) {
-        activeEx = val; activeExName = text;
-        updateExTfUI();
-        if(val === 'kospi') {
-            activeTf = ''; activeTfName = '기본';
-            document.querySelectorAll('.tf-coin').forEach(e => e.style.display='none');
-        } else {
-            document.querySelectorAll('.tf-coin').forEach(e => e.style.display='flex');
-        }
-    }
-    function selectTf(val, text) {
         if(!targetStrategyId) return;
-        document.getElementById('tf-val-' + targetStrategyId).value = val;
-        
-        const ex = document.getElementById('ex-val-' + targetStrategyId).value;
-        const exText = (ex === 'upbit') ? '업비트' : (ex === 'bithumb' ? '빗썸' : '코스피');
-        document.getElementById('extf-label-' + targetStrategyId).textContent = exText + ' / ' + text;
+        document.getElementById('ex-val-' + targetStrategyId).value = val;
+        document.getElementById('extf-label-' + targetStrategyId).textContent = text;
         closeSheet();
     }
 
     /* ── Search & Scan ── */
     function runSearch(id) {
         const ex = document.getElementById('ex-val-' + id).value;
-        const tf = document.getElementById('tf-val-' + id).value;
         let url = `/strategy/${id}/search/?exchange=${ex}&vol_limit=0`;
-        if (tf) url += `&timeframe=${tf}`;
         
         document.getElementById('spinner-' + id).style.display = 'inline-block';
         window.location.href = url;
     }
     function goToResults(id) {
         const ex = document.getElementById('ex-val-' + id).value;
-        const tf = document.getElementById('tf-val-' + id).value;
         let url = `/strategy/${id}/results/?exchange=${ex}&vol_limit=0`;
-        if (tf) url += `&timeframe=${tf}`;
         window.location.href = url;
     }
     
@@ -407,9 +377,7 @@
             badge.style.display = 'none';
             
             const ex = document.getElementById('ex-val-' + id).value;
-            const tf = document.getElementById('tf-val-' + id).value;
             let url = `/strategy/${id}/scan-count/?exchange=${ex}&vol_limit=0`;
-            if(tf) url += `&timeframe=${tf}`;
             
             try {
                 const response = await fetch(url);
