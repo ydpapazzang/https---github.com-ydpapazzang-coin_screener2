@@ -212,10 +212,10 @@ def condition_add(request, strategy_id):
             right_indicator, right_param = 'IC_KIJUN', 26
         elif ic_comparison == 'CLOSE_CLOUD':
             left_indicator, left_param = 'CLOSE', 0
-            if operator in ('cross_up', 'gte', 'gt'):
-                right_indicator = 'IC_CLOUD_TOP'
-            else:
+            if operator in ('cross_down', 'lte', 'lt'):
                 right_indicator = 'IC_CLOUD_BOTTOM'
+            else:
+                right_indicator = 'IC_CLOUD_TOP'
             right_param = 26
 
     elif cond_type == 'VOLUME':
@@ -261,6 +261,15 @@ def condition_add(request, strategy_id):
         else:
             messages.error(request, "올바르지 않은 거래량 비교 유형입니다.")
             return redirect('strategy_detail', strategy_id=strategy_id)
+
+    elif cond_type == 'CHANGE_RATE':
+        try:
+            cr_threshold = float(request.POST.get('cr_threshold', 0))
+        except ValueError:
+            messages.error(request, "등락률 기준값이 올바르지 않습니다.")
+            return redirect('strategy_detail', strategy_id=strategy_id)
+        left_indicator, left_param   = 'CHANGE_RATE', 0
+        right_indicator, right_param = 'VAL', round(cr_threshold)
 
     else:
         messages.error(request, f"알 수 없는 조건 유형입니다: {cond_type}")
@@ -585,6 +594,39 @@ def trigger_debug(request):
         return JsonResponse({'ok': False, 'error': str(e), 'trace': traceback.format_exc()})
 
 
+def _bulk_prefetch_ohlcv(tickers_data, conditions):
+    """OHLCVCache DB에서 필요한 OHLCV 데이터를 일괄 조회해 메모리 캐시에 적재."""
+    try:
+        from .models import OHLCVCache
+        from django.core.cache import cache
+        import pandas as pd
+        import datetime
+
+        active_timeframes = set(c.timeframe for c in conditions)
+        active_timeframes.add('day')
+        tickers = [t['ticker'] if isinstance(t, dict) else t for t in tickers_data]
+
+        cached_qs = OHLCVCache.objects.filter(ticker__in=tickers, timeframe__in=active_timeframes)
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        for obj in cached_qs:
+            if (now - obj.updated_at).total_seconds() < 604800:
+                data_dict = obj.data
+                try:
+                    df = pd.DataFrame(
+                        data_dict['data'],
+                        index=pd.to_datetime(data_dict['index'], unit='ms'),
+                        columns=data_dict['columns'],
+                    )
+                    df.index.name = None
+                    cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_200"
+                    cache.set(cache_key, df.tail(200), 180)
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"Bulk cache prefetch error: {e}")
+
+
 def coin_search_stream(request, strategy_id):
     """SSE: 검색 진행률 + 최종 결과 스트리밍"""
     from django.http import StreamingHttpResponse
@@ -597,7 +639,7 @@ def coin_search_stream(request, strategy_id):
         vol_limit = int(vol_limit_param) if vol_limit_param is not None else 0
     except (ValueError, TypeError):
         vol_limit = 0
-    
+
     tf_override = request.GET.get('timeframe')
     if tf_override:
         for c in conditions:
@@ -621,7 +663,7 @@ def coin_search_stream(request, strategy_id):
             name = t_data['name']
             market_cap = t_data.get('market_cap') or 0
             amount = t_data.get('amount') or 0
-            
+
             try:
                 is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
                 if price is None:
@@ -645,33 +687,8 @@ def coin_search_stream(request, strategy_id):
             except Exception:
                 pass
             return None
-        # N+1 쿼리 방지를 위한 bulk pre-fetch (Django LocMemCache 활용)
-        try:
-            from .models import OHLCVCache
-            from django.core.cache import cache
-            import pandas as pd
-            import datetime
-            
-            active_timeframes = set(c.timeframe for c in conditions)
-            active_timeframes.add('day')
-            tickers = [t['ticker'] for t in tickers_data]
-            
-            cached_qs = OHLCVCache.objects.filter(ticker__in=tickers, timeframe__in=active_timeframes)
-            now = datetime.datetime.now(datetime.timezone.utc)
-            
-            for obj in cached_qs:
-                # API 폴백이 차단되었으므로, 캐시가 조금 오래되었더라도 무조건 사용합니다 (최대 7일 허용)
-                if (now - obj.updated_at).total_seconds() < 604800:
-                    data_dict = obj.data
-                    try:
-                        df = pd.DataFrame(data_dict['data'], index=pd.to_datetime(data_dict['index'], unit='ms'), columns=data_dict['columns'])
-                        df.index.name = None
-                        cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_200"
-                        cache.set(cache_key, df.tail(200), 180)
-                    except Exception:
-                        pass
-        except Exception as e:
-            print(f"Bulk cache prefetch error: {e}")
+
+        _bulk_prefetch_ohlcv(tickers_data, conditions)
 
         # 스레드 개수를 10개로 조절하여 업비트 API 호출의 순간 폭주(Burst)를 완화하고 Rate Limit를 방어합니다.
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -862,25 +879,24 @@ def alert_save(request, strategy_id):
 
 def process_scan_and_alert(strategy, tickers, conditions):
     """
-    주어진 전략과 티커 목록을 대상으로 스캔하고, 
+    주어진 전략과 티커 목록을 대상으로 스캔하고,
     알림 이력 저장 및 12시간 중복 방지 필터링을 거친 결과를 반환합니다.
     """
     from django.utils import timezone
     import datetime
-    
+
+    _bulk_prefetch_ohlcv(tickers, conditions)
+
     results = []
-    
-    def _proc(ticker):
+
+    def _proc(t_data):
+        ticker = t_data['ticker'] if isinstance(t_data, dict) else t_data
+        name   = t_data.get('name', ticker.replace('KRW-', '')) if isinstance(t_data, dict) else KOSPI_NAME_MAP.get(ticker, ticker.replace('KRW-', ''))
         try:
-            is_match, details, price, volume, status = check_strategy(ticker, conditions)
+            is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
             if is_match and price:
                 details_str = ", ".join(list(dict.fromkeys(details)))
-                
-                # 알림 중복 차단 해제: 중복 차단 없이 항상 발송되도록 설정
                 should_notify = True
-                name = KOSPI_NAME_MAP.get(ticker, ticker.replace("KRW-", ""))
-                
-                # DB에 스캔 매칭 이력 기록 (항상 저장하되, 텔레그램 발송 여부 플래그 세팅)
                 AlertHistory.objects.create(
                     strategy=strategy,
                     symbol=ticker,
@@ -890,7 +906,6 @@ def process_scan_and_alert(strategy, tickers, conditions):
                     status=status,
                     is_notified=should_notify
                 )
-                
                 return {
                     'symbol':         ticker,
                     'name':           name,
@@ -905,7 +920,6 @@ def process_scan_and_alert(strategy, tickers, conditions):
             print(f"Error scanning {ticker}: {e}")
         return None
 
-    # 동시성 처리를 위해 ThreadPoolExecutor 사용
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         for r in executor.map(_proc, tickers):
@@ -1001,378 +1015,6 @@ def backtest_run(request, strategy_id):
     if 'error' in result:
         return JsonResponse(result, status=400)
     return JsonResponse(result)
-
-
-@csrf_exempt
-@require_POST
-def ai_ask(request):
-    import json
-    import requests
-    import os
-    
-    prompt = ""
-    strategy_id = None
-    coin_symbol = None
-    coin_price = None
-    coin_volume = None
-    coin_details = None
-
-    try:
-        if request.content_type == 'application/json':
-            body = json.loads(request.body)
-            prompt = body.get('prompt', '')
-            strategy_id = body.get('strategy_id')
-            coin_symbol = body.get('coin_symbol')
-            coin_price = body.get('coin_price')
-            coin_volume = body.get('coin_volume')
-            coin_details = body.get('coin_details')
-        else:
-            prompt = request.POST.get('prompt', '')
-            strategy_id = request.POST.get('strategy_id')
-            coin_symbol = request.POST.get('coin_symbol')
-            coin_price = request.POST.get('coin_price')
-            coin_volume = request.POST.get('coin_volume')
-            coin_details = request.POST.get('coin_details')
-    except Exception:
-        return JsonResponse({'error': '잘못된 요청 형식입니다.'}, status=400)
-        
-    if not prompt.strip():
-        return JsonResponse({'error': '질문을 입력해 주세요.'}, status=400)
-        
-    api_key = os.environ.get('GROQ_API_KEY', '').strip()
-    
-    if not api_key:
-        fallback_msg = (
-            "⚠️ **Groq API 키가 로컬 .env 또는 Vercel 환경 변수에 설정되어 있지 않습니다.**\n\n"
-            "**[설정 가이드]**\n"
-            "1. 프로젝트 루트 폴더의 `.env` 파일을 열어주세요.\n"
-            "2. `GROQ_API_KEY=\"발급받은키\"` 형태로 키를 입력하고 저장해 주세요.\n"
-            "3. Vercel 배포 시에는 Vercel 대시보드 Settings -> Environment Variables에 `GROQ_API_KEY`를 등록하시면 정상 작동합니다.\n\n"
-            "**[트레이딩 추천 전략 맛보기]**\n"
-            "임시로 예시 답변을 안내해 드립니다:\n"
-            "* **골든크로스 전략**: 5일 이동평균선(MA5)이 20일 이동평균선(MA20)을 상향 돌파할 때 강력한 매수 신호가 발생합니다. 본 코인 스크리너에서 캔들 단위를 '일봉'으로 설정하고 조건 'MA(5) >= MA(20)'을 추가하여 필터링해 보세요!"
-        )
-        return JsonResponse({'response': fallback_msg})
-
-    # Build strategy and/or coin context
-    context_str = ""
-    if not strategy_id:
-        # Check if the user mentioned a strategy name in the prompt
-        for s in Strategy.objects.all():
-            if s.name in prompt:
-                strategy_id = s.id
-                break
-
-    if strategy_id:
-        try:
-            strategy = Strategy.objects.get(id=strategy_id)
-            conds = list(strategy.conditions.all())
-            cond_strings = []
-            for idx, c in enumerate(conds, 1):
-                left = f"{c.left_indicator}({c.left_param})" if c.left_param else c.left_indicator
-                right = f"{c.right_indicator}({c.right_param})" if c.right_param else c.right_indicator
-                op = c.operator
-                if c.bb_std is not None:
-                    op += f" (std={c.bb_std})"
-                cond_strings.append(f"{idx}. {c.timeframe}봉: {left} {op} {right} (n봉전: {c.offset})")
-            
-            context_str += f"\n[현재 전략 정보]\n- 전략명: {strategy.name}\n- 전략 ID: {strategy.id}\n"
-            if cond_strings:
-                context_str += "- 설정된 조건들:\n" + "\n".join(cond_strings) + "\n"
-            else:
-                context_str += "- 설정된 조건이 없습니다.\n"
-        except Strategy.DoesNotExist:
-            pass
-    else:
-        # No specific strategy selected/matched, list all available strategies
-        strategy_list_str = ""
-        for s in Strategy.objects.all().order_by('-created_at'):
-            strategy_list_str += f"- {s.name} (ID: {s.id})\n"
-        
-        if strategy_list_str:
-            context_str += f"\n[보유 중인 전략 목록]\n{strategy_list_str}"
-        else:
-            context_str += f"\n[보유 중인 전략 목록]\n(현재 저장된 전략이 없습니다.)\n"
-
-    if coin_symbol:
-        context_str += (
-            f"\n[대상 코인 정보]\n"
-            f"- 종목명: {coin_symbol}\n"
-            f"- 현재가: {coin_price or 'N/A'}\n"
-            f"- 거래대금: {coin_volume or 'N/A'}\n"
-            f"- 매칭된 지표 상세 상태: {coin_details or 'N/A'}\n"
-        )
-
-    try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": "llama-3.1-8b-instant",
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": (
-                        "당신은 코인 스크리너 및 트레이딩 전략 전문가 'wonii AI 비서'입니다. "
-                        "사용자의 질문에 친절하고 전문적으로 답해 주세요. "
-                        "답변은 가독성이 좋게 마크다운(Markdown) 서식과 이모티콘을 활용해 서술해 주세요.\n\n"
-                        f"{context_str}\n\n"
-                        "★ [중요 규칙: 실시간 전략 생성 및 분석 지원] ★\n"
-                        "1. 사용자가 전략 추천, 전략 생성, 단타 전략 기법, 혹은 기술적 지표 활용법을 물어볼 때(예: '단타 전략 만들어줘', 'RSI 과매도 반등 전략 만들어줘' 등)에는, 상세한 텍스트 설명에 이어 **답변의 맨 마지막 줄에 사용자가 클릭 한 번으로 실제 전략과 검색조건들을 데이터베이스에 즉시 생성/연동할 수 있는 순수한 구조화 JSON 블록**을 반드시 포함해야 합니다.\n"
-                        "   - 만약 위 [현재 전략 정보]가 제공된 상태에서 사용자가 새로운 전략 생성/조건 구성을 물어본다면, 이 JSON 블록은 현재 전략에 추가(add)되거나 새 전략으로 생성(create)되는 옵션을 제공하게 됩니다.\n"
-                        "   - JSON 데이터 형식:\n"
-                        "     {\n"
-                        "       \"create_strategy\": {\n"
-                        "         \"name\": \"전략 이름\",\n"
-                        "         \"conditions\": [\n"
-                        "           { \"timeframe\": \"minute15\", \"offset\": 0, \"left_indicator\": \"CLOSE\", \"left_param\": 0, \"operator\": \"gte\", \"right_indicator\": \"EMA\", \"right_param\": 20 }\n"
-                        "         ]\n"
-                        "       }\n"
-                        "     }\n\n"
-                        "2. 사용자가 '내 전략 봐줘', '내 전략 분석해줘' 등 현재 전략 분석 요청을 할 경우:\n"
-                        "   - 만약 위 [현재 전략 정보]가 제공되었다면, 해당 전략의 매매 성격(예: 눌림목 매매, 추세 추종 등)과 강점, 약점(예: 거래량 필터 누락 등)을 예리하게 분석하는 보고서를 마크다운 형식으로 작성해 주십시오.\n"
-                        "   - 만약 특정 전략 정보가 제공되지 않았고 [보유 중인 전략 목록]만 제공되었다면, **절대로 임의의 전략을 지어내거나 가상의 지표를 섞어 환각(Hallucination) 답변을 하지 마십시오.** 대신 [보유 중인 전략 목록]을 보여주며 분석하고 싶은 전략 이름을 입력해 달라고 하거나, 원하는 전략의 '전략 설정' 혹은 '검색 실행' 화면으로 이동하도록 사용자에게 친절하게 되물어 주십시오.\n\n"
-                        "3. 사용자가 특정 코인이 왜 이 전략에 감지되었는지 물어보는 경우(예: '이 코인 왜 잡혔어?', [대상 코인 정보] 제공 시), 위에 제공된 [대상 코인 정보]의 '매칭된 지표 상세 상태' 값을 참고하여, 각 조건 지표가 구체적으로 어떤 수치로 맞아떨어졌는지 초보자도 쉽게 이해하도록 설명하십시오.\n"
-                        "   - 또한 해당 코인의 현재 상태(과열 구간인지, 매수 타이밍으로 안전한지 등)에 대한 냉철한 기술적 분석을 덧붙여 주십시오.\n"
-                        "   - 그리고 이 설명 뒤에 사용자가 해당 코인의 실시간 차트를 열거나, 백테스트를 즉시 실행하거나, 알림 설정을 켤 수 있도록 **반드시 아래 형식의 JSON 블록을 마지막 줄에 출력**하십시오.\n"
-                        "     {\n"
-                        "       \"buttons\": [\n"
-                        "         { \"type\": \"chart\", \"symbol\": \"" + str(coin_symbol or '') + "\", \"label\": \"📈 차트 보기\" },\n"
-                        "         { \"type\": \"backtest\", \"symbol\": \"" + str(coin_symbol or '') + "\", \"label\": \"🧪 백테스팅 실행\" },\n"
-                        "         { \"type\": \"alert\", \"symbol\": \"" + str(coin_symbol or '') + "\", \"label\": \"🔔 알림 설정\" }\n"
-                        "       ]\n"
-                        "     }\n\n"
-                        "★ JSON 데이터 작성 규칙:\n"
-                        "1. 주석(예: // 또는 #)을 JSON 본문에 절대로 포함하지 마십시오.\n"
-                        "2. 사용 가능한 timeframe: 'minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month'.\n"
-                        "3. 사용 가능한 지표: 'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER', 'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF', 'VAL', 'CLOSE', 'VOLUME', 'VOLUME_PREV', 'VOLUME_MA'.\n"
-                        "4. 사용 가능한 연산자: 'gt', 'lt', 'gte', 'lte', 'is'."
-                    )
-                },
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1024
-        }
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=12)
-        if response.status_code == 200:
-            res_data = response.json()
-            ai_response = res_data['choices'][0]['message']['content']
-            return JsonResponse({'response': ai_response})
-        else:
-            err_msg = f"Groq API 오류 (상태 코드: {response.status_code}): {response.text}"
-            print(err_msg)
-            return JsonResponse({
-                'response': f"⚠️ **Groq AI 호출 중 서버 오류가 발생했습니다.**\n\n디버그 메시지: `{response.text[:200]}`"
-            })
-            
-    except requests.exceptions.Timeout:
-        return JsonResponse({
-            'response': "⚠️ **Groq AI API 호출 시간이 초과되었습니다 (Timeout).** 다시 시도해 주세요."
-        })
-    except Exception as e:
-        return JsonResponse({
-            'response': f"⚠️ **Groq AI 호출 중 알 수 없는 예외가 발생했습니다.**\n\n오류 내용: `{str(e)}`"
-        })
-
-
-@csrf_exempt
-def ai_strategy_create(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST 요청만 가능합니다.'}, status=405)
-    
-    try:
-        import json
-        data = json.loads(request.body)
-        strategy_data = data.get('create_strategy')
-        if not strategy_data:
-            return JsonResponse({'error': '유효한 전략 생성 데이터가 없습니다.'}, status=400)
-        
-        name = strategy_data.get('name', '').strip()
-        if not name:
-            name = "AI 추천 전략"
-            
-        # Create Strategy
-        strategy = Strategy.objects.create(name=name)
-        
-        # Create Conditions
-        conditions_data = strategy_data.get('conditions', [])
-        valid_timeframes = ['minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month']
-        valid_indicators = [
-            'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 
-            'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER',
-            'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF',
-            'IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM',
-            'VAL', 'CLOSE',
-            'VOLUME', 'VOLUME_PREV', 'VOLUME_MA'
-        ]
-        valid_operators = ['gt', 'lt', 'gte', 'lte', 'is']
-        
-        for c in conditions_data:
-            timeframe = c.get('timeframe', 'day')
-            if timeframe not in valid_timeframes:
-                timeframe = 'day'
-                
-            try:
-                offset = int(c.get('offset', 0))
-            except (ValueError, TypeError):
-                offset = 0
-            if offset < 0:
-                offset = 0
-                
-            left_indicator = c.get('left_indicator', 'MA')
-            if left_indicator not in valid_indicators:
-                left_indicator = 'MA'
-                
-            try:
-                left_param = int(c.get('left_param', 5))
-            except (ValueError, TypeError):
-                left_param = 5
-                
-            operator = c.get('operator', 'gte')
-            if operator not in valid_operators:
-                operator = 'gte'
-                
-            right_indicator = c.get('right_indicator', 'MA')
-            if right_indicator not in valid_indicators:
-                right_indicator = 'MA'
-                
-            try:
-                right_param = int(c.get('right_param', 20))
-            except (ValueError, TypeError):
-                right_param = 20
-                
-            bb_std = c.get('bb_std')
-            if bb_std is not None:
-                try:
-                    bb_std = float(bb_std)
-                except (ValueError, TypeError):
-                    bb_std = None
-            
-            Condition.objects.create(
-                strategy=strategy,
-                timeframe=timeframe,
-                offset=offset,
-                left_indicator=left_indicator,
-                left_param=left_param,
-                operator=operator,
-                right_indicator=right_indicator,
-                right_param=right_param,
-                bb_std=bb_std
-            )
-            
-        clear_strategy_cache(strategy.id)
-        
-        # Return success with the URL to redirect to
-        redirect_url = f"/strategy/{strategy.id}/"
-        return JsonResponse({
-            'ok': True,
-            'strategy_id': strategy.id,
-            'redirect_url': redirect_url
-        })
-        
-    except Exception as e:
-        return JsonResponse({'error': f'서버 내부 오류: {str(e)}'}, status=500)
-
-
-@csrf_exempt
-def ai_strategy_add_conditions(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'POST 요청만 가능합니다.'}, status=405)
-    
-    try:
-        import json
-        data = json.loads(request.body)
-        strategy_id = data.get('strategy_id')
-        strategy_data = data.get('create_strategy')
-        
-        if not strategy_id:
-            return JsonResponse({'error': '전략 ID가 필요합니다.'}, status=400)
-            
-        strategy = get_object_or_404(Strategy, id=strategy_id)
-        
-        if not strategy_data:
-            return JsonResponse({'error': '유효한 전략 데이터가 없습니다.'}, status=400)
-            
-        # Create Conditions
-        conditions_data = strategy_data.get('conditions', [])
-        valid_timeframes = ['minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month']
-        valid_indicators = [
-            'MA', 'EMA', 'WMA', 'RSI', 'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER', 
-            'HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER',
-            'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B', 'IC_CHIKOU', 'IC_CHIKOU_REF',
-            'IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM',
-            'VAL', 'CLOSE',
-            'VOLUME', 'VOLUME_PREV', 'VOLUME_MA'
-        ]
-        valid_operators = ['gt', 'lt', 'gte', 'lte', 'is']
-        
-        for c in conditions_data:
-            timeframe = c.get('timeframe', 'day')
-            if timeframe not in valid_timeframes:
-                timeframe = 'day'
-                
-            try:
-                offset = int(c.get('offset', 0))
-            except (ValueError, TypeError):
-                offset = 0
-            if offset < 0:
-                offset = 0
-                
-            left_indicator = c.get('left_indicator', 'MA')
-            if left_indicator not in valid_indicators:
-                left_indicator = 'MA'
-                
-            try:
-                left_param = int(c.get('left_param', 5))
-            except (ValueError, TypeError):
-                left_param = 5
-                
-            operator = c.get('operator', 'gte')
-            if operator not in valid_operators:
-                operator = 'gte'
-                
-            right_indicator = c.get('right_indicator', 'MA')
-            if right_indicator not in valid_indicators:
-                right_indicator = 'MA'
-                
-            try:
-                right_param = int(c.get('right_param', 20))
-            except (ValueError, TypeError):
-                right_param = 20
-                
-            bb_std = c.get('bb_std')
-            if bb_std is not None:
-                try:
-                    bb_std = float(bb_std)
-                except (ValueError, TypeError):
-                    bb_std = None
-            
-            Condition.objects.create(
-                strategy=strategy,
-                timeframe=timeframe,
-                offset=offset,
-                left_indicator=left_indicator,
-                left_param=left_param,
-                operator=operator,
-                right_indicator=right_indicator,
-                right_param=right_param,
-                bb_std=bb_std
-            )
-            
-        clear_strategy_cache(strategy.id)
-        
-        return JsonResponse({
-            'ok': True,
-            'strategy_id': strategy.id,
-            'redirect_url': f"/strategy/{strategy.id}/"
-        })
-        
-    except Exception as e:
-        return JsonResponse({'error': f'서버 내부 오류: {str(e)}'}, status=500)
 
 
 @csrf_exempt
@@ -1575,10 +1217,12 @@ def strategy_scan_count(request, strategy_id):
             c.timeframe = tf_override
 
     tickers = _get_tickers(exchange, vol_limit)
+    _bulk_prefetch_ohlcv(tickers, conditions)
     results = []
     error_occurred = False
 
-    def process_ticker(ticker):
+    def process_ticker(t_data):
+        ticker = t_data['ticker'] if isinstance(t_data, dict) else t_data
         try:
             is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
             if price is None:
