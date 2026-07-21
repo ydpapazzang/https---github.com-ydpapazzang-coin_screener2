@@ -124,9 +124,34 @@
         
         /* Utility classes */
         .hidden { display: none !important; }
-        
+
         /* Typography */
         h1, h2, h3, h4, h5, h6, p { margin: 0; }
+
+        /* ── 페이지 전환 애니메이션 ── */
+        @view-transition { navigation: auto; }
+
+        @keyframes _vt-out {
+            to { opacity: 0; transform: translateY(-6px) scale(0.99); }
+        }
+        @keyframes _vt-in {
+            from { opacity: 0; transform: translateY(10px) scale(0.99); }
+        }
+        ::view-transition-old(root) {
+            animation: 180ms ease-in _vt-out;
+        }
+        ::view-transition-new(root) {
+            animation: 240ms cubic-bezier(0.2, 0, 0, 1) _vt-in;
+        }
+
+        /* 구형 브라우저 폴백: 페이지 진입 시 자연스럽게 나타남 */
+        @keyframes _page-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        main {
+            animation: _page-in 0.25s cubic-bezier(0.2, 0, 0, 1) both;
+        }
     </style>
     {% block extra_head %}{% endblock %}
 </head>
@@ -146,7 +171,7 @@
 
         {% block bottom_nav %}
         <nav class="bottom-nav">
-            <a href="{% url 'strategy_list' %}" class="nav-item active">
+            <a href="{% url 'strategy_list' %}" class="nav-item {% if active_nav != 'alert' %}active{% endif %}">
                 <svg class="nav-icon" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
                 <span>홈</span>
             </a>
@@ -154,7 +179,7 @@
                 <svg class="nav-icon" viewBox="0 0 24 24"><path d="M16 11V3H8v6H2v12h20V11h-6zm-6-6h4v14h-4V5zm-6 6h4v8H4v-8zm16 8h-4v-6h4v6z"/></svg>
                 <span>순위</span>
             </a>
-            <a href="#" class="nav-item">
+            <a href="{% url 'custom_alert_list' %}" class="nav-item {% if active_nav == 'alert' %}active{% endif %}">
                 <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>
                 <span>알림</span>
             </a>
@@ -171,5 +196,27 @@
     </div>
 
     {% block extra_js %}{% endblock %}
+    <script>
+    /* POST 폼 제출 시 exit 애니메이션 (View Transitions 미지원 브라우저 폴백) */
+    (function () {
+        function exitAndRun(cb) {
+            if (window.document.startViewTransition) { cb(); return; }
+            var el = document.querySelector('.app-container');
+            if (!el) { cb(); return; }
+            el.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(-6px)';
+            setTimeout(cb, 160);
+        }
+        /* POST form */
+        document.addEventListener('submit', function (e) {
+            if (window.document.startViewTransition) return;
+            var form = e.target;
+            if (!form || form.tagName !== 'FORM') return;
+            e.preventDefault();
+            exitAndRun(function () { form.submit(); });
+        }, true);
+    })();
+    </script>
 </body>
 </html>

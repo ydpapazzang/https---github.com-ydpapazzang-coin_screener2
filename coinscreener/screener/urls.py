@@ -24,6 +24,13 @@ urlpatterns = [
     path('strategy/<int:strategy_id>/alert/save/',     views.alert_save,     name='alert_save'),
     path('strategy/<int:strategy_id>/alert/send-now/', views.alert_send_now, name='alert_send_now'),
 
+    # 커스텀 알림 (알림 탭)
+    path('alerts/',                        views.custom_alert_list,   name='custom_alert_list'),
+    path('alerts/new/',                    views.custom_alert_form,   name='custom_alert_create'),
+    path('alerts/<int:alert_id>/edit/',    views.custom_alert_form,   name='custom_alert_edit'),
+    path('alerts/<int:alert_id>/delete/',  views.custom_alert_delete, name='custom_alert_delete'),
+    path('alerts/<int:alert_id>/toggle/',  views.custom_alert_toggle, name='custom_alert_toggle'),
+
     # 백테스팅 API
     path('backtest/coins/',                          views.backtest_coins, name='backtest_coins'),
     path('strategy/<int:strategy_id>/backtest/run/', views.backtest_run,   name='backtest_run'),
