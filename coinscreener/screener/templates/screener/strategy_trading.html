@@ -300,6 +300,7 @@
             <button class="stab" onclick="switchTab(event, 'HA')">하이킨아시</button>
             <button class="stab" onclick="switchTab(event, 'IC')">일목균형표</button>
             <button class="stab" onclick="switchTab(event, 'VOLUME')">거래량</button>
+            <button class="stab" onclick="switchTab(event, 'CHANGE_RATE')">등락률</button>
         </div>
         
         <div class="bs-body">
@@ -321,6 +322,7 @@
                             <option value="minute240">4시간봉</option>
                             <option value="day" selected>일봉</option>
                             <option value="week">주봉</option>
+                            <option value="month">월봉</option>
                         </select>
                         <select name="offset" class="fselect">
                             <option value="0">현재봉</option>
@@ -381,6 +383,7 @@
                             <option value="minute60">1시간봉</option>
                             <option value="day" selected>일봉</option>
                             <option value="week">주봉</option>
+                            <option value="month">월봉</option>
                         </select>
                         <select name="offset" class="fselect">
                             <option value="0">현재봉</option>
@@ -418,8 +421,11 @@
                     <label class="field-label">단위 / 기간</label>
                     <div style="display:flex; gap:8px;">
                         <select name="timeframe" class="fselect">
+                            <option value="minute60">1시간봉</option>
+                            <option value="minute240">4시간봉</option>
                             <option value="day" selected>일봉</option>
                             <option value="week">주봉</option>
+                            <option value="month">월봉</option>
                         </select>
                         <select name="offset" class="fselect">
                             <option value="0">현재봉</option>
@@ -465,7 +471,7 @@
                 <div class="field-group">
                     <label class="field-label">단위 / 기간</label>
                     <div style="display:flex; gap:8px;">
-                        <select name="timeframe" class="fselect"><option value="day" selected>일봉</option><option value="week">주봉</option></select>
+                        <select name="timeframe" class="fselect"><option value="minute60">1시간봉</option><option value="minute240">4시간봉</option><option value="day" selected>일봉</option><option value="week">주봉</option><option value="month">월봉</option></select>
                         <select name="offset" class="fselect"><option value="0">현재봉</option><option value="1">1봉 전</option></select>
                     </div>
                 </div>
@@ -494,7 +500,7 @@
                 <div class="field-group">
                     <label class="field-label">단위 / 기간</label>
                     <div style="display:flex; gap:8px;">
-                        <select name="timeframe" class="fselect"><option value="day" selected>일봉</option><option value="week">주봉</option></select>
+                        <select name="timeframe" class="fselect"><option value="minute60">1시간봉</option><option value="minute240">4시간봉</option><option value="day" selected>일봉</option><option value="week">주봉</option><option value="month">월봉</option></select>
                         <select name="offset" class="fselect"><option value="0">현재봉</option><option value="1">1봉 전</option></select>
                     </div>
                 </div>
@@ -527,8 +533,8 @@
                 <div class="field-group">
                     <label class="field-label">단위 / 기간</label>
                     <div style="display:flex; gap:8px;">
-                        <select name="timeframe" class="fselect"><option value="day" selected>일봉</option></select>
-                        <select name="offset" class="fselect"><option value="0">현재봉</option></select>
+                        <select name="timeframe" class="fselect"><option value="minute60">1시간봉</option><option value="minute240">4시간봉</option><option value="day" selected>일봉</option><option value="week">주봉</option><option value="month">월봉</option></select>
+                        <select name="offset" class="fselect"><option value="0">현재봉</option><option value="1">1봉 전</option></select>
                     </div>
                 </div>
                 <div class="field-group">
@@ -545,6 +551,37 @@
                 <div class="field-group">
                     <label class="field-label">기준 비율 (%)</label>
                     <input type="number" name="volume_pct" value="150" class="finput">
+                </div>
+                <button type="submit" class="submit-cond-btn">조건 추가하기</button>
+            </form>
+
+            <!-- CHANGE_RATE FORM -->
+            <form id="form-CHANGE_RATE" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="cond_type" value="CHANGE_RATE">
+                <div class="field-group">
+                    <label class="field-label">단위</label>
+                    <select name="timeframe" class="fselect">
+                        <option value="minute60">1시간봉</option>
+                        <option value="minute240">4시간봉</option>
+                        <option value="day" selected>일봉</option>
+                        <option value="week">주봉</option>
+                        <option value="month">월봉</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label class="field-label">조건</label>
+                    <select name="operator" class="fselect">
+                        <option value="gte">이상 (≥)</option>
+                        <option value="lte">이하 (≤)</option>
+                        <option value="gt">초과 (>)</option>
+                        <option value="lt">미만 (&lt;)</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label class="field-label">기준 등락률 (%)</label>
+                    <input type="number" name="cr_threshold" value="5" step="1" class="finput" placeholder="예: 5 (5% 이상 상승)">
+                    <div style="font-size:11px; color:var(--text-secondary); margin-top:4px;">양수 = 상승, 음수 = 하락 (예: -3 → 3% 이상 하락)</div>
                 </div>
                 <button type="submit" class="submit-cond-btn">조건 추가하기</button>
             </form>
