@@ -1241,15 +1241,21 @@ def strategy_scan_count(request, strategy_id):
             pass
         return None
 
+    api_error_count = 0
+    none_count = 0
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = {executor.submit(process_ticker, t): t for t in tickers}
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             if res == "API_ERROR":
                 error_occurred = True
+                api_error_count += 1
             elif res:
                 results.append(res)
-                
+            else:
+                none_count += 1
+
     results.sort(key=lambda x: x.get('volume', 0), reverse=True)
     last_updated = timezone.now()
     cache_key = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
@@ -1259,8 +1265,22 @@ def strategy_scan_count(request, strategy_id):
         'rate_limit_warning': error_occurred,
         'last_updated':       last_updated,
     }, timeout=300)
-    
-    return JsonResponse({'ok': True, 'count': len(results)})
+
+    debug = request.GET.get('debug') == '1'
+    resp = {'ok': True, 'count': len(results)}
+    if debug:
+        from .models import OHLCVCache
+        active_timeframes = list(set(c.timeframe for c in conditions))
+        db_count = OHLCVCache.objects.filter(timeframe__in=active_timeframes).count()
+        resp['_debug'] = {
+            'total_tickers': len(tickers),
+            'api_error_count': api_error_count,
+            'none_count': none_count,
+            'active_timeframes': active_timeframes,
+            'ohlcvcache_rows': db_count,
+            'conditions': [{'tf': c.timeframe, 'left': c.left_indicator, 'op': c.operator, 'right': c.right_indicator} for c in conditions],
+        }
+    return JsonResponse(resp)
 
 
 
