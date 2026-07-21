@@ -88,8 +88,9 @@ class Condition(models.Model):
         ('IC_CHIKOU_REF',  '26봉 전 종가'),
         ('IC_CLOUD_TOP',   '일목 구름대 상단'),
         ('IC_CLOUD_BOTTOM','일목 구름대 하단'),
-        ('VAL',       '고정값'),
-        ('CLOSE',     '종가'),
+        ('VAL',         '고정값'),
+        ('CLOSE',       '종가'),
+        ('CHANGE_RATE', '당일 등락률(%)'),
         # 거래량 지표
         ('VOLUME',      '거래량'),
         ('VOLUME_PREV', '이전봉 거래량'),

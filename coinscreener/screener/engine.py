@@ -1,3 +1,4 @@
+import math
 import pyupbit
 import pandas as pd
 import time
@@ -7,6 +8,17 @@ import random
 import datetime
 import FinanceDataReader as fdr
 from django.core.cache import cache
+
+
+def _safe_float(v):
+    if v is None:
+        return None
+    try:
+        f = float(v)
+        return 0.0 if (math.isnan(f) or math.isinf(f)) else f
+    except (TypeError, ValueError):
+        return 0.0
+
 
 _rate_limit_lock = threading.Lock()
 _last_request_time = 0.0
@@ -173,7 +185,7 @@ def check_ha_pattern(df: pd.DataFrame, pattern: str, param: int, offset: int) ->
 
 def get_required_len(indicator_type, param):
     """지표 계산에 필요한 최소 데이터 길이 반환"""
-    if indicator_type in ('VAL', 'CLOSE', 'VOLUME'):
+    if indicator_type in ('VAL', 'CLOSE', 'VOLUME', 'CHANGE_RATE'):
         return 0
     if indicator_type == 'VOLUME_PREV':
         return 1
@@ -186,6 +198,8 @@ def get_required_len(indicator_type, param):
     if indicator_type == 'IC_SPAN_A':
         return 52
     if indicator_type == 'IC_SPAN_B':
+        return 78
+    if indicator_type in ('IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM'):
         return 78
     if indicator_type == 'IC_CHIKOU':
         return 0
@@ -205,7 +219,7 @@ def check_strategy(ticker, conditions, current_price=None):
     """
     # 조건이 없으면 모든 코인이 통과되는 버그 방지
     if not conditions:
-        return False, [], None, 0, None
+        return False, [], None, 0, 0.0, None
 
     try:
         data_cache = {}
@@ -359,19 +373,7 @@ def check_strategy(ticker, conditions, current_price=None):
                         else:
                             details.append(f"{cond.right_indicator}({cond.right_param}): {right_val:.2f}")
 
-        import math
-        def safe_float(v):
-            if v is None:
-                return None
-            try:
-                f = float(v)
-                if math.isnan(f) or math.isinf(f):
-                    return 0.0
-                return f
-            except (TypeError, ValueError):
-                return 0.0
-
-        return True, details, safe_float(last_price), safe_float(volume), safe_float(change_rate), status
+        return True, details, _safe_float(last_price), _safe_float(volume), _safe_float(change_rate), status
 
     except Exception as e:
         print(f"Error checking {ticker}: {e}")
@@ -425,6 +427,16 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
     elif indicator_type == 'CLOSE':
         val = df['close'].iloc[target_idx]
         return None if pd.isna(val) else float(val)
+
+    elif indicator_type == 'CHANGE_RATE':
+        prev_idx = target_idx - 1
+        if abs(prev_idx) > len(df) or len(df) < 2:
+            return None
+        prev_close = df['close'].iloc[prev_idx]
+        curr_close = df['close'].iloc[target_idx]
+        if prev_close == 0:
+            return None
+        return float((curr_close - prev_close) / prev_close * 100)
 
     elif indicator_type == 'VOLUME':
         val = df['volume'].iloc[target_idx]
@@ -487,7 +499,6 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
         return None if pd.isna(val) else float(val)
 
     elif indicator_type in ('IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM'):
-        import numpy as np
         high_9 = df['high'].rolling(window=9).max()
         low_9 = df['low'].rolling(window=9).min()
         tenkan = (high_9 + low_9) / 2
