@@ -983,10 +983,20 @@ def open_market(request):
     coin = sym.replace('KRW-', '')
     fb = quote(web_url, safe='')
 
-    # Android: 텔레그램 인앱 브라우저를 탈출해 Chrome으로 다시 여는 intent.
-    # Chrome이 App Link(검증된 딥링크)를 해석해 업비트/빗썸 앱을 자동 실행하고,
-    # 앱 미설치 시 Chrome에서 웹으로 표시된다. (Chrome 미설치 시 browser_fallback_url로 폴백)
+    # Android: 앱 패키지를 명시한 intent → App Link 검증(삼성폰 '지원되는 링크 열기' 설정)을
+    # 우회하고 해당 앱에 직접 딥링크를 전달한다. 앱 미설치/필터 불일치 시 browser_fallback_url로 폴백.
     host_path = web_url.replace('https://', '').replace('http://', '')
+    ANDROID_PKG = {
+        'upbit':   'com.dunamu.exchange',
+        'bithumb': 'com.btckorea.bithumb',
+        'kospi':   'com.nhn.android.search',
+    }
+    pkg = ANDROID_PKG.get(ex, '')
+    pkg_part = f"package={pkg};" if pkg else ""
+    android_intent = (f"intent://{host_path}#Intent;scheme=https;"
+                      f"{pkg_part}S.browser_fallback_url={fb};end")
+
+    # Chrome 재오픈(2차 시도용): App Link 검증이 켜진 기기에서 앱으로 전환
     android_chrome = (f"intent://{host_path}#Intent;scheme=https;"
                       f"package=com.android.chrome;S.browser_fallback_url={fb};end")
 
@@ -1000,7 +1010,8 @@ def open_market(request):
 
     return render(request, 'screener/open_redirect.html', {
         'web_url': web_url,
-        'android_intent': android_chrome,
+        'android_intent': android_intent,
+        'android_chrome': android_chrome,
         'ios_scheme': ios_scheme,
         'symbol': sym,
         'exchange': ex,

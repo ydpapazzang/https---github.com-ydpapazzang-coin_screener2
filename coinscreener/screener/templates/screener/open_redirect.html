@@ -27,21 +27,28 @@
         <div class="sym">{{ symbol }}</div>
         <div class="sub">앱으로 여는 중… 열리지 않으면 아래 버튼을 눌러주세요.</div>
         <button class="btn btn-app" onclick="openApp()">앱으로 열기</button>
+        <button class="btn btn-web" onclick="openViaChrome()">앱이 안 열리면 여기 (Chrome)</button>
         <a class="btn btn-web" href="{{ web_url }}">모바일 웹으로 열기</a>
     </div>
 
     <script>
         var WEB     = "{{ web_url|escapejs }}";
         var ANDROID = "{{ android_intent|escapejs }}";
+        var CHROME  = "{{ android_chrome|escapejs }}";
         var IOS     = "{{ ios_scheme|escapejs }}";
 
         var ua = navigator.userAgent || navigator.vendor || '';
         var isAndroid = /Android/i.test(ua);
         var isIOS = /iPhone|iPad|iPod/i.test(ua);
 
+        function openViaChrome() {
+            if (CHROME) window.location.href = CHROME;
+            else window.location.href = WEB;
+        }
+
         function openApp() {
             if (isAndroid && ANDROID) {
-                window.location.href = ANDROID;   // intent:// (미설치 시 browser_fallback_url로 자동 폴백)
+                window.location.href = ANDROID;   // 앱 패키지 명시 intent (미설치 시 browser_fallback_url로 폴백)
             } else if (isIOS && IOS) {
                 var fired = false;
                 var t = setTimeout(function () { if (!fired) window.location.href = WEB; }, 1400);
