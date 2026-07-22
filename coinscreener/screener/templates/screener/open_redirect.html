@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ symbol }} 열기</title>
+    <style>
+        html, body { margin: 0; height: 100%; background: #0e0f12; color: #e6e6e6;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .wrap { min-height: 100%; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; text-align: center; padding: 24px; box-sizing: border-box; }
+        .sym { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+        .sub { font-size: 13px; color: #9aa0a6; margin-bottom: 28px; }
+        .btn { display: block; width: 100%; max-width: 320px; margin: 8px 0; padding: 15px;
+            border-radius: 12px; font-size: 15px; font-weight: 700; text-decoration: none;
+            border: none; cursor: pointer; }
+        .btn-app { background: #2d7bfe; color: #fff; }
+        .btn-web { background: rgba(255,255,255,0.08); color: #e6e6e6; border: 1px solid rgba(255,255,255,0.15); }
+        .spinner { width: 34px; height: 34px; border: 3px solid rgba(255,255,255,0.15);
+            border-top-color: #2d7bfe; border-radius: 50%; animation: spin .8s linear infinite; margin-bottom: 22px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="spinner"></div>
+        <div class="sym">{{ symbol }}</div>
+        <div class="sub">앱으로 여는 중… 열리지 않으면 아래 버튼을 눌러주세요.</div>
+        <button class="btn btn-app" onclick="openApp()">앱으로 열기</button>
+        <a class="btn btn-web" href="{{ web_url }}">모바일 웹으로 열기</a>
+    </div>
+
+    <script>
+        var WEB     = "{{ web_url|escapejs }}";
+        var ANDROID = "{{ android_intent|escapejs }}";
+        var IOS     = "{{ ios_scheme|escapejs }}";
+
+        var ua = navigator.userAgent || navigator.vendor || '';
+        var isAndroid = /Android/i.test(ua);
+        var isIOS = /iPhone|iPad|iPod/i.test(ua);
+
+        function openApp() {
+            if (isAndroid && ANDROID) {
+                window.location.href = ANDROID;   // intent:// (미설치 시 browser_fallback_url로 자동 폴백)
+            } else if (isIOS && IOS) {
+                var fired = false;
+                var t = setTimeout(function () { if (!fired) window.location.href = WEB; }, 1400);
+                // 앱으로 전환되면 페이지가 백그라운드로 → 폴백 취소
+                document.addEventListener('visibilitychange', function () {
+                    if (document.hidden) { fired = true; clearTimeout(t); }
+                });
+                window.location.href = IOS;
+            } else {
+                window.location.href = WEB;
+            }
+        }
+
+        // 자동 시도 (즉시)
+        openApp();
+    </script>
+</body>
+</html>

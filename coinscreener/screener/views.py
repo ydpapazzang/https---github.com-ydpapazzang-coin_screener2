@@ -970,6 +970,47 @@ def alert_send_now(request, strategy_id):
     return JsonResponse({'ok': False, 'error': res['error']})
 
 
+def open_market(request):
+    """종목 딥링크 리다이렉터.
+    텔레그램 인앱 브라우저는 유니버설 링크를 앱으로 넘기지 않으므로,
+    이 페이지에서 앱 커스텀 스킴(iOS)/intent(Android)를 직접 시도하고
+    실패 시 모바일 웹으로 폴백한다.
+    """
+    from urllib.parse import quote
+    ex  = request.GET.get('ex', 'upbit')
+    sym = request.GET.get('sym', '')
+    web_url = tg.market_link(ex, sym)
+    coin = sym.replace('KRW-', '')
+    fb = quote(web_url, safe='')
+
+    android_intent = ''
+    ios_scheme = ''
+    if ex == 'upbit':
+        market = sym if sym.startswith('KRW-') else f'KRW-{coin}'
+        android_intent = (f"intent://upbit.com/exchange?code=CRIX.UPBIT.{market}"
+                          f"#Intent;scheme=https;package=com.dunamu.exchange;"
+                          f"S.browser_fallback_url={fb};end")
+        ios_scheme = f"upbit://exchange?code=CRIX.UPBIT.{market}"
+    elif ex == 'bithumb':
+        android_intent = (f"intent://www.bithumb.com/react/trade/order/{coin}-KRW"
+                          f"#Intent;scheme=https;package=com.btckorea.bithumb;"
+                          f"S.browser_fallback_url={fb};end")
+        ios_scheme = f"bithumb://fx/trade?coinType={coin}&crncCd=KRW"
+    elif ex == 'kospi':
+        android_intent = (f"intent://m.stock.naver.com/domestic/stock/{sym}/total"
+                          f"#Intent;scheme=https;package=com.nhn.android.search;"
+                          f"S.browser_fallback_url={fb};end")
+        ios_scheme = ''  # 네이버 증권 iOS 커스텀 스킴 불확실 → 웹 폴백
+
+    return render(request, 'screener/open_redirect.html', {
+        'web_url': web_url,
+        'android_intent': android_intent,
+        'ios_scheme': ios_scheme,
+        'symbol': sym,
+        'exchange': ex,
+    })
+
+
 # ──────────────────────────────────────────
 # 5. 백테스팅 API
 # ──────────────────────────────────────────

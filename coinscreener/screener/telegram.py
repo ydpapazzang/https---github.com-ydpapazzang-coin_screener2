@@ -1,6 +1,7 @@
 """텔레그램 봇 유틸리티"""
 import os
 import requests
+from urllib.parse import quote
 
 
 def _get_token() -> str:
@@ -80,9 +81,32 @@ def market_link(exchange: str, symbol: str) -> str:
     return ''
 
 
+def _site_url() -> str:
+    """알림 링크에 사용할 사이트 절대 URL (SITE_URL 우선, 없으면 VERCEL_URL)."""
+    site_url = os.environ.get('SITE_URL', '').strip()
+    source = 'SITE_URL'
+    if not site_url:
+        site_url = os.environ.get('VERCEL_URL', '').strip()
+        source = 'VERCEL_URL'
+    if site_url and not site_url.startswith('http'):
+        site_url = 'https://' + site_url
+    site_url = site_url.rstrip('/')
+    print(f"[TELEGRAM] Link site_url: '{site_url}' (retrieved from {source})")
+    return site_url
+
+
+def _symbol_link(exchange: str, symbol: str, site_url: str) -> str:
+    """종목 링크. 사이트 URL이 있으면 앱 딥링크 리다이렉터(/open/)로, 없으면 거래소 웹으로."""
+    if site_url:
+        return f'{site_url}/open/?ex={quote(exchange)}&sym={quote(symbol)}'
+    return market_link(exchange, symbol)
+
+
 def send_alert(strategy_name: str, results: list, strategy_id: int = None, exchange: str = 'upbit') -> dict:
     """스크리닝 결과 알림 발송"""
     ex_label = EXCHANGE_LABEL.get(exchange, exchange)
+    site_url = _site_url()
+
     if not results:
         text = f"📊 <b>{strategy_name}</b>  <i>[{ex_label}]</i>\n조건에 맞는 코인이 없습니다."
     else:
@@ -92,27 +116,14 @@ def send_alert(strategy_name: str, results: list, strategy_id: int = None, excha
             status_icon = '🆕' if r.get('status') == 'new' else '🔁'
             price_str   = f"{r['price']:,.0f}" if r.get('price') else '-'
             name_str    = f"[{r.get('name')}] " if r.get('name') and r.get('name') != r['symbol'] else ""
-            link        = market_link(exchange, r['symbol'])
+            link        = _symbol_link(exchange, r['symbol'], site_url)
             symbol_html = f'<a href="{link}">{r["symbol"]}</a>' if link else f"<b>{r['symbol']}</b>"
             lines.append(f"{status_icon} {name_str}{symbol_html}  {price_str}원  거래대금 {vol}")
         if len(results) > 20:
             lines.append(f"... 외 {len(results) - 20}개")
         text = "\n".join(lines)
 
-    # Vercel 환경변수 중 SITE_URL을 최우선으로 사용 (미설정 시 VERCEL_URL로 안전 폴백)
-    site_url = os.environ.get('SITE_URL', '').strip()
-    source = 'SITE_URL'
-    
-    if not site_url:
-        site_url = os.environ.get('VERCEL_URL', '').strip()
-        source = 'VERCEL_URL'
-
-    print(f"[TELEGRAM] Link site_url: '{site_url}' (retrieved from {source})")
-
     if strategy_id and site_url:
-        if not site_url.startswith('http'):
-            site_url = 'https://' + site_url
-        site_url = site_url.rstrip('/')
         link  = f'{site_url}/strategy/{strategy_id}/'
         text += f'\n\n<a href="{link}">🔗 웹에서 보기</a>'
 
