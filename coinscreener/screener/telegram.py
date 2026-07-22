@@ -72,7 +72,8 @@ def market_link(exchange: str, symbol: str) -> str:
     coin = symbol.replace('KRW-', '').strip()
     if exchange == 'upbit':
         market = symbol if symbol.startswith('KRW-') else f'KRW-{coin}'
-        return f'https://upbit.com/exchange?code=CRIX.UPBIT.{market}'
+        # 앱이 App Link로 등록하는 정식 코인 상세 경로 형식
+        return f'https://www.upbit.com/exchange/CRIX.UPBIT.{market}'
     if exchange == 'bithumb':
         return f'https://www.bithumb.com/react/trade/order/{coin}-KRW'
     if exchange == 'kospi':

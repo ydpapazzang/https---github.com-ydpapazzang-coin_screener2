@@ -983,28 +983,24 @@ def open_market(request):
     coin = sym.replace('KRW-', '')
     fb = quote(web_url, safe='')
 
-    android_intent = ''
+    # Android: 텔레그램 인앱 브라우저를 탈출해 Chrome으로 다시 여는 intent.
+    # Chrome이 App Link(검증된 딥링크)를 해석해 업비트/빗썸 앱을 자동 실행하고,
+    # 앱 미설치 시 Chrome에서 웹으로 표시된다. (Chrome 미설치 시 browser_fallback_url로 폴백)
+    host_path = web_url.replace('https://', '').replace('http://', '')
+    android_chrome = (f"intent://{host_path}#Intent;scheme=https;"
+                      f"package=com.android.chrome;S.browser_fallback_url={fb};end")
+
+    # iOS: 커스텀 스킴 best-effort (실패 시 웹 폴백)
     ios_scheme = ''
     if ex == 'upbit':
         market = sym if sym.startswith('KRW-') else f'KRW-{coin}'
-        android_intent = (f"intent://upbit.com/exchange?code=CRIX.UPBIT.{market}"
-                          f"#Intent;scheme=https;package=com.dunamu.exchange;"
-                          f"S.browser_fallback_url={fb};end")
         ios_scheme = f"upbit://exchange?code=CRIX.UPBIT.{market}"
     elif ex == 'bithumb':
-        android_intent = (f"intent://www.bithumb.com/react/trade/order/{coin}-KRW"
-                          f"#Intent;scheme=https;package=com.btckorea.bithumb;"
-                          f"S.browser_fallback_url={fb};end")
         ios_scheme = f"bithumb://fx/trade?coinType={coin}&crncCd=KRW"
-    elif ex == 'kospi':
-        android_intent = (f"intent://m.stock.naver.com/domestic/stock/{sym}/total"
-                          f"#Intent;scheme=https;package=com.nhn.android.search;"
-                          f"S.browser_fallback_url={fb};end")
-        ios_scheme = ''  # 네이버 증권 iOS 커스텀 스킴 불확실 → 웹 폴백
 
     return render(request, 'screener/open_redirect.html', {
         'web_url': web_url,
-        'android_intent': android_intent,
+        'android_intent': android_chrome,
         'ios_scheme': ios_scheme,
         'symbol': sym,
         'exchange': ex,
