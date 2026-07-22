@@ -983,18 +983,32 @@ def open_market(request):
     coin = sym.replace('KRW-', '')
     fb = quote(web_url, safe='')
 
-    # Android: 앱 패키지를 명시한 intent → App Link 검증(삼성폰 '지원되는 링크 열기' 설정)을
-    # 우회하고 해당 앱에 직접 딥링크를 전달한다. 앱 미설치/필터 불일치 시 browser_fallback_url로 폴백.
-    host_path = web_url.replace('https://', '').replace('http://', '')
+    # Android: 앱 커스텀 스킴을 intent로 시도한다.
+    # https App Link는 앱이 등록하지 않아 실패했으므로, 커스텀 스킴(upbit:// 등) + 패키지 명시로 앱에 직접 전달.
+    # 스킴 host/path는 앱마다 다르며 미검증. 실패 시 browser_fallback_url로 웹 폴백.
+    market = sym if sym.startswith('KRW-') else f'KRW-{coin}'
     ANDROID_PKG = {
         'upbit':   'com.dunamu.exchange',
         'bithumb': 'com.btckorea.bithumb',
         'kospi':   'com.nhn.android.search',
     }
-    pkg = ANDROID_PKG.get(ex, '')
-    pkg_part = f"package={pkg};" if pkg else ""
-    android_intent = (f"intent://{host_path}#Intent;scheme=https;"
-                      f"{pkg_part}S.browser_fallback_url={fb};end")
+    # (scheme, scheme 뒤 host+path+query)
+    SCHEME_TARGET = {
+        'upbit':   ('upbit',   f'exchange?code=CRIX.UPBIT.{market}'),
+        'bithumb': ('bithumb', f'fx/trade?coinType={coin}&crncCd=KRW'),
+    }
+    host_path = web_url.replace('https://', '').replace('http://', '')
+    if ex in SCHEME_TARGET:
+        scheme, target = SCHEME_TARGET[ex]
+        pkg = ANDROID_PKG.get(ex, '')
+        android_intent = (f"intent://{target}#Intent;scheme={scheme};"
+                          f"package={pkg};S.browser_fallback_url={fb};end")
+    else:
+        # 코스피 등: https App Link + 패키지(네이버앱)
+        pkg = ANDROID_PKG.get(ex, '')
+        pkg_part = f"package={pkg};" if pkg else ""
+        android_intent = (f"intent://{host_path}#Intent;scheme=https;"
+                          f"{pkg_part}S.browser_fallback_url={fb};end")
 
     # Chrome 재오픈(2차 시도용): App Link 검증이 켜진 기기에서 앱으로 전환
     android_chrome = (f"intent://{host_path}#Intent;scheme=https;"
@@ -1003,7 +1017,6 @@ def open_market(request):
     # iOS: 커스텀 스킴 best-effort (실패 시 웹 폴백)
     ios_scheme = ''
     if ex == 'upbit':
-        market = sym if sym.startswith('KRW-') else f'KRW-{coin}'
         ios_scheme = f"upbit://exchange?code=CRIX.UPBIT.{market}"
     elif ex == 'bithumb':
         ios_scheme = f"bithumb://fx/trade?coinType={coin}&crncCd=KRW"
