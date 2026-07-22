@@ -754,7 +754,7 @@ def coin_search_stream(request, strategy_id):
                         status=r['status'],
                         is_notified=True
                     )
-                tg.send_alert(strategy.name, results, strategy_id=strategy.id)
+                tg.send_alert(strategy.name, results, strategy_id=strategy.id, exchange=exchange)
             except Exception as e:
                 print(f"자동 반복 스캔 중 텔레그램 발송 실패: {e}")
 
@@ -964,7 +964,7 @@ def alert_send_now(request, strategy_id):
     tickers = _get_tickers(exchange, vol_limit)
     results, tg_results = process_scan_and_alert(strategy, tickers, conditions)
 
-    res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id)
+    res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id, exchange=exchange)
     if res['ok']:
         return JsonResponse({'ok': True, 'matched': len(results), 'sent': len(tg_results)})
     return JsonResponse({'ok': False, 'error': res['error']})
@@ -1098,7 +1098,7 @@ def cron_scan(request):
             
             # 텔레그램 발송 (중복 방지 처리된 tg_results 사용)
             if tg.is_configured():
-                res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id)
+                res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id, exchange=setting.exchange)
                 print(f"[CRON_SCAN] Telegram send result: {res}")
                 if res.get('ok'):
                     sent_count += 1

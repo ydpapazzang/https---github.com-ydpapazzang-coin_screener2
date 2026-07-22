@@ -58,18 +58,43 @@ def shorten_url(url: str) -> str:
     return url
 
 
-def send_alert(strategy_name: str, results: list, strategy_id: int = None) -> dict:
+EXCHANGE_LABEL = {'upbit': '업비트', 'bithumb': '빗썸', 'kospi': '코스피'}
+
+
+def market_link(exchange: str, symbol: str) -> str:
+    """거래소별 종목 딥링크(유니버설 링크) 생성.
+    모바일에서 해당 앱이 설치돼 있으면 앱으로, 없으면 모바일 웹으로 연결된다.
+    - 업비트 → upbit.com (업비트 앱)
+    - 빗썸   → bithumb.com (빗썸 앱)
+    - 코스피 → m.stock.naver.com (네이버 증권/주식)
+    """
+    coin = symbol.replace('KRW-', '').strip()
+    if exchange == 'upbit':
+        market = symbol if symbol.startswith('KRW-') else f'KRW-{coin}'
+        return f'https://upbit.com/exchange?code=CRIX.UPBIT.{market}'
+    if exchange == 'bithumb':
+        return f'https://www.bithumb.com/react/trade/order/{coin}-KRW'
+    if exchange == 'kospi':
+        # 코스피는 symbol이 종목코드(예: 005930)
+        return f'https://m.stock.naver.com/domestic/stock/{symbol}/total'
+    return ''
+
+
+def send_alert(strategy_name: str, results: list, strategy_id: int = None, exchange: str = 'upbit') -> dict:
     """스크리닝 결과 알림 발송"""
+    ex_label = EXCHANGE_LABEL.get(exchange, exchange)
     if not results:
-        text = f"📊 <b>{strategy_name}</b>\n조건에 맞는 코인이 없습니다."
+        text = f"📊 <b>{strategy_name}</b>  <i>[{ex_label}]</i>\n조건에 맞는 코인이 없습니다."
     else:
-        lines = [f"📊 <b>{strategy_name}</b> — {len(results)}개 매칭\n"]
+        lines = [f"📊 <b>{strategy_name}</b>  <i>[{ex_label}]</i> — {len(results)}개 매칭\n"]
         for r in results[:20]:  # 최대 20개
             vol         = r.get('volume_display', '')
             status_icon = '🆕' if r.get('status') == 'new' else '🔁'
             price_str   = f"{r['price']:,.0f}" if r.get('price') else '-'
             name_str    = f"[{r.get('name')}] " if r.get('name') and r.get('name') != r['symbol'] else ""
-            lines.append(f"{status_icon} {name_str}<b>{r['symbol']}</b>  {price_str}원  거래대금 {vol}")
+            link        = market_link(exchange, r['symbol'])
+            symbol_html = f'<a href="{link}">{r["symbol"]}</a>' if link else f"<b>{r['symbol']}</b>"
+            lines.append(f"{status_icon} {name_str}{symbol_html}  {price_str}원  거래대금 {vol}")
         if len(results) > 20:
             lines.append(f"... 외 {len(results) - 20}개")
         text = "\n".join(lines)
