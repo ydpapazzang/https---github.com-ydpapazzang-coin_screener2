@@ -361,7 +361,7 @@ async function runBT() {
     sub.textContent = `${ticker.replace('KRW-','')} · 최근 ${count}봉${durationPart} · ${document.getElementById('bt-sell-mode').selectedOptions[0].text}`;
 
     try {
-        const res  = await fetch(`/strategy/${btStrategyId}/backtest/run/`, {
+        const res  = await secureFetch(`/strategy/${btStrategyId}/backtest/run/`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ticker, candle_count: count, sell_mode: sellMode, sell_param: param, fee: fee}),

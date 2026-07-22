@@ -1,3 +1,4 @@
+import os
 from django.test import TestCase
 from unittest.mock import patch
 import pandas as pd
@@ -110,7 +111,7 @@ class BacktestOffsetTestCase(TestCase):
         self.assertEqual(first_entry['entry_date'], expected_date, 
                          f"offset=1일 때는 급등 다음 날({expected_date})에 매수 진입해야 하지만 {first_entry['entry_date']}에 진입했습니다.")
 
-    @patch('pyupbit.get_ohlcv')
+    @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
     def test_realtime_screener_matches_offset(self, mock_get_ohlcv):
         """실시간 스크리너에서도 offset=1 조건이 정확하게 매칭 동작하는지 검증"""
         # index 298에서 급등하도록 데이터를 수정하여 MA가 아직 따라잡지 못하게 만듦
@@ -134,10 +135,10 @@ class BacktestOffsetTestCase(TestCase):
         )
         
         # 최신 시점(index 299) 기준 1봉 전(index 298)은 종가 150원, MA5 110원으로 조건 충족(True)되어야 함
-        is_match, details, price, volume, status = check_strategy('KRW-BTC', [cond])
+        is_match, details, price, volume, change_rate, status = check_strategy('KRW-BTC', [cond])
         self.assertTrue(is_match)
 
-    @patch('pyupbit.get_ohlcv')
+    @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
     def test_bollinger_dynamic_std(self, mock_get_ohlcv):
         """Condition 모델의 bb_std 값(1.0 vs 5.0)에 따라 볼린저 밴드 상단 값이 동적으로 계산되는지 검증"""
         # 50개 봉짜리 테스트 데이터 생성: 48개는 100원, 마지막 2개 봉(index 48, 49)은 120원
@@ -194,11 +195,11 @@ class BacktestOffsetTestCase(TestCase):
         
         # 실시간 스크리너 테스트
         # bb_std=1.0 조건 검사 -> True 기대
-        is_match_1, _, _, _, _ = check_strategy('KRW-BTC', [cond_std1])
+        is_match_1, _, _, _, _, _ = check_strategy('KRW-BTC', [cond_std1])
         self.assertTrue(is_match_1, "bb_std=1.0 일 때는 종가가 BB_UPPER를 돌파해야 합니다.")
         
         # bb_std=5.0 조건 검사 -> False 기대
-        is_match_5, _, _, _, _ = check_strategy('KRW-BTC', [cond_std5])
+        is_match_5, _, _, _, _, _ = check_strategy('KRW-BTC', [cond_std5])
         self.assertFalse(is_match_5, "bb_std=5.0 일 때는 종가가 BB_UPPER를 돌파하지 못해야 합니다.")
         
         # 백테스팅 엔진 테스트
@@ -212,7 +213,7 @@ class BacktestOffsetTestCase(TestCase):
         self.assertNotIn('error', res_bt5)
         self.assertEqual(len(res_bt5.get('trades', [])), 0)
 
-    @patch('pyupbit.get_ohlcv')
+    @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
     def test_ichimoku_indicators(self, mock_get_ohlcv):
         """일목균형표 지표들(전환선, 기준선, 선행스팬1, 선행스팬2, 후행스팬) 계산 및 스크리닝/백테스트 검증"""
         # 일목 선행스팬2 계산을 위해 최소 78봉 이상의 데이터가 필요하므로 100개 봉 데이터 생성
@@ -248,7 +249,7 @@ class BacktestOffsetTestCase(TestCase):
             right_param=26
         )
 
-        is_match, _, _, _, _ = check_strategy('KRW-BTC', [cond_tenkan_kijun])
+        is_match, _, _, _, _, _ = check_strategy('KRW-BTC', [cond_tenkan_kijun])
         self.assertTrue(is_match, "전환선(9)이 기준선(26)보다 크거나 같아야 합니다.")
 
         # 2. 선행스팬1 vs 선행스팬2 조건
@@ -262,7 +263,7 @@ class BacktestOffsetTestCase(TestCase):
             right_indicator='IC_SPAN_B',
             right_param=26
         )
-        is_match_span, _, _, _, _ = check_strategy('KRW-BTC', [cond_span])
+        is_match_span, _, _, _, _, _ = check_strategy('KRW-BTC', [cond_span])
         self.assertTrue(is_match_span)
 
         # 3. 후행스팬 vs 26봉 전 종가 조건
@@ -276,7 +277,7 @@ class BacktestOffsetTestCase(TestCase):
             right_indicator='IC_CHIKOU_REF',
             right_param=26
         )
-        is_match_chikou, _, _, _, _ = check_strategy('KRW-BTC', [cond_chikou])
+        is_match_chikou, _, _, _, _, _ = check_strategy('KRW-BTC', [cond_chikou])
         self.assertTrue(is_match_chikou)
 
         # 4. 백테스트 구동 확인
@@ -312,175 +313,22 @@ class BacktestOffsetTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['vol_limit'], 50)
 
-    def test_ai_ask_fallback_when_no_api_key(self):
-        """GROQ_API_KEY 환경변수가 없을 때 예시 폴백 응답이 반환되는지 확인"""
-        with patch.dict('os.environ', {'GROQ_API_KEY': ''}):
-            response = self.client.post('/ai/ask/', data={'prompt': '골든크로스 전략 알려줘'})
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertIn('response', data)
-            self.assertIn('API 키가 로컬 .env 또는 Vercel 환경 변수에 설정되어 있지 않습니다', data['response'])
-
-    def test_ai_ask_empty_prompt(self):
-        """빈 프롬프트 요청 시 400 에러를 반환하는지 확인"""
-        response = self.client.post('/ai/ask/', data={'prompt': ''})
-        self.assertEqual(response.status_code, 400)
-        data = response.json()
-        self.assertIn('error', data)
-
-    def test_ai_strategy_create_success(self):
-        """AI로 파싱한 JSON 데이터를 통해 실제 전략 및 조건식을 생성하는 API 검증"""
-        import json
-        payload = {
-            "create_strategy": {
-                "name": "골든크로스 전략",
-                "conditions": [
-                    {
-                        "timeframe": "day",
-                        "offset": 0,
-                        "left_indicator": "CLOSE",
-                        "left_param": 0,
-                        "operator": "gt",
-                        "right_indicator": "MA",
-                        "right_param": 20
-                    },
-                    {
-                        "timeframe": "minute60",
-                        "offset": 1,
-                        "left_indicator": "RSI",
-                        "left_param": 14,
-                        "operator": "lt",
-                        "right_indicator": "VAL",
-                        "right_param": 30
-                    }
-                ]
-            }
-        }
-        
-        response = self.client.post(
-            '/ai/strategy/create/',
-            data=json.dumps(payload),
-            content_type='application/json'
-        )
-        
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertTrue(data['ok'])
-        self.assertIn('strategy_id', data)
-        self.assertIn('redirect_url', data)
-        
-        # 데이터베이스 생성 확인
-        strategy = Strategy.objects.get(id=data['strategy_id'])
-        self.assertEqual(strategy.name, "골든크로스 전략")
-        
-        conditions = strategy.conditions.all().order_by('id')
-        self.assertEqual(len(conditions), 2)
-        
-        c1 = conditions[0]
-        self.assertEqual(c1.timeframe, "day")
-        self.assertEqual(c1.offset, 0)
-        self.assertEqual(c1.left_indicator, "CLOSE")
-        self.assertEqual(c1.left_param, 0)
-        self.assertEqual(c1.operator, "gt")
-        self.assertEqual(c1.right_indicator, "MA")
-        self.assertEqual(c1.right_param, 20)
-        
-        c2 = conditions[1]
-        self.assertEqual(c2.timeframe, "minute60")
-        self.assertEqual(c2.offset, 1)
-        self.assertEqual(c2.left_indicator, "RSI")
-        self.assertEqual(c2.left_param, 14)
-        self.assertEqual(c2.operator, "lt")
-        self.assertEqual(c2.right_indicator, "VAL")
-        self.assertEqual(c2.right_param, 30)
-
-    def test_ai_strategy_create_heikin_ashi(self):
-        """AI로 파싱한 Heikin Ashi 조건식을 통해 실제 전략 및 하이킨아시 조건이 잘 생성되는지 검증"""
-        import json
-        payload = {
-            "create_strategy": {
-                "name": "하이킨아시 추세 전략",
-                "conditions": [
-                    {
-                        "timeframe": "month",
-                        "offset": 0,
-                        "left_indicator": "HA_BULL_N",
-                        "left_param": 2,
-                        "operator": "is",
-                        "right_indicator": "VAL",
-                        "right_param": 0
-                    },
-                    {
-                        "timeframe": "week",
-                        "offset": 0,
-                        "left_indicator": "HA_BULL_N",
-                        "left_param": 3,
-                        "operator": "is",
-                        "right_indicator": "VAL",
-                        "right_param": 0
-                    }
-                ]
-            }
-        }
-        response = self.client.post(
-            '/ai/strategy/create/',
-            data=json.dumps(payload),
-            content_type='application/json'
-        )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertTrue(data['ok'])
-
-        # 데이터베이스 생성 확인
-        strategy = Strategy.objects.get(id=data['strategy_id'])
-        self.assertEqual(strategy.name, "하이킨아시 추세 전략")
-
-        conditions = strategy.conditions.all().order_by('id')
-        self.assertEqual(len(conditions), 2)
-
-        c1 = conditions[0]
-        self.assertEqual(c1.timeframe, "month")
-        self.assertEqual(c1.left_indicator, "HA_BULL_N")
-        self.assertEqual(c1.left_param, 2)
-        self.assertEqual(c1.operator, "is")
-
-        c2 = conditions[1]
-        self.assertEqual(c2.timeframe, "week")
-        self.assertEqual(c2.left_indicator, "HA_BULL_N")
-        self.assertEqual(c2.left_param, 3)
-        self.assertEqual(c2.operator, "is")
-
-
-    def test_ai_strategy_create_invalid_methods(self):
-        """GET 요청 등 부적절한 메소드로 전략 생성 API 접근 시 405 차단 확인"""
-        response = self.client.get('/ai/strategy/create/')
-        self.assertEqual(response.status_code, 405)
-        
-    def test_ai_strategy_create_invalid_data(self):
-        """빈 데이터 또는 잘못된 구조의 JSON 전송 시 400 반환 검증"""
-        import json
-        response = self.client.post(
-            '/ai/strategy/create/',
-            data=json.dumps({"invalid_key": "dummy"}),
-            content_type='application/json'
-        )
-        self.assertEqual(response.status_code, 400)
-
     def test_cron_scan_forbidden(self):
         """보안 토큰 또는 크론 헤더 없이 크론 경로 진입 시 403 차단 검증"""
         response = self.client.get('/cron/scan/')
         self.assertEqual(response.status_code, 403)
 
+    @patch.dict('os.environ', {'CRON_SECRET': 'test_cron_secret'})
     def test_cron_scan_success(self):
         """디버그 토큰을 전달하거나 Vercel Cron 헤더를 전달했을 때 크론 스캔이 성공적으로 수행되는지 검증"""
-        # 1. 헤더 전달을 통한 성공 검증
+        # 1. Vercel Cron 헤더를 통한 성공 검증
         response = self.client.get('/cron/scan/', HTTP_X_VERCEL_CRON='1')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])
         
         # 2. 디버그 쿼리 토큰을 통한 성공 검증
-        response = self.client.get('/cron/scan/?secret=wonii_cron_debug')
+        response = self.client.get('/cron/scan/?secret=test_cron_secret')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])
@@ -502,7 +350,7 @@ class BacktestOffsetTestCase(TestCase):
             result = shorten_url("https://my-screener-site.com/strategy/19/")
             self.assertEqual(result, "https://my-screener-site.com/strategy/19/")
 
-    @patch('pyupbit.get_ohlcv')
+    @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
     def test_volume_indicators(self, mock_get_ohlcv):
         """거래량 지표들(VOLUME, VOLUME_PREV, VOLUME_MA) 계산 및 스크리닝 검증"""
         dates = [datetime(2026, 1, 1) + timedelta(days=i) for i in range(10)]
@@ -540,7 +388,7 @@ class BacktestOffsetTestCase(TestCase):
         )
 
         from .engine import check_strategy
-        is_match, details, last_price, volume, status = check_strategy('KRW-BTC', [cond_prev])
+        is_match, details, last_price, volume, change_rate, status = check_strategy('KRW-BTC', [cond_prev])
         self.assertTrue(is_match)
 
         cond_prev.delete()
@@ -558,7 +406,7 @@ class BacktestOffsetTestCase(TestCase):
             bb_std=2.0
         )
 
-        is_match, details, last_price, volume, status = check_strategy('KRW-BTC', [cond_ma])
+        is_match, details, last_price, volume, change_rate, status = check_strategy('KRW-BTC', [cond_ma])
         self.assertTrue(is_match)
 
 
@@ -584,7 +432,6 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'screener/strategy_trading.html')
         self.assertContains(response, "Trading Strategy")
-        self.assertContains(response, "승률 65%")
 
     def test_save_risk_settings(self):
         # Saving risk settings via AJAX POST
@@ -726,8 +573,8 @@ class StrategyTradingViewsTestCase(TestCase):
 
         def side_effect(ticker, conditions):
             if ticker == 'KRW-BTC':
-                return True, ['골든크로스'], 50000.0, 1000000000.0, '진입 대기'
-            return False, [], 3000.0, 50000000.0, '진입 대기'
+                return True, ['골든크로스'], 50000.0, 1000000000.0, 0.0, '진입 대기'
+            return False, [], 3000.0, 50000000.0, 0.0, '진입 대기'
         mock_check_strategy.side_effect = side_effect
 
         response = self.client.get(f'/strategy/{self.strategy.id}/scan-count/?exchange=upbit&vol_limit=100')
@@ -745,169 +592,3 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(cached_data['results'][0]['price'], 50000.0)
         self.assertEqual(cached_data['results'][0]['details'], '골든크로스')
         self.assertEqual(cached_data['results'][0]['volume_display'], '10.0억')
-
-    def test_ai_strategy_add_conditions(self):
-        import json
-        payload = {
-            'strategy_id': self.strategy.id,
-            'create_strategy': {
-                'name': 'Dummy',
-                'conditions': [
-                    {
-                        'timeframe': 'day',
-                        'offset': 0,
-                        'left_indicator': 'CLOSE',
-                        'operator': 'gte',
-                        'right_indicator': 'MA',
-                        'right_param': 20
-                    }
-                ]
-            }
-        }
-        response = self.client.post(
-            '/ai/strategy/add-conditions/',
-            data=json.dumps(payload),
-            content_type='application/json'
-        )
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertTrue(data['ok'])
-        self.assertEqual(data['strategy_id'], self.strategy.id)
-        
-        # Verify conditions were added to strategy
-        conditions = self.strategy.conditions.all()
-        self.assertEqual(conditions.count(), 1)
-        c = conditions[0]
-        self.assertEqual(c.left_indicator, 'CLOSE')
-        self.assertEqual(c.right_indicator, 'MA')
-        self.assertEqual(c.right_param, 20)
-
-    @patch('requests.post')
-    def test_ai_ask_with_strategy_context(self, mock_post):
-        import json
-        import os
-        
-        # Mock requests.post response
-        mock_response = mock_post.return_value
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            'choices': [{
-                'message': {
-                    'content': '이 전략은 추세 추종 전략입니다.'
-                }
-            }]
-        }
-        
-        # Add a condition to strategy to ensure it gets formatted
-        Condition.objects.create(
-            strategy=self.strategy,
-            timeframe='day',
-            offset=0,
-            left_indicator='RSI',
-            left_param=14,
-            operator='lte',
-            right_indicator='VAL',
-            right_param=30
-        )
-        
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'mock_key'}):
-            payload = {
-                'prompt': '내 전략 분석해줘',
-                'strategy_id': self.strategy.id
-            }
-            response = self.client.post(
-                '/ai/ask/',
-                data=json.dumps(payload),
-                content_type='application/json'
-            )
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data['response'], '이 전략은 추세 추종 전략입니다.')
-            
-            # Check if payload to Groq has strategy conditions in content
-            args, kwargs = mock_post.call_args
-            system_msg = kwargs['json']['messages'][0]['content']
-            self.assertIn('[현재 전략 정보]', system_msg)
-            self.assertIn('RSI(14) lte VAL(30)', system_msg)
-
-    @patch('requests.post')
-    def test_ai_ask_with_coin_context(self, mock_post):
-        import json
-        import os
-        
-        mock_response = mock_post.return_value
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            'choices': [{
-                'message': {
-                    'content': 'NEAR 코인은 조건이 만족되었습니다. {"buttons": []}'
-                }
-            }]
-        }
-        
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'mock_key'}):
-            payload = {
-                'prompt': '이 코인 왜 잡혔어?',
-                'coin_symbol': 'KRW-NEAR',
-                'coin_price': '3000',
-                'coin_volume': '1.5억',
-                'coin_details': 'RSI(14): 28.5'
-            }
-            response = self.client.post(
-                '/ai/ask/',
-                data=json.dumps(payload),
-                content_type='application/json'
-            )
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertIn('NEAR 코인은 조건이 만족되었습니다.', data['response'])
-            
-            # Check if payload to Groq has coin details in content
-            args, kwargs = mock_post.call_args
-            system_msg = kwargs['json']['messages'][0]['content']
-            self.assertIn('[대상 코인 정보]', system_msg)
-            self.assertIn('KRW-NEAR', system_msg)
-            self.assertIn('RSI(14): 28.5', system_msg)
-
-    @patch('requests.post')
-    def test_ai_ask_without_strategy_context_lists_strategies(self, mock_post):
-        import json
-        import os
-        
-        mock_response = mock_post.return_value
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            'choices': [{
-                'message': {
-                    'content': '어떤 전략을 분석하고 싶으신가요?'
-                }
-            }]
-        }
-        
-        # Create second strategy to have multiple strategies in the list
-        Strategy.objects.create(name="Another Cool Strategy")
-        
-        with patch.dict('os.environ', {'GROQ_API_KEY': 'mock_key'}):
-            payload = {
-                'prompt': '내 전략 분석해줘'
-            }
-            response = self.client.post(
-                '/ai/ask/',
-                data=json.dumps(payload),
-                content_type='application/json'
-            )
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-            self.assertEqual(data['response'], '어떤 전략을 분석하고 싶으신가요?')
-            
-            # Check if payload to Groq has "보유 중인 전략 목록" and strategy names in system prompt
-            args, kwargs = mock_post.call_args
-            system_msg = kwargs['json']['messages'][0]['content']
-            self.assertIn('[보유 중인 전략 목록]', system_msg)
-            self.assertIn('Trading Strategy', system_msg)
-            self.assertIn('Another Cool Strategy', system_msg)
-
-
-
-
-

@@ -1,3 +1,4 @@
+import os
 from django.shortcuts import render, redirect, get_object_or_404
 from .models import Strategy, Condition, AlertSetting, AlertHistory
 from .engine import check_strategy
@@ -8,6 +9,10 @@ from django.contrib import messages
 from django.core.cache import cache
 from django.views.decorators.csrf import csrf_exempt
 import json
+
+# Cron 엔드포인트 보안: 환경변수에서 시크릿 로드 (하드코딩 제거)
+def _get_cron_secret():
+    return os.environ.get('CRON_SECRET', '')
 
 
 # ──────────────────────────────────────────
@@ -443,7 +448,8 @@ def cron_prefetch(request):
     import json
     
     is_cron = request.headers.get("x-vercel-cron") == "1"
-    is_debug = request.GET.get("secret") == "wonii_cron_debug"
+    cron_sec = _get_cron_secret()
+    is_debug = bool(cron_sec) and request.GET.get("secret") == cron_sec
     
     if not is_cron and not is_debug:
         return HttpResponseForbidden("Forbidden")
@@ -566,7 +572,8 @@ def cron_prefetch(request):
 
 @csrf_exempt
 def trigger_migrate(request):
-    if request.GET.get('secret') != 'wonii_cron_debug':
+    cron_sec = _get_cron_secret()
+    if not cron_sec or request.GET.get('secret') != cron_sec:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden("권한이 없습니다.")
         
@@ -581,7 +588,8 @@ def trigger_migrate(request):
 
 @csrf_exempt
 def trigger_debug(request):
-    if request.GET.get('secret') != 'wonii_cron_debug':
+    cron_sec = _get_cron_secret()
+    if not cron_sec or request.GET.get('secret') != cron_sec:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden("권한이 없습니다.")
         
@@ -836,7 +844,6 @@ def alert_get(request, strategy_id):
     return JsonResponse(data)
 
 
-@csrf_exempt
 @require_POST
 def alert_save(request, strategy_id):
     """POST: 알림 설정 저장"""
@@ -936,7 +943,6 @@ def process_scan_and_alert(strategy, tickers, conditions):
     return results, tg_results
 
 
-@csrf_exempt
 @require_POST
 def alert_send_now(request, strategy_id):
     """POST: 즉시 스캔 후 텔레그램 발송"""
@@ -1044,7 +1050,6 @@ def backtest_coins(request):
     return JsonResponse({'coins': MAJOR_COINS})
 
 
-@csrf_exempt
 @require_POST
 def backtest_run(request, strategy_id):
     """POST: 백테스팅 실행"""
@@ -1087,7 +1092,8 @@ def cron_scan(request):
     
     # 보안 검증: Vercel Cron이거나 디버그 시크릿이 있는 경우만 허용
     is_vercel_cron = request.headers.get('x-vercel-cron') == '1'
-    is_debug = request.GET.get('secret') == 'wonii_cron_debug'
+    cron_sec = _get_cron_secret()
+    is_debug = bool(cron_sec) and request.GET.get('secret') == cron_sec
     is_force = request.GET.get('force') == 'true'
     
     print(f"[CRON_SCAN] Triggered. is_vercel_cron={is_vercel_cron}, is_debug={is_debug}, is_force={is_force}")
@@ -1218,7 +1224,6 @@ def strategy_trading(request, strategy_id=None):
     })
 
 
-@csrf_exempt
 @require_POST
 def save_risk_settings(request, strategy_id):
     strategy = get_object_or_404(Strategy, id=strategy_id)
@@ -1237,7 +1242,6 @@ def save_risk_settings(request, strategy_id):
         return JsonResponse({'ok': False, 'error': str(e)}, status=400)
 
 
-@csrf_exempt
 @require_POST
 def strategy_rename(request, strategy_id):
     strategy = get_object_or_404(Strategy, id=strategy_id)

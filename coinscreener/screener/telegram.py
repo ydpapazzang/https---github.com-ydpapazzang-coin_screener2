@@ -1,5 +1,6 @@
 """텔레그램 봇 유틸리티"""
 import os
+import html as _html
 import requests
 from urllib.parse import quote
 
@@ -49,7 +50,7 @@ def send_message(text: str) -> dict:
 def shorten_url(url: str) -> str:
     """TinyURL API를 사용해 긴 웹사이트 주소를 짧은 단축 URL로 변환 (실패 시 원본 URL로 안전 폴백)"""
     try:
-        r = requests.get(f"https://tinyurl.com/api-create.php?url={url}", timeout=5)
+        r = requests.get(f"https://tinyurl.com/api-create.php?url={quote(url, safe='')}", timeout=5)
         if r.status_code == 200:
             shorturl = r.text.strip()
             if shorturl.startswith("http"):
@@ -108,17 +109,22 @@ def send_alert(strategy_name: str, results: list, strategy_id: int = None, excha
     ex_label = EXCHANGE_LABEL.get(exchange, exchange)
     site_url = _site_url()
 
+    # 동적 텍스트 HTML 이스케이프 (인젝션 방어)
+    safe_name = _html.escape(strategy_name)
+
     if not results:
-        text = f"📊 <b>{strategy_name}</b>  <i>[{ex_label}]</i>\n조건에 맞는 코인이 없습니다."
+        text = f"📊 <b>{safe_name}</b>  <i>[{ex_label}]</i>\n조건에 맞는 코인이 없습니다."
     else:
-        lines = [f"📊 <b>{strategy_name}</b>  <i>[{ex_label}]</i> — {len(results)}개 매칭\n"]
+        lines = [f"📊 <b>{safe_name}</b>  <i>[{ex_label}]</i> — {len(results)}개 매칭\n"]
         for r in results[:20]:  # 최대 20개
             vol         = r.get('volume_display', '')
             status_icon = '🆕' if r.get('status') == 'new' else '🔁'
             price_str   = f"{r['price']:,.0f}" if r.get('price') else '-'
-            name_str    = f"[{r.get('name')}] " if r.get('name') and r.get('name') != r['symbol'] else ""
+            raw_name    = r.get('name', '')
+            name_str    = f"[{_html.escape(raw_name)}] " if raw_name and raw_name != r['symbol'] else ""
             link        = _symbol_link(exchange, r['symbol'], site_url)
-            symbol_html = f'<a href="{link}">{r["symbol"]}</a>' if link else f"<b>{r['symbol']}</b>"
+            safe_symbol = _html.escape(r['symbol'])
+            symbol_html = f'<a href="{link}">{safe_symbol}</a>' if link else f"<b>{safe_symbol}</b>"
             lines.append(f"{status_icon} {name_str}{symbol_html}  {price_str}원  거래대금 {vol}")
         if len(results) > 20:
             lines.append(f"... 외 {len(results) - 20}개")

@@ -18,6 +18,16 @@
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+        @view-transition { navigation: auto; }
+        @keyframes _vt-out {
+            to { opacity: 0; transform: translateY(-6px) scale(0.99); }
+        }
+        @keyframes _vt-in {
+            from { opacity: 0; transform: translateY(10px) scale(0.99); }
+        }
+        ::view-transition-old(root) { animation: 180ms ease-in _vt-out; }
+        ::view-transition-new(root) { animation: 240ms cubic-bezier(0.2, 0, 0, 1) _vt-in; }
+
         body {
             background: var(--bg-color);
             color: var(--text-primary);

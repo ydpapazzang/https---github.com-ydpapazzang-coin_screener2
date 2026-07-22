@@ -250,6 +250,15 @@
     .result-search-input::placeholder {
         color: var(--text-secondary);
     }
+
+    /* 카드 리스트 정렬 시 부드러운 재배치 */
+    @keyframes _card-in {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .coin-card.resort {
+        animation: _card-in 0.18s cubic-bezier(0.2, 0, 0, 1) both;
+    }
 </style>
 {% endblock %}
 
@@ -287,15 +296,8 @@
 
 <!-- List Controls -->
 <div class="list-controls">
-    <div class="toggle-wrap">
-        <div class="toggle-icon">
-            <svg viewBox="0 0 24 24"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>
-        </div>
-        이탈 종목 숨기기
-    </div>
-    <div class="stats">
-        포착: {{ results|length }} 이탈: 0
-    </div>
+    <div class="stats">포착: {{ results|length }}개</div>
+    <div style="font-size:12px; color:var(--text-secondary);">{{ exchange|default:"업비트" }}</div>
 </div>
 
 <!-- Coin List -->
@@ -376,7 +378,8 @@
             remainingSeconds--;
             if (remainingSeconds <= 0) {
                 clearInterval(autoScanTimer);
-                window.location.href = `/strategy/${strategyId}/search/?refresh=1`;
+                const ex = "{{ request.GET.exchange|default:'upbit' }}";
+                window.location.href = `/strategy/${strategyId}/search/?exchange=${ex}&refresh=1`;
             } else {
                 updateTimerText();
             }
@@ -429,22 +432,15 @@
             return 0;
         });
 
-        // DOM 재정렬 및 순위(rank) 업데이트
+        // DOM 재정렬 및 순위(rank) 업데이트 + 등장 애니메이션
         cards.forEach((card, index) => {
-            // 카드가 삭제되지 않고 위치만 이동하도록 함
-            // 단, DOM 구조상 card 다음에 card-actions 가 오므로 형제 요소를 함께 이동시켜야 함
-            const actionCard = card.nextElementSibling;
+            card.classList.remove('resort');
             list.appendChild(card);
-            if (actionCard && actionCard.classList.contains('card-actions')) {
-                list.appendChild(actionCard);
-            }
             card.querySelector('.rank').textContent = index + 1;
-        });
-        
-        Array.from(list.children).forEach(item => {
-            if (item.classList.contains('coin-card')) {
-                list.appendChild(item);
-            }
+            // stagger 효과: 순서대로 약간의 딜레이를 두고 등장
+            card.style.animationDelay = (index * 18) + 'ms';
+            void card.offsetWidth; // reflow 강제 (animation 재실행)
+            card.classList.add('resort');
         });
     }
 

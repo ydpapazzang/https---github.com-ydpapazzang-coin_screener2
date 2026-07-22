@@ -194,6 +194,28 @@
         </nav>
         {% endblock %}
     </div>
+    {% csrf_token %}
+    <script>
+    /* ──── CSRF Token Helper ──── */
+    function getCSRFToken() {
+        // 1) 쿠키에서 읽기
+        var match = document.cookie.match(/csrftoken=([^;]+)/);
+        if (match) return match[1];
+        // 2) hidden input에서 읽기
+        var el = document.querySelector('[name=csrfmiddlewaretoken]');
+        return el ? el.value : '';
+    }
+
+    // fetch() wrapper: POST 요청 시 CSRF 토큰 자동 포함
+    function secureFetch(url, options) {
+        options = options || {};
+        options.headers = options.headers || {};
+        if (!options.headers['X-CSRFToken']) {
+            options.headers['X-CSRFToken'] = getCSRFToken();
+        }
+        return fetch(url, options);
+    }
+    </script>
 
     {% block extra_js %}{% endblock %}
     <script>

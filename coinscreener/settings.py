@@ -14,7 +14,7 @@ SECRET_KEY = os.environ.get(
     'django-insecure-local-dev-only-change-in-production'
 )
 
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.vercel.app').split(',')
 
@@ -109,9 +109,3 @@ STATIC_URL = 'static/'
 # Vercel 빌드 시 정적 파일들을 한곳에 모아 서빙할 수 있도록 경로 지정
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# 캐시 설정 (기본 로컬 메모리 캐시)
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-    }
-}

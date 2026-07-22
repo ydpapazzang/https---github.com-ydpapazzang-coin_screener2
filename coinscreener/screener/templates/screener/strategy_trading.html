@@ -620,9 +620,9 @@
         el.classList.toggle('on');
         const enabled = el.classList.contains('on');
         
-        fetch('{% url "alert_save" strategy.id %}', {
+        secureFetch('{% url "alert_save" strategy.id %}', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled: enabled })
         });
     }
@@ -647,9 +647,9 @@
     function saveAlertSettings() {
         const ex = document.querySelector('.exchange-chip.on').dataset.val;
         const tg = document.querySelector('.toggle-switch').classList.contains('on');
-        fetch('{% url "alert_save" strategy.id %}', {
+        secureFetch('{% url "alert_save" strategy.id %}', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled: tg, exchange: ex, vol_limit: 0 })
         });
     }
@@ -666,9 +666,9 @@
         const curr = span.textContent;
         const newName = prompt('전략 이름을 변경합니다.', curr);
         if (newName && newName.trim() && newName !== curr) {
-            fetch("{% url 'strategy_rename' strategy.id %}", {
+            secureFetch("{% url 'strategy_rename' strategy.id %}", {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: newName.trim() })
             }).then(res=>res.json()).then(data=>{
                 if(data.ok) span.textContent = newName.trim();

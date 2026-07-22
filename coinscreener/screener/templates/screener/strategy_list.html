@@ -339,12 +339,27 @@
         document.querySelectorAll('.bottom-sheet').forEach(s => s.classList.remove('open'));
     }
 
+    const EX_LABELS = { upbit: '업비트', bithumb: '빗썸', kospi: '코스피' };
+
     function selectEx(val, text) {
         if(!targetStrategyId) return;
         document.getElementById('ex-val-' + targetStrategyId).value = val;
         document.getElementById('extf-label-' + targetStrategyId).textContent = text;
+        localStorage.setItem('strategy_exchange_' + targetStrategyId, val);
         closeSheet();
     }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('[id^="ex-val-"]').forEach(input => {
+            const id = input.id.replace('ex-val-', '');
+            const saved = localStorage.getItem('strategy_exchange_' + id);
+            if (saved && EX_LABELS[saved]) {
+                input.value = saved;
+                const label = document.getElementById('extf-label-' + id);
+                if (label) label.textContent = EX_LABELS[saved];
+            }
+        });
+    });
 
     /* ── Search & Scan ── */
     function runSearch(id) {
@@ -435,7 +450,7 @@
             send_test: document.getElementById('alert-test').checked
         };
         try {
-            const res = await fetch(`/strategy/${currentAlertId}/alert/save/`, {
+            const res = await secureFetch(`/strategy/${currentAlertId}/alert/save/`, {
                 method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
             });
             const data = await res.json();
@@ -455,7 +470,7 @@
         btn.textContent = '발송 중...';
         const body = { exchange: document.getElementById('alert-exchange').value, vol_limit: 0 };
         try {
-            const res = await fetch(`/strategy/${currentAlertId}/alert/send-now/`, {
+            const res = await secureFetch(`/strategy/${currentAlertId}/alert/send-now/`, {
                 method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
             });
             const data = await res.json();
