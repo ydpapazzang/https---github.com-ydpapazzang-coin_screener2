@@ -30,9 +30,7 @@ urlpatterns = [
     # 백테스팅 API
     path('backtest/coins/',                          views.backtest_coins, name='backtest_coins'),
     path('strategy/<int:strategy_id>/backtest/run/', views.backtest_run,   name='backtest_run'),
-    path('cron/scan',                                views.cron_scan,      name='cron_scan_no_slash'),
     path('cron/scan/',                               views.cron_scan,      name='cron_scan'),
-    path('cron/scan-debug',                          views.cron_scan,      name='cron_scan_debug_no_slash'),
     path('cron/scan-debug/',                         views.cron_scan,      name='cron_scan_debug'),
     path('cron/prefetch/',                           views.cron_prefetch,  name='cron_prefetch'),
     path('cron/migrate/',                            views.trigger_migrate,name='trigger_migrate'),

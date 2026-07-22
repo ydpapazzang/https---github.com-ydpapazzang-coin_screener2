@@ -8,7 +8,10 @@ import random
 import datetime
 import FinanceDataReader as fdr
 from django.core.cache import cache
+import logging
+import traceback
 
+logger = logging.getLogger(__name__)
 
 def _safe_float(v):
     if v is None:
@@ -53,7 +56,7 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
                 cache.set(cache_key, df.tail(count), 180)
                 return df.tail(count)
     except Exception as e:
-        print(f"OHLCVCache read error for {ticker}: {e}")
+        logger.error(f"OHLCVCache read error for {ticker}: {e}", exc_info=True)
 
     # 사용자 요청에 따라 실시간 외부 API(업비트, FDR) 조회 통신을 전면 차단하고 오직 캐시만 의존하도록 변경
     # (실시간 통신 대기로 인한 스크리닝 지연 완벽 차단)
@@ -376,59 +379,31 @@ def check_strategy(ticker, conditions, current_price=None):
         return True, details, _safe_float(last_price), _safe_float(volume), _safe_float(change_rate), status
 
     except Exception as e:
-        print(f"Error checking {ticker}: {e}")
+        logger.error(f"[Engine] Exception in check_strategy: {e}", exc_info=True)
         return False, [], None, 0, 0.0, None
 
 
 def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
     """
     DataFrame에서 특정 시점(offset)의 지표값을 반환.
-    offset=0: 가장 최근 봉, offset=1: 1봉 전
+    O(1) 캐싱을 적용하여 백테스팅 시 반복 연산을 최소화.
     """
     target_idx = -1 - offset
-
     if abs(target_idx) > len(df):
         return None
 
-    if indicator_type == 'MA':
-        if param < 1: return None
-        ma = df['close'].rolling(window=param).mean()
-        val = ma.iloc[target_idx]
-        return None if pd.isna(val) else float(val)
-
-    elif indicator_type == 'EMA':
-        if param < 1: return None
-        ema = df['close'].ewm(span=param, adjust=False).mean()
-        val = ema.iloc[target_idx]
-        return None if pd.isna(val) else float(val)
-
-    elif indicator_type == 'WMA':
-        if param < 1: return None
-        wma = calculate_wma(df['close'], period=param)
-        val = wma.iloc[target_idx]
-        return None if pd.isna(val) else float(val)
-
-    elif indicator_type == 'RSI':
-        if param < 1: return None
-        rsi = calculate_rsi(df, period=param)
-        val = rsi.iloc[target_idx]
-        return None if pd.isna(val) else float(val)
-
-    elif indicator_type in ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER'):
-        if param < 1: return None
-        std = bb_std if bb_std is not None else 2.0
-        bb = calculate_bollinger(df['close'], period=param, std=std)
-        val = bb[indicator_type].iloc[target_idx]
-        return None if pd.isna(val) else float(val)
-
-    elif indicator_type == 'VAL':
+    if indicator_type == 'VAL':
         return float(param)
 
-    elif indicator_type == 'CLOSE':
+    if indicator_type == 'CLOSE':
         val = df['close'].iloc[target_idx]
         return None if pd.isna(val) else float(val)
+        
+    if indicator_type == 'VOLUME':
+        val = df['volume'].iloc[target_idx]
+        return None if pd.isna(val) else float(val)
 
-    elif indicator_type == 'CHANGE_RATE':
+    if indicator_type == 'CHANGE_RATE':
         prev_idx = target_idx - 1
         if abs(prev_idx) > len(df) or len(df) < 2:
             return None
@@ -437,12 +412,8 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
         if prev_close == 0:
             return None
         return float((curr_close - prev_close) / prev_close * 100)
-
-    elif indicator_type == 'VOLUME':
-        val = df['volume'].iloc[target_idx]
-        return None if pd.isna(val) else float(val)
-
-    elif indicator_type == 'VOLUME_PREV':
+        
+    if indicator_type == 'VOLUME_PREV':
         prev_idx = target_idx - 1
         if abs(prev_idx) > len(df): return None
         val = df['volume'].iloc[prev_idx]
@@ -450,7 +421,7 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
         val = val * multiplier
         return None if pd.isna(val) else float(val)
 
-    elif indicator_type == 'VOLUME_MA':
+    if indicator_type == 'VOLUME_MA':
         if param < 1: return None
         start_idx = target_idx - param
         end_idx = target_idx
@@ -462,73 +433,74 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
         val = avg_val * multiplier
         return None if pd.isna(val) else float(val)
 
-    elif indicator_type == 'IC_TENKAN':
-        p = max(1, param)
-        high_val = df['high'].rolling(window=p).max()
-        low_val = df['low'].rolling(window=p).min()
-        val = ((high_val + low_val) / 2).iloc[target_idx]
-        return None if pd.isna(val) else float(val)
+    # O(1) DataFrame 컬럼 캐싱
+    col_name = f"{indicator_type}_{param}_{bb_std}"
+    
+    if col_name not in df.columns:
+        if indicator_type == 'MA':
+            if param < 1: return None
+            df[col_name] = df['close'].rolling(window=param).mean()
 
-    elif indicator_type == 'IC_KIJUN':
-        p = max(1, param)
-        high_val = df['high'].rolling(window=p).max()
-        low_val = df['low'].rolling(window=p).min()
-        val = ((high_val + low_val) / 2).iloc[target_idx]
-        return None if pd.isna(val) else float(val)
+        elif indicator_type == 'EMA':
+            if param < 1: return None
+            df[col_name] = df['close'].ewm(span=param, adjust=False).mean()
 
-    elif indicator_type == 'IC_SPAN_A':
-        high_9 = df['high'].rolling(window=9).max()
-        low_9 = df['low'].rolling(window=9).min()
-        tenkan = (high_9 + low_9) / 2
+        elif indicator_type == 'WMA':
+            if param < 1: return None
+            df[col_name] = calculate_wma(df['close'], period=param)
 
-        high_26 = df['high'].rolling(window=26).max()
-        low_26 = df['low'].rolling(window=26).min()
-        kijun = (high_26 + low_26) / 2
+        elif indicator_type == 'RSI':
+            if param < 1: return None
+            df[col_name] = calculate_rsi(df, period=param)
 
-        span_a = (tenkan + kijun) / 2
-        span_a_shifted = span_a.shift(param)
-        val = span_a_shifted.iloc[target_idx]
-        return None if pd.isna(val) else float(val)
+        elif indicator_type in ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER'):
+            if param < 1: return None
+            std = bb_std if bb_std is not None else 2.0
+            bb = calculate_bollinger(df['close'], period=param, std=std)
+            df['BB_UPPER_{}_{}'.format(param, bb_std)] = bb['BB_UPPER']
+            df['BB_MIDDLE_{}_{}'.format(param, bb_std)] = bb['BB_MIDDLE']
+            df['BB_LOWER_{}_{}'.format(param, bb_std)] = bb['BB_LOWER']
+            if col_name not in df.columns:
+                return None
 
-    elif indicator_type == 'IC_SPAN_B':
-        high_52 = df['high'].rolling(window=52).max()
-        low_52 = df['low'].rolling(window=52).min()
-        span_b = (high_52 + low_52) / 2
-        span_b_shifted = span_b.shift(param)
-        val = span_b_shifted.iloc[target_idx]
-        return None if pd.isna(val) else float(val)
+        elif indicator_type == 'IC_TENKAN':
+            p = max(1, param)
+            df[col_name] = (df['high'].rolling(window=p).max() + df['low'].rolling(window=p).min()) / 2
 
-    elif indicator_type in ('IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM'):
-        high_9 = df['high'].rolling(window=9).max()
-        low_9 = df['low'].rolling(window=9).min()
-        tenkan = (high_9 + low_9) / 2
+        elif indicator_type == 'IC_KIJUN':
+            p = max(1, param)
+            df[col_name] = (df['high'].rolling(window=p).max() + df['low'].rolling(window=p).min()) / 2
 
-        high_26 = df['high'].rolling(window=26).max()
-        low_26 = df['low'].rolling(window=26).min()
-        kijun = (high_26 + low_26) / 2
+        elif indicator_type == 'IC_SPAN_A':
+            tenkan = (df['high'].rolling(window=9).max() + df['low'].rolling(window=9).min()) / 2
+            kijun = (df['high'].rolling(window=26).max() + df['low'].rolling(window=26).min()) / 2
+            span_a = (tenkan + kijun) / 2
+            df[col_name] = span_a.shift(param)
 
-        span_a = (tenkan + kijun) / 2
-        span_a_shifted = span_a.shift(param)
+        elif indicator_type == 'IC_SPAN_B':
+            span_b = (df['high'].rolling(window=52).max() + df['low'].rolling(window=52).min()) / 2
+            df[col_name] = span_b.shift(param)
 
-        high_52 = df['high'].rolling(window=52).max()
-        low_52 = df['low'].rolling(window=52).min()
-        span_b = (high_52 + low_52) / 2
-        span_b_shifted = span_b.shift(param)
+        elif indicator_type in ('IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM'):
+            tenkan = (df['high'].rolling(window=9).max() + df['low'].rolling(window=9).min()) / 2
+            kijun = (df['high'].rolling(window=26).max() + df['low'].rolling(window=26).min()) / 2
+            span_a = (tenkan + kijun) / 2
+            span_a_shifted = span_a.shift(param)
 
-        if indicator_type == 'IC_CLOUD_TOP':
-            cloud = np.maximum(span_a_shifted, span_b_shifted)
-        else:
-            cloud = np.minimum(span_a_shifted, span_b_shifted)
+            span_b = (df['high'].rolling(window=52).max() + df['low'].rolling(window=52).min()) / 2
+            span_b_shifted = span_b.shift(param)
             
-        val = cloud.iloc[target_idx]
-        return None if pd.isna(val) else float(val)
+            df['IC_CLOUD_TOP_{}_{}'.format(param, bb_std)] = np.maximum(span_a_shifted, span_b_shifted)
+            df['IC_CLOUD_BOTTOM_{}_{}'.format(param, bb_std)] = np.minimum(span_a_shifted, span_b_shifted)
 
-    elif indicator_type == 'IC_CHIKOU':
-        val = df['close'].iloc[target_idx]
-        return None if pd.isna(val) else float(val)
+        elif indicator_type == 'IC_CHIKOU':
+            df[col_name] = df['close']
 
-    elif indicator_type == 'IC_CHIKOU_REF':
-        val = df['close'].iloc[target_idx - param] if abs(target_idx - param) <= len(df) else None
-        return None if pd.isna(val) else float(val)
+        elif indicator_type == 'IC_CHIKOU_REF':
+            df[col_name] = df['close'].shift(param)
+            
+        else:
+            return None
 
-    return None
+    val = df[col_name].iloc[target_idx]
+    return None if pd.isna(val) else float(val)

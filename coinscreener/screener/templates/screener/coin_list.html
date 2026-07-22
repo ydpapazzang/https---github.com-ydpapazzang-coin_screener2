@@ -432,45 +432,55 @@
             return 0;
         });
 
-        // DOM 재정렬 및 순위(rank) 업데이트 + 등장 애니메이션
+        // DOM 재정렬 및 순위(rank) 업데이트 + 등장 애니메이션 (DocumentFragment 적용)
+        const fragment = document.createDocumentFragment();
         cards.forEach((card, index) => {
             card.classList.remove('resort');
-            list.appendChild(card);
             card.querySelector('.rank').textContent = index + 1;
             // stagger 효과: 순서대로 약간의 딜레이를 두고 등장
             card.style.animationDelay = (index * 18) + 'ms';
-            void card.offsetWidth; // reflow 강제 (animation 재실행)
+            fragment.appendChild(card);
+        });
+        list.appendChild(fragment);
+
+        // reflow 강제 (animation 재실행)
+        cards.forEach(card => {
+            void card.offsetWidth;
             card.classList.add('resort');
         });
     }
 
+    let filterTimeout;
     function filterResults() {
-        const query = document.getElementById('result-search').value.toLowerCase();
-        const cards = document.querySelectorAll('.coin-card');
-        let visibleCount = 0;
-        
-        cards.forEach(card => {
-            const name = card.dataset.name.toLowerCase();
-            const symbolEl = card.querySelector('.coin-symbol');
-            const symbol = symbolEl ? symbolEl.textContent.toLowerCase() : '';
+        clearTimeout(filterTimeout);
+        filterTimeout = setTimeout(() => {
+            const query = document.getElementById('result-search').value.toLowerCase();
+            const cards = document.querySelectorAll('.coin-card');
+            let visibleCount = 0;
             
-            if (name.includes(query) || symbol.includes(query)) {
-                card.style.display = 'flex';
-                visibleCount++;
-            } else {
-                card.style.display = 'none';
+            cards.forEach(card => {
+                const name = card.dataset.name.toLowerCase();
+                const symbolEl = card.querySelector('.coin-symbol');
+                const symbol = symbolEl ? symbolEl.textContent.toLowerCase() : '';
+                
+                if (name.includes(query) || symbol.includes(query)) {
+                    card.style.display = 'flex';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            
+            // Update stats
+            const statsEl = document.querySelector('.list-controls .stats');
+            if (statsEl) {
+                if (query) {
+                    statsEl.textContent = `검색결과: ${visibleCount} / 포착: {{ results|length }}`;
+                } else {
+                    statsEl.textContent = `포착: {{ results|length }} 이탈: 0`;
+                }
             }
-        });
-        
-        // Update stats
-        const statsEl = document.querySelector('.list-controls .stats');
-        if (statsEl) {
-            if (query) {
-                statsEl.textContent = `검색결과: ${visibleCount} / 포착: {{ results|length }}`;
-            } else {
-                statsEl.textContent = `포착: {{ results|length }} 이탈: 0`;
-            }
-        }
+        }, 200);
     }
 </script>
 {% endblock %}

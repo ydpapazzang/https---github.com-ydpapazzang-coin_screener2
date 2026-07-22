@@ -545,8 +545,8 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(c.right_param, 20)
         self.assertEqual(c.bb_std, 2.0)
 
-    @patch('coinscreener.screener.views._get_tickers')
-    @patch('coinscreener.screener.views.check_strategy')
+    @patch('coinscreener.screener.views.cron_views._get_tickers')
+    @patch('coinscreener.screener.views.cron_views.check_strategy')
     def test_strategy_scan_count_no_conditions(self, mock_check_strategy, mock_get_tickers):
         response = self.client.get(f'/strategy/{self.strategy.id}/scan-count/')
         self.assertEqual(response.status_code, 200)
@@ -555,11 +555,12 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(data['count'], 0)
         mock_get_tickers.assert_not_called()
 
-    @patch('coinscreener.screener.views._get_tickers')
-    @patch('coinscreener.screener.views.check_strategy')
-    def test_strategy_scan_count_with_conditions(self, mock_check_strategy, mock_get_tickers):
-        # Create a dummy condition
-        Condition.objects.create(
+    @patch('coinscreener.screener.views.cron_views._get_tickers')
+    @patch('coinscreener.screener.views.cron_views.check_strategy')
+    @patch('coinscreener.screener.views.cron_views._bulk_prefetch_ohlcv')
+    def test_strategy_scan_count_with_conditions(self, mock_bulk, mock_check_strategy, mock_get_tickers):
+        # 1. 조건 추가
+        cond_ma = Condition.objects.create(
             strategy=self.strategy,
             timeframe='day',
             offset=0,

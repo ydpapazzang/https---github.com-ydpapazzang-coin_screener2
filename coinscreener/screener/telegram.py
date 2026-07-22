@@ -3,6 +3,9 @@ import os
 import html as _html
 import requests
 from urllib.parse import quote
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _get_token() -> str:
@@ -44,6 +47,7 @@ def send_message(text: str) -> dict:
     except requests.exceptions.ConnectionError:
         return {'ok': False, 'error': '텔레그램 API 연결 실패 — 네트워크를 확인하세요'}
     except Exception as e:
+        logger.error(f"[Telegram] Failed to send message: {e}", exc_info=True)
         return {'ok': False, 'error': str(e)}
 
 
@@ -55,7 +59,8 @@ def shorten_url(url: str) -> str:
             shorturl = r.text.strip()
             if shorturl.startswith("http"):
                 return shorturl
-    except Exception:
+    except Exception as e:
+        logger.warning(f"TinyURL shortening failed for {url}: {e}")
         pass
     return url
 
