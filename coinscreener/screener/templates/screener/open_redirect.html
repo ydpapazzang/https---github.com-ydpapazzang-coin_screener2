@@ -23,11 +23,10 @@
 </head>
 <body>
     <div class="wrap">
-        <div class="spinner"></div>
         <div class="sym">{{ symbol }}</div>
-        <div class="sub">앱으로 여는 중… 열리지 않으면 아래 버튼을 눌러주세요.</div>
-        <button class="btn btn-app" onclick="openApp()">앱으로 열기</button>
-        <button class="btn btn-web" onclick="openViaChrome()">앱이 안 열리면 여기 (Chrome)</button>
+        <div class="sub">어떻게 열까요?</div>
+        <button class="btn btn-app" onclick="openApp()">📱 앱으로 열기</button>
+        <button class="btn btn-web" onclick="openViaChrome()">🌐 Chrome으로 열기</button>
         <a class="btn btn-web" href="{{ web_url }}">모바일 웹으로 열기</a>
     </div>
 
@@ -61,9 +60,7 @@
                 window.location.href = WEB;
             }
         }
-
-        // 자동 시도 (즉시)
-        openApp();
+        // 자동 리다이렉트 없음 — 사용자가 버튼을 선택한다.
     </script>
 </body>
 </html>
