@@ -1267,16 +1267,11 @@ def cron_scan(request):
             processed_count += 1
             
             # 티커 수집 (설정된 vol_limit 사용, 0인 경우 전체 코인)
+            # 스캔은 OHLCVCache(사전 캐시) 기반이라 실시간 API 호출이 없어 전체 스캔도 빠름.
+            # 과거 30개 강제 제한은 온라인 검색(전체)과 결과가 달라지는 원인이었으므로 제거하고
+            # 사용자가 설정한 vol_limit을 그대로 사용해 온라인 결과와 일치시킴.
             vol_limit = setting.vol_limit
-            
-            # Vercel 10초 실행 시간제한(Timeout) 방지를 위한 안전 장치 (30개 초과 시 자동으로 30개로 제한)
-            safe_limit = 30
-            if not vol_limit or vol_limit > safe_limit:
-                warn_msg = f"전략 '{strategy.name}': Vercel Hobby 실행시간 제한(10초) 방지를 위해 스캔 코인 수를 {vol_limit if vol_limit else '전체'}개에서 {safe_limit}개로 자동 제한합니다."
-                print(f"[CRON_SCAN] {warn_msg}")
-                warnings.append(warn_msg)
-                vol_limit = safe_limit
-                
+
             tickers = _get_tickers(setting.exchange, vol_limit)
             print(f"[CRON_SCAN] Tickers count for {setting.exchange} (limit {vol_limit}): {len(tickers)}")
             
