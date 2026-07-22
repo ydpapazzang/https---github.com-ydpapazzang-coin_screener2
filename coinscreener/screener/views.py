@@ -971,167 +971,6 @@ def alert_send_now(request, strategy_id):
 
 
 # ──────────────────────────────────────────
-# 4-B. 커스텀 알림 (알림 탭)
-# ──────────────────────────────────────────
-
-from .models import CustomAlert
-
-
-def custom_alert_list(request):
-    """알림 탭: 내 커스텀 알림 목록"""
-    alerts = CustomAlert.objects.select_related('strategy').all()
-    return render(request, 'screener/custom_alert_list.html', {
-        'alerts': alerts,
-        'tg_configured': tg.is_configured(),
-        'active_nav': 'alert',
-    })
-
-
-def custom_alert_form(request, alert_id=None):
-    """커스텀 알림 생성/수정 폼"""
-    alert = get_object_or_404(CustomAlert, id=alert_id) if alert_id else None
-
-    if request.method == 'POST':
-        strategy_id = request.POST.get('strategy_id')
-        strategy = get_object_or_404(Strategy, id=strategy_id)
-        exchange = request.POST.get('exchange', 'upbit')
-
-        valid_intervals = {c[0] for c in CustomAlert.INTERVAL_CHOICES}
-        valid_dedup     = {c[0] for c in CustomAlert.DEDUP_CHOICES}
-        try:
-            interval_min = int(request.POST.get('interval_min', 15))
-        except (ValueError, TypeError):
-            interval_min = 15
-        if interval_min not in valid_intervals:
-            interval_min = 15
-        try:
-            dedup_min = int(request.POST.get('dedup_min', 60))
-        except (ValueError, TypeError):
-            dedup_min = 60
-        if dedup_min not in valid_dedup:
-            dedup_min = 60
-
-        # 폼에는 enabled 입력이 없음 → 생성 시 True, 수정 시 기존 상태(토글로 끈 상태) 보존
-        posted_enabled = request.POST.get('enabled')
-        if posted_enabled is None:
-            enabled = alert.enabled if alert else True
-        else:
-            enabled = posted_enabled != 'off'
-
-        if alert:
-            alert.strategy = strategy
-            alert.exchange = exchange
-            alert.interval_min = interval_min
-            alert.dedup_min = dedup_min
-            alert.enabled = enabled
-            alert.save()
-        else:
-            CustomAlert.objects.create(
-                strategy=strategy, exchange=exchange,
-                interval_min=interval_min, dedup_min=dedup_min, enabled=enabled,
-            )
-        return redirect('custom_alert_list')
-
-    strategies = Strategy.objects.all().order_by('-created_at')
-    return render(request, 'screener/custom_alert_form.html', {
-        'alert': alert,
-        'strategies': strategies,
-        'interval_choices': CustomAlert.INTERVAL_CHOICES,
-        'dedup_choices': CustomAlert.DEDUP_CHOICES,
-        'tg_configured': tg.is_configured(),
-        'active_nav': 'alert',
-    })
-
-
-@csrf_exempt
-@require_POST
-def custom_alert_delete(request, alert_id):
-    CustomAlert.objects.filter(id=alert_id).delete()
-    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
-        return JsonResponse({'ok': True})
-    return redirect('custom_alert_list')
-
-
-@csrf_exempt
-@require_POST
-def custom_alert_toggle(request, alert_id):
-    alert = get_object_or_404(CustomAlert, id=alert_id)
-    alert.enabled = not alert.enabled
-    alert.save(update_fields=['enabled'])
-    return JsonResponse({'ok': True, 'enabled': alert.enabled})
-
-
-def process_custom_alert(alert):
-    """커스텀 알림 1건 스캔 → 중복방지 필터 → 텔레그램 발송. 요약 dict 반환."""
-    from django.utils import timezone
-    import datetime
-
-    strategy   = alert.strategy
-    conditions = list(strategy.conditions.all())
-    if not conditions:
-        alert.last_run_at = timezone.now()
-        alert.save(update_fields=['last_run_at'])
-        return {'matched': 0, 'sent': 0, 'skipped': 0, 'error': 'no_conditions'}
-
-    tickers = _get_tickers(alert.exchange, 0)
-    _bulk_prefetch_ohlcv(tickers, conditions)
-
-    now = timezone.now()
-    dedup_cutoff = now - datetime.timedelta(minutes=alert.dedup_min)
-
-    def _proc(t_data):
-        ticker = t_data['ticker'] if isinstance(t_data, dict) else t_data
-        name   = t_data.get('name', ticker.replace('KRW-', '')) if isinstance(t_data, dict) else ticker.replace('KRW-', '')
-        try:
-            is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
-            if is_match and price:
-                return {
-                    'symbol': ticker, 'name': name, 'price': price, 'volume': volume,
-                    'volume_display': f"{volume / 100_000_000:.1f}억",
-                    'status': status,
-                    'details': ", ".join(list(dict.fromkeys(details))),
-                }
-        except Exception:
-            pass
-        return None
-
-    matches = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        for r in executor.map(_proc, tickers):
-            if r:
-                matches.append(r)
-    matches.sort(key=lambda x: x.get('volume', 0), reverse=True)
-
-    # 중복방지: dedup_min 이내에 이미 발송된 심볼은 제외
-    tg_results = []
-    skipped = 0
-    for r in matches:
-        recently = AlertHistory.objects.filter(
-            strategy=strategy, symbol=r['symbol'],
-            is_notified=True, created_at__gte=dedup_cutoff,
-        ).exists()
-        if recently:
-            skipped += 1
-            continue
-        AlertHistory.objects.create(
-            strategy=strategy, symbol=r['symbol'], price=r['price'],
-            volume=r['volume'], details=r['details'], status=r['status'],
-            is_notified=True,
-        )
-        tg_results.append(r)
-
-    sent = 0
-    if tg_results and tg.is_configured():
-        res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id)
-        if res.get('ok'):
-            sent = len(tg_results)
-
-    alert.last_run_at = now
-    alert.save(update_fields=['last_run_at'])
-    return {'matched': len(matches), 'sent': sent, 'skipped': skipped}
-
-
-# ──────────────────────────────────────────
 # 5. 백테스팅 API
 # ──────────────────────────────────────────
 
@@ -1204,27 +1043,6 @@ def cron_scan(request):
         # 한국 표준시(KST) 구하기 (settings.py의 TIME_ZONE='Asia/Seoul' 및 USE_TZ=True 연동)
         now_kst = timezone.localtime(timezone.now())
         print(f"[CRON_SCAN] Current KST time: {now_kst}")
-
-        # ── 커스텀 알림(알림 탭) 처리: 매 호출마다 주기(interval) 도래한 것만 실행 ──
-        # (cron-job.org 등 외부 크론이 짧은 주기로 이 엔드포인트를 호출하는 것을 전제)
-        custom_summary = []
-        try:
-            from .models import CustomAlert
-            now_utc = timezone.now()
-            for alert in CustomAlert.objects.filter(enabled=True).select_related('strategy'):
-                try:
-                    due = (alert.last_run_at is None) or \
-                          ((now_utc - alert.last_run_at).total_seconds() >= alert.interval_min * 60 - 30)
-                    if not due:
-                        continue
-                    summary = process_custom_alert(alert)
-                    custom_summary.append({'alert_id': alert.id, 'strategy': alert.strategy.name, **summary})
-                    print(f"[CRON_SCAN][CUSTOM] alert {alert.id} ({alert.strategy.name}): {summary}")
-                except Exception as ce:
-                    custom_summary.append({'alert_id': alert.id, 'error': str(ce)})
-                    print(f"[CRON_SCAN][CUSTOM] alert {alert.id} error: {ce}")
-        except Exception as e:
-            print(f"[CRON_SCAN][CUSTOM] block error: {e}")
 
         # 가장 가까운 정각(1시간 단위)으로 반올림 (30분 오차 범위 보정)
         rounded_time = now_kst + datetime.timedelta(minutes=30)
@@ -1310,7 +1128,6 @@ def cron_scan(request):
             'sent_alerts': sent_count,
             'warnings': warnings,
             'details': results_summary,
-            'custom_alerts': custom_summary,
         })
         
     except Exception as e:

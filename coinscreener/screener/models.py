@@ -199,36 +199,6 @@ class AlertSetting(models.Model):
         return f"{self.strategy.name} 알림"
 
 
-class CustomAlert(models.Model):
-    """알림 탭 커스텀 알림: 전략(조건식) + 자동검색 주기 + 중복방지 → 텔레그램 발송"""
-    INTERVAL_CHOICES = [
-        (60, '1시간'), (30, '30분'), (15, '15분'),
-        (5, '5분'), (3, '3분'), (1, '1분'),
-    ]
-    DEDUP_CHOICES = [
-        (60, '1시간'), (30, '30분'), (15, '15분'),
-    ]
-    strategy     = models.ForeignKey(Strategy, on_delete=models.CASCADE, related_name='custom_alerts')
-    exchange     = models.CharField(max_length=20, default='upbit')
-    interval_min = models.IntegerField(default=15, verbose_name="자동검색 주기(분)")
-    dedup_min    = models.IntegerField(default=60, verbose_name="중복방지(분)")
-    enabled      = models.BooleanField(default=True)
-    last_run_at  = models.DateTimeField(null=True, blank=True, verbose_name="마지막 실행 시각")
-    created_at   = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-created_at']
-
-    def get_interval_display_kr(self):
-        return dict(self.INTERVAL_CHOICES).get(self.interval_min, f"{self.interval_min}분")
-
-    def get_dedup_display_kr(self):
-        return dict(self.DEDUP_CHOICES).get(self.dedup_min, f"{self.dedup_min}분")
-
-    def __str__(self):
-        return f"[커스텀알림] {self.strategy.name} / {self.interval_min}분"
-
-
 class MarketData(models.Model):
     exchange = models.CharField(max_length=20, db_index=True) # e.g. 'kospi', 'upbit', 'bithumb'
     ticker = models.CharField(max_length=50, db_index=True)   # e.g. '005930', 'KRW-BTC'
