@@ -295,6 +295,7 @@
         </div>
         <div class="bs-tabs">
             <button class="stab active" onclick="switchTab(event, 'MA')">MA (이동평균)</button>
+            <button class="stab" onclick="switchTab(event, 'ALIGN')">정배열</button>
             <button class="stab" onclick="switchTab(event, 'RSI')">RSI</button>
             <button class="stab" onclick="switchTab(event, 'BB')">볼린저밴드</button>
             <button class="stab" onclick="switchTab(event, 'HA')">하이킨아시</button>
@@ -374,7 +375,71 @@
                 
                 <button type="submit" class="submit-cond-btn">조건 추가하기</button>
             </form>
-            
+
+            <!-- ALIGN (정배열/역배열) FORM -->
+            <form id="form-ALIGN" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post">
+                {% csrf_token %}
+                <input type="hidden" name="cond_type" value="ALIGN">
+                <input type="hidden" name="align_ma_type" id="align_ma_type_val" value="MA">
+                <input type="hidden" name="align_direction" id="align_direction_val" value="up">
+
+                <div class="field-group">
+                    <label class="field-label">단위 / 기간</label>
+                    <div style="display:flex; gap:8px;">
+                        <select name="timeframe" class="fselect">
+                            <option value="minute15">15분봉</option>
+                            <option value="minute30">30분봉</option>
+                            <option value="minute60">1시간봉</option>
+                            <option value="minute240">4시간봉</option>
+                            <option value="day" selected>일봉</option>
+                            <option value="week">주봉</option>
+                            <option value="month">월봉</option>
+                        </select>
+                        <select name="offset" class="fselect">
+                            <option value="0">현재봉</option>
+                            <option value="1">1봉 이내</option>
+                            <option value="2">2봉 이내</option>
+                            <option value="3">3봉 이내</option>
+                            <option value="5">5봉 이내</option>
+                            <option value="10">10봉 이내</option>
+                            <option value="20">20봉 이내</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <label class="field-label">배열 방향</label>
+                    <div class="opt-group">
+                        <div class="opt-btn selected align-dir-opt" onclick="selectAlignDir('up', this)">정배열 (단기 &gt; 장기)</div>
+                        <div class="opt-btn align-dir-opt" onclick="selectAlignDir('down', this)">역배열 (단기 &lt; 장기)</div>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <label class="field-label">이동평균 종류</label>
+                    <div class="opt-group" id="align_ma_type_group">
+                        <div class="opt-btn selected align-ma-opt" onclick="selectAlignMaType('MA', this)">SMA</div>
+                        <div class="opt-btn align-ma-opt" onclick="selectAlignMaType('EMA', this)">EMA</div>
+                        <div class="opt-btn align-ma-opt" onclick="selectAlignMaType('WMA', this)">WMA</div>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <label class="field-label">이동평균 기간 (짧은 순서대로 · 빈칸은 무시)</label>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <input type="number" name="align_ma1" class="finput" style="flex:1; min-width:60px;" value="5"  placeholder="MA1">
+                        <input type="number" name="align_ma2" class="finput" style="flex:1; min-width:60px;" value="20" placeholder="MA2">
+                        <input type="number" name="align_ma3" class="finput" style="flex:1; min-width:60px;" value="60" placeholder="MA3">
+                        <input type="number" name="align_ma4" class="finput" style="flex:1; min-width:60px;" value=""   placeholder="MA4">
+                    </div>
+                    <div style="font-size:12px; color:#8b95a1; margin-top:6px;">
+                        예) 5 · 20 · 60 → MA5 &gt; MA20 &gt; MA60 정배열 조건이 한 번에 추가됩니다.
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-cond-btn">조건 추가하기</button>
+            </form>
+
             <!-- RSI FORM -->
             <form id="form-RSI" class="cond-form" action="{% url 'condition_add' strategy.id %}" method="post">
                 {% csrf_token %}
@@ -706,6 +771,16 @@
         document.querySelectorAll('.bb-opt').forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         document.getElementById('bb_target_val').value = val;
+    }
+    function selectAlignDir(val, btn) {
+        document.querySelectorAll('.align-dir-opt').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        document.getElementById('align_direction_val').value = val;
+    }
+    function selectAlignMaType(val, btn) {
+        document.querySelectorAll('.align-ma-opt').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        document.getElementById('align_ma_type_val').value = val;
     }
     function selectHA(val, btn) {
         document.querySelectorAll('.ha-opt').forEach(b => b.classList.remove('selected'));

@@ -124,6 +124,48 @@ def condition_add(request, strategy_id):
             return redirect('strategy_detail', strategy_id=strategy_id)
         right_indicator, right_param = ma_type_b, ma_b_val
 
+    elif cond_type == 'ALIGN':
+        # 정배열/역배열: MA1 > MA2 > MA3 ... (또는 역방향)을 인접 조건들로 분해해 한 번에 추가
+        ma_type = request.POST.get('align_ma_type', 'MA')
+        if ma_type not in ('MA', 'EMA', 'WMA'):
+            ma_type = 'MA'
+        direction = request.POST.get('align_direction', 'up')
+        op = 'gt' if direction != 'down' else 'lt'
+
+        periods = []
+        for i in range(1, 5):
+            raw = request.POST.get(f'align_ma{i}', '')
+            if raw is None or str(raw).strip() == '':
+                continue
+            try:
+                p = int(raw)
+            except ValueError:
+                messages.error(request, "이동평균 기간 값이 올바르지 않습니다.")
+                return redirect('strategy_detail', strategy_id=strategy_id)
+            if p < 1:
+                messages.error(request, "이동평균 기간은 1 이상이어야 합니다.")
+                return redirect('strategy_detail', strategy_id=strategy_id)
+            periods.append(p)
+
+        if len(periods) < 2:
+            messages.error(request, "정배열은 최소 2개 이상의 이동평균 기간이 필요합니다.")
+            return redirect('strategy_detail', strategy_id=strategy_id)
+
+        for a, b in zip(periods, periods[1:]):
+            Condition.objects.create(
+                strategy=strategy,
+                timeframe=timeframe,
+                offset=offset,
+                left_indicator=ma_type,
+                left_param=a,
+                operator=op,
+                right_indicator=ma_type,
+                right_param=b,
+                bb_std=None,
+            )
+        clear_strategy_cache(strategy_id)
+        return redirect('strategy_detail', strategy_id=strategy_id)
+
     elif cond_type == 'RSI':
         try:
             rsi_period    = int(request.POST.get('rsi_period', 14))
