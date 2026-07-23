@@ -150,7 +150,7 @@ def cron_scan(request):
             tickers = _get_tickers(setting.exchange, vol_limit)
             print(f"[CRON_SCAN] Tickers count for {setting.exchange} (limit {vol_limit}): {len(tickers)}")
             
-            results, tg_results = process_scan_and_alert(strategy, tickers, conditions)
+            results, tg_results = process_scan_and_alert(strategy, tickers, conditions, exchange=setting.exchange)
             print(f"[CRON_SCAN] Scan results: total matched = {len(results)}, notify list = {len(tg_results)}")
             
             # 텔레그램 발송 (중복 방지 처리된 tg_results 사용)
@@ -268,7 +268,7 @@ def strategy_scan_count(request, strategy_id):
             c.timeframe = tf_override
 
     tickers = _get_tickers(exchange, vol_limit)
-    _bulk_prefetch_ohlcv(tickers, conditions)
+    _bulk_prefetch_ohlcv(tickers, conditions, exchange=exchange)
     results = []
     error_occurred = False
 
@@ -279,9 +279,10 @@ def strategy_scan_count(request, strategy_id):
         
         try:
             is_match, details, price, volume, change_rate, status = check_strategy(
-                ticker, conditions, 
-                current_price=fast_price, 
-                current_change_rate=fast_change_rate
+                ticker, conditions,
+                current_price=fast_price,
+                current_change_rate=fast_change_rate,
+                exchange=exchange
             )
             if price is None:
                 return "API_ERROR"

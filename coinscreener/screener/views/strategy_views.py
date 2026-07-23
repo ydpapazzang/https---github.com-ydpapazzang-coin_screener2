@@ -82,6 +82,9 @@ def condition_add(request, strategy_id):
 
     cond_type = request.POST.get('cond_type', '').upper()
     timeframe = request.POST.get('timeframe', 'day')
+    # 분봉 검색은 지원하지 않음: 일/주/월만 허용하고 그 외 값은 일봉으로 처리
+    if timeframe not in ('day', 'week', 'month'):
+        timeframe = 'day'
     operator  = request.POST.get('operator', 'gte')
     bb_std    = None
 
@@ -421,15 +424,16 @@ def alert_save(request, strategy_id):
     return JsonResponse({'ok': True})
 
 
-def process_scan_and_alert(strategy, tickers, conditions):
+def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
     """
     주어진 전략과 티커 목록을 대상으로 스캔하고,
     알림 이력 저장 및 12시간 중복 방지 필터링을 거친 결과를 반환합니다.
+    exchange 명시 시 거래소 라우팅이 정확해짐(빗썸).
     """
     from django.utils import timezone
     import datetime
 
-    _bulk_prefetch_ohlcv(tickers, conditions)
+    _bulk_prefetch_ohlcv(tickers, conditions, exchange=exchange)
 
     results = []
 
@@ -442,9 +446,10 @@ def process_scan_and_alert(strategy, tickers, conditions):
 
         try:
             is_match, details, price, volume, change_rate, status = check_strategy(
-                ticker, conditions, 
-                current_price=fast_price, 
-                current_change_rate=fast_change_rate
+                ticker, conditions,
+                current_price=fast_price,
+                current_change_rate=fast_change_rate,
+                exchange=exchange
             )
             if is_match and price:
                 details_str = ", ".join(list(dict.fromkeys(details)))
@@ -512,7 +517,7 @@ def alert_send_now(request, strategy_id):
         vol_limit = 0
 
     tickers = _get_tickers(exchange, vol_limit)
-    results, tg_results = process_scan_and_alert(strategy, tickers, conditions)
+    results, tg_results = process_scan_and_alert(strategy, tickers, conditions, exchange=exchange)
 
     res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id, exchange=exchange)
     if res['ok']:

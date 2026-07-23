@@ -59,10 +59,24 @@ def max_cache_age(interval):
     return _TF_SECONDS.get(interval, 86400)
 
 
-def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3):
+def _resolve_exchange(ticker, exchange=None):
+    """티커가 어느 거래소인지 결정. exchange가 주어지면 우선하고,
+    없으면 티커 형식으로 추정한다. (빗썸 티커는 'BTC'처럼 밑줄이 없어
+    형식만으로는 코스피와 구분되지 않으므로 exchange 명시가 정확하다.)"""
+    if exchange in ('upbit', 'bithumb', 'kospi'):
+        return exchange
+    if ticker.startswith('KRW-'):
+        return 'upbit'
+    if '_' in ticker:
+        return 'bithumb'
+    return 'kospi'
+
+
+def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3, exchange=None):
     """전역 속도 제한이 적용된 OHLCV 조회. 신선한 캐시는 길이와 무관하게 즉시 사용한다.
     (짧은 상장이력 코인은 데이터가 적은 게 정상이며, 지표 계산 시 자연히 None 처리되므로
-     길이 임계값으로 재조회 루프를 도는 대신 캐시를 그대로 신뢰한다.)"""
+     길이 임계값으로 재조회 루프를 도는 대신 캐시를 그대로 신뢰한다.)
+    exchange를 명시하면 거래소 라우팅이 정확해진다(특히 빗썸)."""
     # 1. 메모리 캐시 확인 (같은 종목/타임프레임 재요청 시 즉시 반환)
     cache_key = f"ohlcv_{ticker}_{interval}_{count}"
     cached_data = cache.get(cache_key)
@@ -92,11 +106,12 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3):
     try:
         import time
         import pyupbit
+        ex = _resolve_exchange(ticker, exchange)
         for attempt in range(retries):
             _throttle()  # 실제 API 호출 직전 전역 속도 제한
-            if ticker.startswith('KRW-'):
+            if ex == 'upbit':
                 df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
-            elif '_' in ticker: # Bithumb
+            elif ex == 'bithumb':
                 import pybithumb
                 bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
                 btf = bithumb_tf_map.get(interval, 'day')
@@ -307,10 +322,10 @@ def get_max_required_len(conditions):
     return min(max_len, 200) if max_len <= 200 else max_len
 
 
-def check_strategy(ticker, conditions, current_price=None, current_change_rate=None):
+def check_strategy(ticker, conditions, current_price=None, current_change_rate=None, exchange=None):
     """
     특정 코인이 주어진 전략(조건 리스트)을 모두 만족하는지 확인.
-    조건이 비어있으면 매칭하지 않음. 
+    조건이 비어있으면 매칭하지 않음. exchange 명시 시 거래소 라우팅이 정확해짐(빗썸).
     
     Returns:
         (is_match, details, last_price, volume, change_rate, status)
@@ -332,7 +347,7 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
             req_count = get_max_required_len(conditions)
             for cond in conditions:
                 if cond.timeframe not in data_cache:
-                    df = get_ohlcv_with_retry(ticker, interval=cond.timeframe, count=req_count)
+                    df = get_ohlcv_with_retry(ticker, interval=cond.timeframe, count=req_count, exchange=exchange)
                     if df is None: return False
                     data_cache[cond.timeframe] = df
                 
@@ -425,7 +440,7 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
                 # 불필요한 라이브 API 호출을 막기 위해 이미 day가 조건에 없으면 패스
                 if any(c.timeframe == 'day' for c in conditions):
                     req_count = get_max_required_len(conditions)
-                    day_df = get_ohlcv_with_retry(ticker, interval='day', count=req_count)
+                    day_df = get_ohlcv_with_retry(ticker, interval='day', count=req_count, exchange=exchange)
                     if day_df is not None:
                         data_cache['day'] = day_df
 

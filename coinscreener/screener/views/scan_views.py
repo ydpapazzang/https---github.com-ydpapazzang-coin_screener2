@@ -345,9 +345,10 @@ def trigger_debug(request):
         return JsonResponse({'ok': False, 'error': str(e), 'trace': traceback.format_exc()})
 
 
-def _bulk_prefetch_ohlcv(tickers_data, conditions):
+def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
     """OHLCVCache DB에서 필요한 OHLCV 데이터를 일괄 조회해 메모리 캐시에 적재.
-    DB에 누락된 항목은 병렬 HTTP 요청으로 즉시 채워 1~2초 내에 완료시킴."""
+    DB에 누락된 항목은 병렬 HTTP 요청으로 즉시 채워 1~2초 내에 완료시킴.
+    exchange 명시 시 라이브 재조회의 거래소 라우팅이 정확해짐(빗썸)."""
     try:
         from ..models import OHLCVCache
         from django.core.cache import cache
@@ -398,7 +399,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
             # 워커를 늘려도 실제 요청 속도는 전역적으로 ≈9req/s로 제한되어 안전하다.
             def _fetch_one(item):
                 t, tf = item
-                get_ohlcv_with_retry(t, tf, count=req_count)
+                get_ohlcv_with_retry(t, tf, count=req_count, exchange=exchange)
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
                 list(executor.map(_fetch_one, missing_tasks))
@@ -450,9 +451,10 @@ def coin_search_stream(request, strategy_id):
 
             try:
                 is_match, details, price, volume, change_rate, status = check_strategy(
-                    ticker, conditions, 
-                    current_price=fast_price, 
-                    current_change_rate=fast_change_rate
+                    ticker, conditions,
+                    current_price=fast_price,
+                    current_change_rate=fast_change_rate,
+                    exchange=exchange
                 )
                 if price is None:
                     return "API_ERROR"
@@ -476,7 +478,7 @@ def coin_search_stream(request, strategy_id):
                 pass
             return None
 
-        _bulk_prefetch_ohlcv(tickers_data, conditions)
+        _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=exchange)
 
         # 프리페치 후 대부분 캐시 히트이고, 잔여 라이브 조회는 engine._throttle()로 전역
         # 속도 제한되므로 워커를 늘려도 안전하다. (병렬 처리로 스캔 지연 최소화)
