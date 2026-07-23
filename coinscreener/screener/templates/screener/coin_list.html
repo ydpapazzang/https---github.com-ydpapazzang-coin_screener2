@@ -296,7 +296,7 @@
 
 <!-- List Controls -->
 <div class="list-controls">
-    <div class="stats">포착: {{ results|length }}개</div>
+    <div class="stats">포착: {{ results|length }}개{% if elapsed_time %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">({{ elapsed_time }}초 소요)</span>{% endif %}</div>
     <div style="font-size:12px; color:var(--text-secondary);">{{ exchange|default:"업비트" }}</div>
 </div>
 

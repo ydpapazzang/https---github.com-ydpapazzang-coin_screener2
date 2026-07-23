@@ -320,12 +320,15 @@ def trigger_debug(request):
 
 
 def _bulk_prefetch_ohlcv(tickers_data, conditions):
-    """OHLCVCache DB에서 필요한 OHLCV 데이터를 일괄 조회해 메모리 캐시에 적재."""
+    """OHLCVCache DB에서 필요한 OHLCV 데이터를 일괄 조회해 메모리 캐시에 적재.
+    DB에 누락된 항목은 병렬 HTTP 요청으로 즉시 채워 1~2초 내에 완료시킴."""
     try:
         from ..models import OHLCVCache
         from django.core.cache import cache
         import pandas as pd
         import datetime
+        import concurrent.futures
+        from ..engine import get_ohlcv_with_retry
 
         active_timeframes = set(c.timeframe for c in conditions)
         active_timeframes.add('day')
@@ -334,6 +337,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
         cached_qs = OHLCVCache.objects.filter(ticker__in=tickers, timeframe__in=active_timeframes)
         now = datetime.datetime.now(datetime.timezone.utc)
 
+        cached_keys = set()
         for obj in cached_qs:
             if (now - obj.updated_at).total_seconds() < 604800:
                 data_dict = obj.data
@@ -347,8 +351,24 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
                     if len(df) >= 190:
                         cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_400"
                         cache.set(cache_key, df.tail(400), 180)
+                        cached_keys.add((obj.ticker, obj.timeframe))
                 except Exception:
                     pass
+
+        # DB 캐시에 없거나 부실한 항목 병렬 사전 수집
+        missing_tasks = []
+        for t in tickers:
+            for tf in active_timeframes:
+                if (t, tf) not in cached_keys:
+                    missing_tasks.append((t, tf))
+
+        if missing_tasks:
+            def _fetch_one(item):
+                t, tf = item
+                get_ohlcv_with_retry(t, tf, count=400)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                list(executor.map(_fetch_one, missing_tasks))
     except Exception as e:
         print(f"Bulk cache prefetch error: {e}")
 
@@ -374,6 +394,9 @@ def coin_search_stream(request, strategy_id):
     send_telegram = request.GET.get('send_telegram') == '1'
 
     def event_stream():
+        import time
+        start_time = time.time()
+
         if not conditions:
             yield "data: " + json.dumps({"type": "error", "msg": "조건이 없습니다."}) + "\n\n"
             return
@@ -444,6 +467,8 @@ def coin_search_stream(request, strategy_id):
 
         results.sort(key=lambda x: x.get('volume', 0), reverse=True)
         last_updated = timezone.now()
+        elapsed_seconds = round(time.time() - start_time, 2)
+
         cache_key = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}"
         if tf_override:
             cache_key += f"_{tf_override}"
@@ -459,7 +484,8 @@ def coin_search_stream(request, strategy_id):
                     "data": {
                         'results': results,
                         'rate_limit_warning': error_occurred,
-                        'last_updated': last_updated.isoformat()
+                        'last_updated': last_updated.isoformat(),
+                        'elapsed_time': elapsed_seconds
                     }
                 }
             )
@@ -524,6 +550,7 @@ def coin_search_results(request, strategy_id):
         'rate_limit_warning': cached_data['rate_limit_warning'],
         'is_cached':          False,
         'last_updated':       cached_data.get('last_updated'),
+        'elapsed_time':       cached_data.get('elapsed_time'),
     })
 
 
