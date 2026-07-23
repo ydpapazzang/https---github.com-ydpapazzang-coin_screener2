@@ -16,6 +16,8 @@ import pyupbit
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
 from .scan_views import _get_tickers, _bulk_prefetch_ohlcv
+from .. import telegram as tg
+from .strategy_views import process_scan_and_alert
 
 logger = logging.getLogger(__name__)
 

@@ -15,6 +15,7 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
+from .scan_views import _get_tickers
 
 logger = logging.getLogger(__name__)
 
