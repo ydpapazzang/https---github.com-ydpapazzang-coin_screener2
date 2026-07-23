@@ -251,6 +251,25 @@ def get_required_len(indicator_type, param):
         return param
     return param
 
+def get_max_required_len(conditions):
+    """조건들을 기반으로 필요한 최대 OHLCV 캔들 갯수를 계산 (최소 200)"""
+    if not conditions:
+        return 200
+    
+    max_len = 0
+    for cond in conditions:
+        l_len = get_required_len(cond.left_indicator, cond.left_param)
+        r_len = get_required_len(cond.right_indicator, cond.right_param)
+        req = max(l_len, r_len) + cond.offset + 5  # 여유분 5 추가
+        if req > max_len:
+            max_len = req
+            
+    # API 호출 최적화를 위해: 기본 200. 만약 200보다 크면 400.
+    if max_len <= 200:
+        return 200
+    else:
+        return 400
+
 
 def check_strategy(ticker, conditions, current_price=None, current_change_rate=None):
     """
@@ -274,9 +293,10 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
 
         def _check_for_offset(base_offset):
             """Helper to check all conditions for a given base offset."""
+            req_count = get_max_required_len(conditions)
             for cond in conditions:
                 if cond.timeframe not in data_cache:
-                    df = get_ohlcv_with_retry(ticker, interval=cond.timeframe)
+                    df = get_ohlcv_with_retry(ticker, interval=cond.timeframe, count=req_count)
                     if df is None: return False
                     data_cache[cond.timeframe] = df
                 
@@ -368,7 +388,8 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
             if day_df is None:
                 # 불필요한 라이브 API 호출을 막기 위해 이미 day가 조건에 없으면 패스
                 if any(c.timeframe == 'day' for c in conditions):
-                    day_df = get_ohlcv_with_retry(ticker, interval='day')
+                    req_count = get_max_required_len(conditions)
+                    day_df = get_ohlcv_with_retry(ticker, interval='day', count=req_count)
                     if day_df is not None:
                         data_cache['day'] = day_df
 

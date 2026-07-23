@@ -356,6 +356,8 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
         import concurrent.futures
         from ..engine import get_ohlcv_with_retry
 
+        from ..engine import get_max_required_len
+        req_count = get_max_required_len(conditions)
         active_timeframes = set(c.timeframe for c in conditions)
         tickers = [t['ticker'] if isinstance(t, dict) else t for t in tickers_data]
 
@@ -373,9 +375,10 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
                         columns=data_dict['columns'],
                     )
                     df.index.name = None
-                    if len(df) >= 190:
-                        cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_400"
-                        cache.set(cache_key, df.tail(400), 180)
+                    # req_count (200 또는 400) 개수만큼 가져와서 메모리 캐시에 등록
+                    if len(df) >= min(190, req_count - 10):
+                        cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_{req_count}"
+                        cache.set(cache_key, df.tail(req_count), 180)
                         cached_keys.add((obj.ticker, obj.timeframe))
                 except Exception:
                     pass
@@ -389,10 +392,13 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
 
         if missing_tasks:
             import time
+            from ..engine import get_max_required_len
+            req_count = get_max_required_len(conditions)
+            
             def _fetch_one(item):
                 t, tf = item
-                time.sleep(0.05)  # API Rate Limit 방지를 위한 약간의 지연
-                get_ohlcv_with_retry(t, tf, count=400)
+                time.sleep(0.4)  # 5 workers * (1 / (0.4 + 0.1 API)) = ~10 req/sec (Rate limit 방어)
+                get_ohlcv_with_retry(t, tf, count=req_count)
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 list(executor.map(_fetch_one, missing_tasks))
