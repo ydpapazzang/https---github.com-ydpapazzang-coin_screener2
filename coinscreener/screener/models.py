@@ -119,6 +119,10 @@ class Condition(models.Model):
     right_param     = models.IntegerField(default=20)
     bb_std          = models.FloatField(null=True, blank=True)
 
+    def get_offset_display(self):
+        """조건 목록 표시용: 0이면 '현재봉', 그 외에는 'N봉 이내'."""
+        return "현재봉" if not self.offset else f"{self.offset}봉 이내"
+
     def get_readable_text(self):
         left_lbl = self.get_left_indicator_display()
         right_lbl = self.get_right_indicator_display()

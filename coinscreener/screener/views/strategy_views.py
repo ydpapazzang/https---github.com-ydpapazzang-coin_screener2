@@ -88,11 +88,11 @@ def condition_add(request, strategy_id):
     try:
         offset = int(request.POST.get('offset', 0))
     except ValueError:
-        messages.error(request, "n봉 전 값이 올바르지 않습니다.")
+        messages.error(request, "n봉 이내 값이 올바르지 않습니다.")
         return redirect('strategy_detail', strategy_id=strategy_id)
 
     if offset < 0:
-        messages.error(request, "n봉 전은 0 이상의 숫자여야 합니다.")
+        messages.error(request, "n봉 이내는 0 이상의 숫자여야 합니다.")
         return redirect('strategy_detail', strategy_id=strategy_id)
 
     if cond_type == 'MA':
