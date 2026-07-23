@@ -454,7 +454,9 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
                 t, tf = item
                 get_ohlcv_with_retry(t, tf, count=req_count, exchange=exchange)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            # 워커 24개: 빗썸은 거래소별 스로틀이 낮아 워커 수가 실질 처리량을 좌우.
+            # 업비트는 스로틀(0.11s)이 9req/s로 묶으므로 워커가 많아도 버스트되지 않음.
+            with concurrent.futures.ThreadPoolExecutor(max_workers=24) as executor:
                 list(executor.map(_fetch_one, missing_tasks))
     except Exception as e:
         print(f"Bulk cache prefetch error: {e}")

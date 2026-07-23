@@ -23,22 +23,30 @@ def _safe_float(v):
         return 0.0
 
 
-_rate_limit_lock = threading.Lock()
-_last_request_time = 0.0
-_min_interval = 0.11  # 전역 최소 요청 간격 (모든 스레드 합산 ≈ 초당 9회, 업비트 10req/s 한도 방어)
+# 거래소별 최소 요청 간격(초). 거래소마다 rate limit이 다르므로 분리한다.
+# 하나의 전역 스로틀로 묶으면 빗썸(티커 468개)이 업비트 한도(10req/s)에 발목잡혀
+# 콜드 스캔이 50초 이상 걸리던 문제가 있었다.
+_RATE_INTERVALS = {
+    'upbit':   0.11,  # 업비트 Quotation 10req/s 한도 방어 (~9/s)
+    'bithumb': 0.02,  # 빗썸 공개 API는 관대 -> 사실상 워커 수로 제한 (상한 ~50/s)
+    'kospi':   0.10,  # FinanceDataReader 스크래핑 부하 완화
+}
+_rate_locks = {ex: threading.Lock() for ex in _RATE_INTERVALS}
+_last_request_time = {ex: 0.0 for ex in _RATE_INTERVALS}
 
 
-def _throttle():
-    """모든 워커 스레드에서 공유되는 전역 토큰버킷 방식 속도 제한.
-    개별 태스크마다 sleep을 거는 방식(과도하게 느림) 대신, 실제 API 호출 직전에만
-    최소 간격을 강제해 처리량을 극대화하면서 429를 방어한다."""
-    global _last_request_time
-    with _rate_limit_lock:
+def _throttle(exchange='upbit'):
+    """거래소별 토큰버킷 방식 속도 제한. 실제 API 호출 직전에만 최소 간격을
+    강제해 처리량을 극대화하면서 429를 방어한다. 거래소별로 카운터가 독립적이라
+    한 거래소 스캔이 다른 거래소 한도에 영향받지 않는다."""
+    ex = exchange if exchange in _RATE_INTERVALS else 'upbit'
+    interval = _RATE_INTERVALS[ex]
+    with _rate_locks[ex]:
         now = time.time()
-        wait = _min_interval - (now - _last_request_time)
+        wait = interval - (now - _last_request_time[ex])
         if wait > 0:
             time.sleep(wait)
-        _last_request_time = time.time()
+        _last_request_time[ex] = time.time()
 
 
 # 타임프레임별 캔들 주기(초). 이 값보다 오래된 캐시는 '옛 캔들'이므로 재조회한다.
@@ -108,7 +116,7 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3, exch
         import pyupbit
         ex = _resolve_exchange(ticker, exchange)
         for attempt in range(retries):
-            _throttle()  # 실제 API 호출 직전 전역 속도 제한
+            _throttle(ex)  # 실제 API 호출 직전 거래소별 속도 제한
             if ex == 'upbit':
                 df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
             elif ex == 'bithumb':
