@@ -41,6 +41,24 @@ def _throttle():
         _last_request_time = time.time()
 
 
+# 타임프레임별 캔들 주기(초). 이 값보다 오래된 캐시는 '옛 캔들'이므로 재조회한다.
+_TF_SECONDS = {
+    'minute1': 60, 'minute3': 180, 'minute5': 300, 'minute10': 600,
+    'minute15': 900, 'minute30': 1800, 'minute60': 3600, 'minute240': 14400,
+    'day': 86400, 'week': 604800, 'month': 2592000,
+}
+
+
+def max_cache_age(interval):
+    """해당 타임프레임에서 캐시를 신뢰할 수 있는 최대 경과 시간(초).
+
+    분봉은 캔들 주기(15분봉→900초)만큼만 신선한 것으로 간주해, 오래된 봉으로
+    MA가 계산되어 과거 정배열/역배열이 잘못 잡히는 문제를 방지한다.
+    일봉 이상은 현재 진행 중인 봉을 다소 이르게 스냅샷해도 지표에 큰 영향이 없어
+    캔들 주기를 그대로 허용치로 사용한다."""
+    return _TF_SECONDS.get(interval, 86400)
+
+
 def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3):
     """전역 속도 제한이 적용된 OHLCV 조회. 신선한 캐시는 길이와 무관하게 즉시 사용한다.
     (짧은 상장이력 코인은 데이터가 적은 게 정상이며, 지표 계산 시 자연히 None 처리되므로
@@ -58,7 +76,7 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3):
         cached_obj = OHLCVCache.objects.filter(ticker=ticker, timeframe=interval).first()
         if cached_obj and cached_obj.data:
             now = datetime.datetime.now(datetime.timezone.utc)
-            if (now - cached_obj.updated_at).total_seconds() < 604800:
+            if (now - cached_obj.updated_at).total_seconds() < max_cache_age(interval):
                 json_str = json.dumps(cached_obj.data)
                 import io
                 df = pd.read_json(io.StringIO(json_str), orient='split')

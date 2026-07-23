@@ -356,7 +356,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
         import concurrent.futures
         from ..engine import get_ohlcv_with_retry
 
-        from ..engine import get_max_required_len
+        from ..engine import get_max_required_len, max_cache_age
         req_count = get_max_required_len(conditions)
         active_timeframes = set(c.timeframe for c in conditions)
         tickers = [t['ticker'] if isinstance(t, dict) else t for t in tickers_data]
@@ -366,7 +366,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
 
         cached_keys = set()
         for obj in cached_qs:
-            if (now - obj.updated_at).total_seconds() < 604800:
+            if (now - obj.updated_at).total_seconds() < max_cache_age(obj.timeframe):
                 data_dict = obj.data
                 try:
                     df = pd.DataFrame(
