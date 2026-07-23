@@ -344,7 +344,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
                         columns=data_dict['columns'],
                     )
                     df.index.name = None
-                    if len(df) >= 300:
+                    if len(df) >= 190:
                         cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_400"
                         cache.set(cache_key, df.tail(400), 180)
                 except Exception:

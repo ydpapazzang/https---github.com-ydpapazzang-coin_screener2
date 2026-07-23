@@ -33,7 +33,7 @@ def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
     # 1. 캐시 확인 (5분 타임아웃, 같은 종목/타임프레임 재요청 시 즉시 반환)
     cache_key = f"ohlcv_{ticker}_{interval}_{count}"
     cached_data = cache.get(cache_key)
-    if cached_data is not None and len(cached_data) >= min(count, 300):
+    if cached_data is not None and len(cached_data) >= 190:
         return cached_data
 
     # 1.5. DB 사전 캐시 확인 (Pre-fetching)
@@ -49,7 +49,7 @@ def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
                 df = pd.read_json(io.StringIO(json_str), orient='split')
                 df.index.name = None
                 df_tail = df.tail(count)
-                if len(df_tail) >= min(count, 300):  # 데이터가 300개 이상으로 충분한 경우에만 사용
+                if len(df_tail) >= 190:  # 190개 이상만 되면 DB 캐시 즉시 활용
                     cache.set(cache_key, df_tail, 180)
                     return df_tail
     except Exception as e:
@@ -287,10 +287,11 @@ def check_strategy(ticker, conditions, current_price=None):
                 for i in range(cond.offset + 1):
                     total_offset = base_offset + i
                     
+                    extra_needed = 1 if cond.operator in ('cross_up', 'cross_down') else 0
                     required_len = max(
                         get_required_len(cond.left_indicator, cond.left_param),
                         get_required_len(cond.right_indicator, cond.right_param)
-                    ) + total_offset + 2  # +2 for cross_up/down
+                    ) + total_offset + extra_needed
 
                     if len(df) < required_len:
                         continue
