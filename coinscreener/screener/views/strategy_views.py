@@ -395,8 +395,15 @@ def process_scan_and_alert(strategy, tickers, conditions):
         ticker = t_data['ticker'] if isinstance(t_data, dict) else t_data
         fallback_name = ticker.replace('KRW-', '')
         name = t_data.get('name', fallback_name) if isinstance(t_data, dict) else cache.get(f"kospi_name_{ticker}", fallback_name)
+        fast_price = t_data.get('current_price') if isinstance(t_data, dict) else None
+        fast_change_rate = t_data.get('change_rate') if isinstance(t_data, dict) else None
+
         try:
-            is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
+            is_match, details, price, volume, change_rate, status = check_strategy(
+                ticker, conditions, 
+                current_price=fast_price, 
+                current_change_rate=fast_change_rate
+            )
             if is_match and price:
                 details_str = ", ".join(list(dict.fromkeys(details)))
                 should_notify = True

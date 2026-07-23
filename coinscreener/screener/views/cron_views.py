@@ -274,8 +274,15 @@ def strategy_scan_count(request, strategy_id):
 
     def process_ticker(t_data):
         ticker = t_data['ticker'] if isinstance(t_data, dict) else t_data
+        fast_price = t_data.get('current_price') if isinstance(t_data, dict) else None
+        fast_change_rate = t_data.get('change_rate') if isinstance(t_data, dict) else None
+        
         try:
-            is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
+            is_match, details, price, volume, change_rate, status = check_strategy(
+                ticker, conditions, 
+                current_price=fast_price, 
+                current_change_rate=fast_change_rate
+            )
             if price is None:
                 return "API_ERROR"
             if is_match:

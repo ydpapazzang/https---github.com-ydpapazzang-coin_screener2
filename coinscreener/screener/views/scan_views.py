@@ -37,7 +37,33 @@ def _get_tickers(exchange, vol_limit):
             qs = MarketData.objects.filter(exchange=exchange).order_by('-amount')
             if vol_limit:
                 qs = qs[:vol_limit]
-            return list(qs.values('ticker', 'name', 'market_cap', 'amount'))
+            result_list = list(qs.values('ticker', 'name', 'market_cap', 'amount'))
+            
+            # 업비트인 경우, 실시간 가격과 등락률을 단 1~2번의 API 호출(0.1초)로 일괄 갱신합니다.
+            if exchange == 'upbit':
+                try:
+                    import requests
+                    tickers_only = [t['ticker'] for t in result_list]
+                    # Upbit API는 한 번에 여러 티커(콤마 구분) 요청 가능
+                    chunks = [tickers_only[i:i+100] for i in range(0, len(tickers_only), 100)]
+                    change_rates = {}
+                    prices = {}
+                    for chunk in chunks:
+                        res = requests.get(f'https://api.upbit.com/v1/ticker?markets={",".join(chunk)}', timeout=5).json()
+                        if isinstance(res, list):
+                            for item in res:
+                                change_rates[item['market']] = item.get('signed_change_rate', 0) * 100
+                                prices[item['market']] = item.get('trade_price', 0)
+                        else:
+                            print(f"Upbit API error: {res}")
+                    
+                    for t in result_list:
+                        t['change_rate'] = change_rates.get(t['ticker'], 0)
+                        t['current_price'] = prices.get(t['ticker'], 0)
+                except Exception as e:
+                    print(f"Error fetching real-time upbit ticker data: {e}")
+
+            return result_list
     except Exception:
         pass  # DB 사용 불가 시 아래 API 직접 호출로 폴백
 
@@ -331,7 +357,6 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
         from ..engine import get_ohlcv_with_retry
 
         active_timeframes = set(c.timeframe for c in conditions)
-        active_timeframes.add('day')
         tickers = [t['ticker'] if isinstance(t, dict) else t for t in tickers_data]
 
         cached_qs = OHLCVCache.objects.filter(ticker__in=tickers, timeframe__in=active_timeframes)
@@ -363,11 +388,13 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
                     missing_tasks.append((t, tf))
 
         if missing_tasks:
+            import time
             def _fetch_one(item):
                 t, tf = item
+                time.sleep(0.05)  # API Rate Limit 방지를 위한 약간의 지연
                 get_ohlcv_with_retry(t, tf, count=400)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 list(executor.map(_fetch_one, missing_tasks))
     except Exception as e:
         print(f"Bulk cache prefetch error: {e}")
@@ -412,9 +439,15 @@ def coin_search_stream(request, strategy_id):
             name = t_data['name']
             market_cap = t_data.get('market_cap') or 0
             amount = t_data.get('amount') or 0
+            fast_change_rate = t_data.get('change_rate')
+            fast_price = t_data.get('current_price')
 
             try:
-                is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
+                is_match, details, price, volume, change_rate, status = check_strategy(
+                    ticker, conditions, 
+                    current_price=fast_price, 
+                    current_change_rate=fast_change_rate
+                )
                 if price is None:
                     return "API_ERROR"
                 if is_match:

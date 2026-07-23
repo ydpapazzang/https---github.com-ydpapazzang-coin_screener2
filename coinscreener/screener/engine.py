@@ -252,13 +252,13 @@ def get_required_len(indicator_type, param):
     return param
 
 
-def check_strategy(ticker, conditions, current_price=None):
+def check_strategy(ticker, conditions, current_price=None, current_change_rate=None):
     """
     특정 코인이 주어진 전략(조건 리스트)을 모두 만족하는지 확인.
     조건이 비어있으면 매칭하지 않음. 
     
     Returns:
-        (is_match, details, last_price, volume, status)
+        (is_match, details, last_price, volume, change_rate, status)
         status: 'new', 'maintained', or None
     """
     # 조건이 없으면 모든 코인이 통과되는 버그 방지
@@ -357,18 +357,26 @@ def check_strategy(ticker, conditions, current_price=None):
                 last_price = df['close'].iloc[-1]
                 volume = df['value'].iloc[-1] if 'value' in df.columns else df['volume'].iloc[-1]
                 
-        # 등락률(change_rate) 계산을 위해 'day' 데이터 강제 로드
-        day_df = data_cache.get('day')
-        if day_df is None:
-            day_df = get_ohlcv_with_retry(ticker, interval='day')
-            if day_df is not None:
-                data_cache['day'] = day_df
+        # 등락률(change_rate) 계산
+        change_rate = 0.0
+        if current_change_rate is not None:
+            change_rate = current_change_rate
+        else:
+            # 1분봉/15분봉 등의 전략에서 등락률만 얻기 위해 'day'를 강제 호출하지 않도록 주의
+            # 단, 이 함수가 단독으로 쓰이는 경우를 대비해 기존 로직 유지
+            day_df = data_cache.get('day')
+            if day_df is None:
+                # 불필요한 라이브 API 호출을 막기 위해 이미 day가 조건에 없으면 패스
+                if any(c.timeframe == 'day' for c in conditions):
+                    day_df = get_ohlcv_with_retry(ticker, interval='day')
+                    if day_df is not None:
+                        data_cache['day'] = day_df
 
-        if day_df is not None and len(day_df) > 1:
-            current_close = day_df['close'].iloc[-1]
-            prev_close = day_df['close'].iloc[-2]
-            if prev_close > 0:
-                change_rate = (current_close - prev_close) / prev_close * 100.0
+            if day_df is not None and len(day_df) > 1:
+                current_close = day_df['close'].iloc[-1]
+                prev_close = day_df['close'].iloc[-2]
+                if prev_close > 0:
+                    change_rate = (current_close - prev_close) / prev_close * 100.0
 
         if not is_match_current:
             return False, [], last_price, volume, change_rate, None
