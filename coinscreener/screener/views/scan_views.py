@@ -344,8 +344,8 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
                         columns=data_dict['columns'],
                     )
                     df.index.name = None
-                    cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_200"
-                    cache.set(cache_key, df.tail(200), 180)
+                    cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_400"
+                    cache.set(cache_key, df.tail(400), 180)
                 except Exception:
                     pass
     except Exception as e:

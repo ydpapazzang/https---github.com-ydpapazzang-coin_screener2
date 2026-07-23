@@ -52,14 +52,49 @@ def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
                 json_str = json.dumps(cached_obj.data)
                 import io
                 df = pd.read_json(io.StringIO(json_str), orient='split')
-                df.index.name = None # Upbit df has no index name
-                cache.set(cache_key, df.tail(count), 180)
-                return df.tail(count)
+                df.index.name = None
+                df_tail = df.tail(count)
+                if len(df_tail) >= 300:  # 데이터가 충분한 경우에만 캐시 허용
+                    cache.set(cache_key, df_tail, 180)
+                    return df_tail
     except Exception as e:
         logger.error(f"OHLCVCache read error for {ticker}: {e}", exc_info=True)
 
-    # 사용자 요청에 따라 실시간 외부 API(업비트, FDR) 조회 통신을 전면 차단하고 오직 캐시만 의존하도록 변경
-    # (실시간 통신 대기로 인한 스크리닝 지연 완벽 차단)
+    # 캐시가 없거나 부족한 경우 (ex: 200개 이하), 예외적으로 실시간 조회를 허용하여 누락을 방지합니다.
+    try:
+        import time
+        import pyupbit
+        for attempt in range(retries):
+            if ticker.startswith('KRW-'):
+                df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
+            elif '_' in ticker: # Bithumb
+                import pybithumb
+                bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
+                btf = bithumb_tf_map.get(interval, 'day')
+                df = pybithumb.get_ohlcv(ticker, interval=btf)
+                if df is not None and not df.empty:
+                    if interval == 'minute15': df = df.resample('15min').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
+                    elif interval == 'minute240': df = df.resample('4h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
+                    elif interval == 'week': df = df.resample('W-MON').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
+                    elif interval == 'month': df = df.resample('ME').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
+                    df = df.tail(count)
+            else: # KOSPI
+                import FinanceDataReader as fdr
+                df = fdr.DataReader(ticker)
+                if df is not None and not df.empty:
+                    df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
+                    if interval == 'week': df = df.resample('W-MON').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
+                    elif interval == 'month': df = df.resample('ME').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
+                    df = df.tail(count)
+                    
+            if df is not None and not df.empty:
+                df.index.name = None
+                cache.set(cache_key, df, 180)
+                return df
+            time.sleep(delay)
+    except Exception as e:
+        logger.error(f"Live API fallback error for {ticker}: {e}")
+        
     return None
 
 
