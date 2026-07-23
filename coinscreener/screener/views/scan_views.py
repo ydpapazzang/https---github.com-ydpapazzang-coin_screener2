@@ -26,6 +26,40 @@ def _get_cron_secret():
 
 
 def _get_tickers(exchange, vol_limit):
+    """거래소 티커 목록을 안정적으로 반환.
+
+    외부 API(pyupbit.get_tickers, 업비트 티커 API)나 서버리스 DB 연결이 간헐적으로
+    실패하면 빈 목록이 반환되어 '0/0 종목'으로 검색이 멈추는 문제가 있었다.
+    이를 막기 위해:
+      1) 원본 조회를 최대 2회 재시도하고,
+      2) 성공(비어있지 않음)하면 마지막 정상 목록을 캐시에 저장,
+      3) 그래도 비면 마지막 정상 목록을 폴백으로 사용한다."""
+    last_good_key = f"tickers_lastgood_{exchange}_{vol_limit}"
+
+    result = []
+    for attempt in range(2):
+        try:
+            result = _get_tickers_raw(exchange, vol_limit)
+        except Exception as e:
+            logger.error(f"_get_tickers_raw error ({exchange}): {e}", exc_info=True)
+            result = []
+        if result:
+            # 정상 목록을 5분간 보관해 두었다가 일시적 실패 시 재사용
+            try:
+                cache.set(last_good_key, result, 300)
+            except Exception:
+                pass
+            return result
+
+    # 재시도해도 비어있으면 마지막 정상 목록으로 폴백
+    fallback = cache.get(last_good_key)
+    if fallback:
+        logger.warning(f"_get_tickers fallback to cached list for {exchange} ({len(fallback)} tickers)")
+        return fallback
+    return result
+
+
+def _get_tickers_raw(exchange, vol_limit):
     """거래소·거래대금 조건에 맞는 티커 목록 반환 (API 직접 호출, DB는 보조)"""
     global KOSPI_NAME_MAP
 
@@ -49,13 +83,27 @@ def _get_tickers(exchange, vol_limit):
                     change_rates = {}
                     prices = {}
                     for chunk in chunks:
-                        res = requests.get(f'https://api.upbit.com/v1/ticker?markets={",".join(chunk)}', timeout=5).json()
+                        try:
+                            res = requests.get(f'https://api.upbit.com/v1/ticker?markets={",".join(chunk)}', timeout=5).json()
+                        except Exception as ce:
+                            print(f"Upbit ticker chunk error: {ce}")
+                            continue
                         if isinstance(res, list):
                             for item in res:
                                 change_rates[item['market']] = item.get('signed_change_rate', 0) * 100
                                 prices[item['market']] = item.get('trade_price', 0)
                         else:
-                            print(f"Upbit API error: {res}")
+                            # 상장폐지 등으로 청크 일괄 요청이 실패하면 티커별로 재시도해
+                            # 한 종목 문제로 청크 100개의 시세가 통째로 누락되지 않게 함
+                            print(f"Upbit API error (chunk fallback): {res}")
+                            for mk in chunk:
+                                try:
+                                    r2 = requests.get(f'https://api.upbit.com/v1/ticker?markets={mk}', timeout=5).json()
+                                    if isinstance(r2, list) and r2:
+                                        change_rates[mk] = r2[0].get('signed_change_rate', 0) * 100
+                                        prices[mk] = r2[0].get('trade_price', 0)
+                                except Exception:
+                                    pass
                     
                     for t in result_list:
                         t['change_rate'] = change_rates.get(t['ticker'], 0)
@@ -117,8 +165,13 @@ def _get_tickers(exchange, vol_limit):
     else:
         # 업비트 — pyupbit로 직접 가져오기
         try:
-            import pyupbit
-            all_tickers = pyupbit.get_tickers(fiat="KRW")
+            import pyupbit, time as _t
+            all_tickers = None
+            for _i in range(3):  # 일시적 rate limit/네트워크 실패 대비 재시도
+                all_tickers = pyupbit.get_tickers(fiat="KRW")
+                if all_tickers:
+                    break
+                _t.sleep(0.3)
             if not all_tickers:
                 return []
             
@@ -437,6 +490,15 @@ def coin_search_stream(request, strategy_id):
 
         tickers_data = _get_tickers(exchange, vol_limit)
         total   = len(tickers_data)
+
+        # 티커를 못 불러오면(외부 API/DB 일시 장애) 조용히 멈추지 않고 명확히 알림
+        if total == 0:
+            yield "data: " + json.dumps({
+                "type": "error",
+                "msg": "종목 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요."
+            }) + "\n\n"
+            return
+
         results = []
         done    = 0
         error_occurred = False
