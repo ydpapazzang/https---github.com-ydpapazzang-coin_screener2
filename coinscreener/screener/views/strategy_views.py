@@ -15,7 +15,7 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
-from .scan_views import _get_tickers
+from .scan_views import _get_tickers, _bulk_prefetch_ohlcv
 
 logger = logging.getLogger(__name__)
 
@@ -393,7 +393,8 @@ def process_scan_and_alert(strategy, tickers, conditions):
 
     def _proc(t_data):
         ticker = t_data['ticker'] if isinstance(t_data, dict) else t_data
-        name   = t_data.get('name', ticker.replace('KRW-', '')) if isinstance(t_data, dict) else KOSPI_NAME_MAP.get(ticker, ticker.replace('KRW-', ''))
+        fallback_name = ticker.replace('KRW-', '')
+        name = t_data.get('name', fallback_name) if isinstance(t_data, dict) else cache.get(f"kospi_name_{ticker}", fallback_name)
         try:
             is_match, details, price, volume, change_rate, status = check_strategy(ticker, conditions)
             if is_match and price:
