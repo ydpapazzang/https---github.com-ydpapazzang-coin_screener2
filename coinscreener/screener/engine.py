@@ -28,7 +28,7 @@ _last_request_time = 0.0
 _min_interval = 0.12  # 최소 0.12초 간격 (초당 최대 ~8.3회 요청)
 
 
-def get_ohlcv_with_retry(ticker, interval, count=200, retries=5, delay=0.4):
+def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
     """API 호출 제한을 고려하여 글로벌 속도 제한 및 지터 재시도가 적용된 OHLCV 조회"""
     # 1. 캐시 확인 (5분 타임아웃, 같은 종목/타임프레임 재요청 시 즉시 반환)
     cache_key = f"ohlcv_{ticker}_{interval}_{count}"

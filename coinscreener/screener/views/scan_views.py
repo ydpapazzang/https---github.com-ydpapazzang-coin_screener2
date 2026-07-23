@@ -228,7 +228,7 @@ def cron_prefetch(request):
             df = None
             try:
                 if ex == 'upbit':
-                    df = pyupbit.get_ohlcv(ticker, interval=tf, count=200)
+                    df = pyupbit.get_ohlcv(ticker, interval=tf, count=400)
                 elif ex == 'bithumb':
                     import pybithumb
                     bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
@@ -240,7 +240,7 @@ def cron_prefetch(request):
                         elif tf == 'minute240': df = _resample(df, '4h')
                         elif tf == 'week': df = _resample(df, 'W-MON')
                         elif tf == 'month': df = _resample(df, 'ME')
-                        df = df.tail(200)
+                        df = df.tail(400)
                 elif ex == 'kospi':
                     import FinanceDataReader as fdr
                     df = fdr.DataReader(ticker)
@@ -250,7 +250,7 @@ def cron_prefetch(request):
                             df.drop(columns=['Change'], inplace=True)
                         if tf == 'week': df = _resample(df, 'W-FRI')
                         elif tf == 'month': df = _resample(df, 'ME')
-                        df = df.tail(200)
+                        df = df.tail(400)
 
                 if df is not None and not df.empty:
                     json_data = json.loads(df.tojson(orient="split"))
