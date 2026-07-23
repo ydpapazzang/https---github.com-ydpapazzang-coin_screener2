@@ -332,7 +332,7 @@ def cron_prefetch(request):
                         df = df.tail(200)
 
                 if df is not None and not df.empty:
-                    json_data = json.loads(df.tojson(orient="split"))
+                    json_data = json.loads(df.to_json(orient="split"))
                     OHLCVCache.objects.update_or_create(
                         ticker=ticker,
                         timeframe=tf,

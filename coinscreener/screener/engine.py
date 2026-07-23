@@ -145,7 +145,7 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3, exch
                 try:
                     from .models import OHLCVCache
                     import json
-                    json_data = json.loads(df.tojson(orient="split"))
+                    json_data = json.loads(df.to_json(orient="split"))
                     OHLCVCache.objects.update_or_create(
                         ticker=ticker,
                         timeframe=interval,
