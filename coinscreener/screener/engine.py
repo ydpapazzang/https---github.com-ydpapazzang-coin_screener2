@@ -33,7 +33,7 @@ def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
     # 1. 캐시 확인 (5분 타임아웃, 같은 종목/타임프레임 재요청 시 즉시 반환)
     cache_key = f"ohlcv_{ticker}_{interval}_{count}"
     cached_data = cache.get(cache_key)
-    if cached_data is not None:
+    if cached_data is not None and len(cached_data) >= min(count, 300):
         return cached_data
 
     # 1.5. DB 사전 캐시 확인 (Pre-fetching)
@@ -42,11 +42,6 @@ def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
         import json
         cached_obj = OHLCVCache.objects.filter(ticker=ticker, timeframe=interval).first()
         if cached_obj and cached_obj.data:
-            # Check if it's too old (e.g., > 10 minutes)
-            # Since Vercel Cron might not run, we want fresh data.
-            # But if we rely on cron-job.org, it's 1 minute.
-            # Let's accept up to 15 minutes old data as "fresh enough" for a fallback.
-            # API 폴백이 차단되었으므로 캐시 유효기간을 넉넉히(7일) 잡아 무조건 캐시를 활용하도록 합니다.
             now = datetime.datetime.now(datetime.timezone.utc)
             if (now - cached_obj.updated_at).total_seconds() < 604800:
                 json_str = json.dumps(cached_obj.data)
@@ -54,13 +49,13 @@ def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
                 df = pd.read_json(io.StringIO(json_str), orient='split')
                 df.index.name = None
                 df_tail = df.tail(count)
-                if len(df_tail) >= 300:  # 데이터가 충분한 경우에만 캐시 허용
+                if len(df_tail) >= min(count, 300):  # 데이터가 300개 이상으로 충분한 경우에만 사용
                     cache.set(cache_key, df_tail, 180)
                     return df_tail
     except Exception as e:
         logger.error(f"OHLCVCache read error for {ticker}: {e}", exc_info=True)
 
-    # 캐시가 없거나 부족한 경우 (ex: 200개 이하), 예외적으로 실시간 조회를 허용하여 누락을 방지합니다.
+    # 캐시가 없거나 부족한 경우 (ex: 200개 이하), 실시간 조회를 수행하고 DB 캐시를 즉시 업데이트
     try:
         import time
         import pyupbit
@@ -90,6 +85,17 @@ def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
             if df is not None and not df.empty:
                 df.index.name = None
                 cache.set(cache_key, df, 180)
+                try:
+                    from .models import OHLCVCache
+                    import json
+                    json_data = json.loads(df.tojson(orient="split"))
+                    OHLCVCache.objects.update_or_create(
+                        ticker=ticker,
+                        timeframe=interval,
+                        defaults={"data": json_data}
+                    )
+                except Exception:
+                    pass
                 return df
             time.sleep(delay)
     except Exception as e:
