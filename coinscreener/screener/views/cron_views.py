@@ -74,8 +74,13 @@ def cron_scan(request):
     import traceback
     
     # 보안 검증: Vercel Cron이거나 디버그 시크릿이 있는 경우만 허용
-    is_vercel_cron = request.headers.get('x-vercel-cron') == '1'
     cron_sec = _get_cron_secret()
+    auth_header = request.headers.get('Authorization', '')
+    
+    # 1. Vercel 공식 Authorization Bearer 헤더 (CRON_SECRET 연동)
+    # 2. X-Vercel-Cron 헤더 (CRON_SECRET이 없을 때에도 작동하도록 허용)
+    is_vercel_cron = (request.headers.get('x-vercel-cron') == '1') or (bool(cron_sec) and auth_header == f"Bearer {cron_sec}")
+    
     is_debug = bool(cron_sec) and request.GET.get('secret') == cron_sec
     is_force = request.GET.get('force') == 'true'
     
