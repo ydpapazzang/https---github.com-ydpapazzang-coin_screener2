@@ -254,7 +254,7 @@ def cron_prefetch(request):
             df = None
             try:
                 if ex == 'upbit':
-                    df = pyupbit.get_ohlcv(ticker, interval=tf, count=400)
+                    df = pyupbit.get_ohlcv(ticker, interval=tf, count=200)
                 elif ex == 'bithumb':
                     import pybithumb
                     bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
@@ -266,7 +266,7 @@ def cron_prefetch(request):
                         elif tf == 'minute240': df = _resample(df, '4h')
                         elif tf == 'week': df = _resample(df, 'W-MON')
                         elif tf == 'month': df = _resample(df, 'ME')
-                        df = df.tail(400)
+                        df = df.tail(200)
                 elif ex == 'kospi':
                     import FinanceDataReader as fdr
                     df = fdr.DataReader(ticker)
@@ -276,7 +276,7 @@ def cron_prefetch(request):
                             df.drop(columns=['Change'], inplace=True)
                         if tf == 'week': df = _resample(df, 'W-FRI')
                         elif tf == 'month': df = _resample(df, 'ME')
-                        df = df.tail(400)
+                        df = df.tail(200)
 
                 if df is not None and not df.empty:
                     json_data = json.loads(df.tojson(orient="split"))
@@ -375,8 +375,8 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
                         columns=data_dict['columns'],
                     )
                     df.index.name = None
-                    # req_count (200 또는 400) 개수만큼 가져와서 메모리 캐시에 등록
-                    if len(df) >= min(190, req_count - 10):
+                    # 신선한 캐시는 길이와 무관하게 메모리 캐시에 등록 (짧은 이력 코인도 그대로 신뢰).
+                    if len(df) > 0:
                         cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_{req_count}"
                         cache.set(cache_key, df.tail(req_count), 180)
                         cached_keys.add((obj.ticker, obj.timeframe))
@@ -391,16 +391,16 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions):
                     missing_tasks.append((t, tf))
 
         if missing_tasks:
-            import time
             from ..engine import get_max_required_len
             req_count = get_max_required_len(conditions)
-            
+
+            # 개별 sleep 대신 engine._throttle() 전역 속도 제한에 위임.
+            # 워커를 늘려도 실제 요청 속도는 전역적으로 ≈9req/s로 제한되어 안전하다.
             def _fetch_one(item):
                 t, tf = item
-                time.sleep(0.4)  # 5 workers * (1 / (0.4 + 0.1 API)) = ~10 req/sec (Rate limit 방어)
                 get_ohlcv_with_retry(t, tf, count=req_count)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
                 list(executor.map(_fetch_one, missing_tasks))
     except Exception as e:
         print(f"Bulk cache prefetch error: {e}")
@@ -478,8 +478,9 @@ def coin_search_stream(request, strategy_id):
 
         _bulk_prefetch_ohlcv(tickers_data, conditions)
 
-        # 스레드 개수를 10개로 조절하여 업비트 API 호출의 순간 폭주(Burst)를 완화하고 Rate Limit를 방어합니다.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        # 프리페치 후 대부분 캐시 히트이고, 잔여 라이브 조회는 engine._throttle()로 전역
+        # 속도 제한되므로 워커를 늘려도 안전하다. (병렬 처리로 스캔 지연 최소화)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
             futures = {executor.submit(process_ticker, t): t for t in tickers_data}
             last_sent_pct = -1
             for future in concurrent.futures.as_completed(futures):

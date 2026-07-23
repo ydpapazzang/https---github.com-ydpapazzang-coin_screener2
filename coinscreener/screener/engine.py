@@ -25,18 +25,33 @@ def _safe_float(v):
 
 _rate_limit_lock = threading.Lock()
 _last_request_time = 0.0
-_min_interval = 0.12  # 최소 0.12초 간격 (초당 최대 ~8.3회 요청)
+_min_interval = 0.11  # 전역 최소 요청 간격 (모든 스레드 합산 ≈ 초당 9회, 업비트 10req/s 한도 방어)
 
 
-def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
-    """API 호출 제한을 고려하여 글로벌 속도 제한 및 지터 재시도가 적용된 OHLCV 조회"""
-    # 1. 캐시 확인 (5분 타임아웃, 같은 종목/타임프레임 재요청 시 즉시 반환)
+def _throttle():
+    """모든 워커 스레드에서 공유되는 전역 토큰버킷 방식 속도 제한.
+    개별 태스크마다 sleep을 거는 방식(과도하게 느림) 대신, 실제 API 호출 직전에만
+    최소 간격을 강제해 처리량을 극대화하면서 429를 방어한다."""
+    global _last_request_time
+    with _rate_limit_lock:
+        now = time.time()
+        wait = _min_interval - (now - _last_request_time)
+        if wait > 0:
+            time.sleep(wait)
+        _last_request_time = time.time()
+
+
+def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3):
+    """전역 속도 제한이 적용된 OHLCV 조회. 신선한 캐시는 길이와 무관하게 즉시 사용한다.
+    (짧은 상장이력 코인은 데이터가 적은 게 정상이며, 지표 계산 시 자연히 None 처리되므로
+     길이 임계값으로 재조회 루프를 도는 대신 캐시를 그대로 신뢰한다.)"""
+    # 1. 메모리 캐시 확인 (같은 종목/타임프레임 재요청 시 즉시 반환)
     cache_key = f"ohlcv_{ticker}_{interval}_{count}"
     cached_data = cache.get(cache_key)
-    if cached_data is not None and len(cached_data) >= 190:
+    if cached_data is not None and len(cached_data) > 0:
         return cached_data
 
-    # 1.5. DB 사전 캐시 확인 (Pre-fetching)
+    # 1.5. DB 사전 캐시 확인 (Pre-fetching) — 신선하면 그대로 사용
     try:
         from .models import OHLCVCache
         import json
@@ -49,17 +64,18 @@ def get_ohlcv_with_retry(ticker, interval, count=400, retries=5, delay=0.4):
                 df = pd.read_json(io.StringIO(json_str), orient='split')
                 df.index.name = None
                 df_tail = df.tail(count)
-                if len(df_tail) >= 190:  # 190개 이상만 되면 DB 캐시 즉시 활용
+                if len(df_tail) > 0:
                     cache.set(cache_key, df_tail, 180)
                     return df_tail
     except Exception as e:
         logger.error(f"OHLCVCache read error for {ticker}: {e}", exc_info=True)
 
-    # 캐시가 없거나 부족한 경우 (ex: 200개 이하), 실시간 조회를 수행하고 DB 캐시를 즉시 업데이트
+    # 캐시가 없으면 실시간 조회를 수행하고 DB 캐시를 즉시 업데이트
     try:
         import time
         import pyupbit
         for attempt in range(retries):
+            _throttle()  # 실제 API 호출 직전 전역 속도 제한
             if ticker.startswith('KRW-'):
                 df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
             elif '_' in ticker: # Bithumb
@@ -252,23 +268,25 @@ def get_required_len(indicator_type, param):
     return param
 
 def get_max_required_len(conditions):
-    """조건들을 기반으로 필요한 최대 OHLCV 캔들 갯수를 계산 (최소 200)"""
+    """조건들을 기반으로 필요한 최대 OHLCV 캔들 갯수를 정확히 계산.
+
+    업비트 캔들 API는 1회 요청당 최대 200개를 반환하므로, count가 200을 넘으면
+    티커당 API 호출이 2배로 늘어난다. MA(200)처럼 정확히 200개만 필요한 경우
+    불필요한 여유분(+5)으로 201이 되어 호출이 2배가 되던 문제를 제거한다."""
     if not conditions:
         return 200
-    
-    max_len = 0
+
+    max_len = 60  # 지표 안정화를 위한 최소 하한
     for cond in conditions:
         l_len = get_required_len(cond.left_indicator, cond.left_param)
         r_len = get_required_len(cond.right_indicator, cond.right_param)
-        req = max(l_len, r_len) + cond.offset + 5  # 여유분 5 추가
+        extra = 1 if cond.operator in ('cross_up', 'cross_down') else 0
+        req = max(l_len, r_len) + cond.offset + extra
         if req > max_len:
             max_len = req
-            
-    # API 호출 최적화를 위해: 기본 200. 만약 200보다 크면 400.
-    if max_len <= 200:
-        return 200
-    else:
-        return 400
+
+    # 업비트 1회 요청 한도(200)에 정확히 맞도록. 200 이하이면 1회 호출로 끝난다.
+    return min(max_len, 200) if max_len <= 200 else max_len
 
 
 def check_strategy(ticker, conditions, current_price=None, current_change_rate=None):
