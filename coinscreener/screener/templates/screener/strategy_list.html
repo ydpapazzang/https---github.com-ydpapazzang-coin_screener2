@@ -112,18 +112,22 @@
     /* ── BOTTOM SHEET (DROPDOWN REPLACEMENT) ── */
     .sheet-overlay {
         position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-        z-index: 2000; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+        z-index: 5000; opacity: 0; pointer-events: none; transition: opacity 0.3s;
     }
     .sheet-overlay.open { opacity: 1; pointer-events: all; }
-    
+
     .bottom-sheet {
         position: fixed; bottom: -100%; left: 50%; transform: translateX(-50%);
         width: 100%; max-width: 480px;
         background: var(--bg-color);
         border-top: 1px solid var(--border-color);
         border-radius: 20px 20px 0 0;
-        z-index: 2001; transition: bottom 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
-        padding: 24px 20px 40px;
+        /* 하단 네비게이션(var(--nav-height))보다 위에 오도록 z-index를 크게, 그리고
+           옵션이 네비/모바일 홈 인디케이터(safe-area)에 가리지 않게 하단 여백을 충분히 준다. */
+        z-index: 5001; transition: bottom 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
+        padding: 24px 20px calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 24px);
+        max-height: 80vh; overflow-y: auto;
+        box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
     }
     .bottom-sheet.open { bottom: 0; }
     
