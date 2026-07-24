@@ -77,12 +77,29 @@ def _get_tickers_raw(exchange, vol_limit):
             if exchange == 'upbit':
                 try:
                     import requests
+                    # 상장폐지 티커가 DB에 남아 있으면 시세 일괄 요청이 404로 통째로 실패하므로,
+                    # 유효 마켓 목록(1시간 캐시)으로 먼저 걸러 404 자체를 방지한다.
+                    valid_markets = cache.get('upbit_valid_markets')
+                    if not valid_markets:
+                        try:
+                            ma = requests.get('https://api.upbit.com/v1/market/all', timeout=5).json()
+                            if isinstance(ma, list):
+                                valid_markets = set(m['market'] for m in ma if isinstance(m, dict) and 'market' in m)
+                                cache.set('upbit_valid_markets', valid_markets, 3600)
+                        except Exception:
+                            valid_markets = None
+
                     tickers_only = [t['ticker'] for t in result_list]
+                    if valid_markets:
+                        tickers_only = [t for t in tickers_only if t in valid_markets]
+
                     # Upbit API는 한 번에 여러 티커(콤마 구분) 요청 가능
                     chunks = [tickers_only[i:i+100] for i in range(0, len(tickers_only), 100)]
                     change_rates = {}
                     prices = {}
                     for chunk in chunks:
+                        if not chunk:
+                            continue
                         try:
                             res = requests.get(f'https://api.upbit.com/v1/ticker?markets={",".join(chunk)}', timeout=5).json()
                         except Exception as ce:
@@ -93,18 +110,9 @@ def _get_tickers_raw(exchange, vol_limit):
                                 change_rates[item['market']] = item.get('signed_change_rate', 0) * 100
                                 prices[item['market']] = item.get('trade_price', 0)
                         else:
-                            # 상장폐지 등으로 청크 일괄 요청이 실패하면 티커별로 재시도해
-                            # 한 종목 문제로 청크 100개의 시세가 통째로 누락되지 않게 함
-                            print(f"Upbit API error (chunk fallback): {res}")
-                            for mk in chunk:
-                                try:
-                                    r2 = requests.get(f'https://api.upbit.com/v1/ticker?markets={mk}', timeout=5).json()
-                                    if isinstance(r2, list) and r2:
-                                        change_rates[mk] = r2[0].get('signed_change_rate', 0) * 100
-                                        prices[mk] = r2[0].get('trade_price', 0)
-                                except Exception:
-                                    pass
-                    
+                            # 유효 마켓 필터 후에도 실패하면 표시용 시세만 생략(0)하고 넘어간다(느린 개별 재시도 금지)
+                            print(f"Upbit ticker chunk skipped: {res}")
+
                     for t in result_list:
                         t['change_rate'] = change_rates.get(t['ticker'], 0)
                         t['current_price'] = prices.get(t['ticker'], 0)
@@ -250,34 +258,39 @@ def cron_prefetch(request):
         return HttpResponseForbidden("Forbidden")
         
     try:
-        limit = 25
-        
+        limit = 60  # 호출당 처리량 (분봉 제거로 타임프레임이 적어 안전하게 상향)
+
         index_cache, _ = OHLCVCache.objects.get_or_create(
-            ticker="__PREFETCH_INDEX__", 
+            ticker="__PREFETCH_INDEX__",
             timeframe="system",
             defaults={"data": {"start": 0}}
         )
-        
+
         if isinstance(index_cache.data, str):
             index_cache.data = json.loads(index_cache.data)
-            
+
         start_idx = index_cache.data.get("start", 0)
 
-        active_timeframes = {"day"}
-        from ..models import Strategy
-        for s in Strategy.objects.all():
-            for c in s.conditions.all():
-                active_timeframes.add(c.timeframe)
-                
-        tasks = []
-        for ex in ['upbit', 'bithumb', 'kospi']:
-            tickers_info = _get_tickers(ex, 0)
-            for t_info in tickers_info:
-                for tf in active_timeframes:
-                    if ex == 'kospi' and tf not in ['day', 'week', 'month']:
-                        continue
-                    tasks.append({"exchange": ex, "ticker": t_info["ticker"], "timeframe": tf})
-                
+        # 작업 목록(티커×타임프레임)은 자주 바뀌지 않으므로 10분 캐시.
+        # 매 호출마다 3개 거래소 티커 전체를 다시 불러오던 비용(수십 초)을 제거한다.
+        tasks = cache.get('prefetch_tasks')
+        if not tasks:
+            active_timeframes = {"day"}
+            from ..models import Strategy
+            for s in Strategy.objects.all():
+                for c in s.conditions.all():
+                    active_timeframes.add(c.timeframe)
+
+            tasks = []
+            for ex in ['upbit', 'bithumb', 'kospi']:
+                tickers_info = _get_tickers(ex, 0)
+                for t_info in tickers_info:
+                    for tf in active_timeframes:
+                        if ex == 'kospi' and tf not in ['day', 'week', 'month']:
+                            continue
+                        tasks.append({"exchange": ex, "ticker": t_info["ticker"], "timeframe": tf})
+            cache.set('prefetch_tasks', tasks, 600)
+
         total_tasks = len(tasks)
         
         if start_idx >= total_tasks:
@@ -290,60 +303,20 @@ def cron_prefetch(request):
         error_count = 0
         
         import concurrent.futures
-        import pyupbit
-        import pandas as pd
-
-        def _resample(df, rule):
-            if df is None or df.empty: return df
-            if not isinstance(df.index, pd.DatetimeIndex):
-                df.index = pd.to_datetime(df.index)
-            res = df.resample(rule).agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'})
-            return res.dropna()
 
         def fetch_and_save(task):
-            ex = task["exchange"]
-            ticker = task["ticker"]
-            tf = task["timeframe"]
-            df = None
+            # get_ohlcv_with_retry가 거래소별 스로틀·재시도·DB/메모리 캐싱을 모두 처리한다.
+            # 이미 신선한 캐시가 있으면 재조회하지 않고, 오래됐거나 없을 때만 갱신한다.
             try:
-                if ex == 'upbit':
-                    df = pyupbit.get_ohlcv(ticker, interval=tf, count=200)
-                elif ex == 'bithumb':
-                    import pybithumb
-                    bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
-                    btf = bithumb_tf_map.get(tf, 'day')
-                    df = pybithumb.get_ohlcv(ticker, interval=btf)
-                    if df is not None and not df.empty:
-                        df.index.name = None
-                        if tf == 'minute15': df = _resample(df, '15min')
-                        elif tf == 'minute240': df = _resample(df, '4h')
-                        elif tf == 'week': df = _resample(df, 'W-MON')
-                        elif tf == 'month': df = _resample(df, 'ME')
-                        df = df.tail(200)
-                elif ex == 'kospi':
-                    import FinanceDataReader as fdr
-                    df = fdr.DataReader(ticker)
-                    if df is not None and not df.empty:
-                        df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
-                        if 'Change' in df.columns:
-                            df.drop(columns=['Change'], inplace=True)
-                        if tf == 'week': df = _resample(df, 'W-FRI')
-                        elif tf == 'month': df = _resample(df, 'ME')
-                        df = df.tail(200)
-
-                if df is not None and not df.empty:
-                    json_data = json.loads(df.to_json(orient="split"))
-                    OHLCVCache.objects.update_or_create(
-                        ticker=ticker,
-                        timeframe=tf,
-                        defaults={"data": json_data}
-                    )
-                    return True
-            except Exception as e:
-                pass
-            return False
+                df = get_ohlcv_with_retry(
+                    task["ticker"], task["timeframe"],
+                    count=200, exchange=task["exchange"]
+                )
+                return df is not None and len(df) > 0
+            except Exception:
+                return False
             
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = [executor.submit(fetch_and_save, t) for t in batch_tasks]
             for future in concurrent.futures.as_completed(futures):
                 if future.result():
