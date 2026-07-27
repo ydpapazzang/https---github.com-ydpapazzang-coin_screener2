@@ -35,16 +35,7 @@ class Command(BaseCommand):
             upbit_tickers = pyupbit.get_tickers(fiat="KRW")
             bithumb_tickers = pybithumb.get_tickers()
             
-            # KOSPI (ETF) 가져오기
-            try:
-                etf_df = fdr.StockListing('ETF/KR')
-                etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
-                kospi_tickers = etf_df[etf_code_col].astype(str).tolist()
-            except Exception as e:
-                self.stdout.write(f"ETF 목록 가져오기 실패: {e}")
-                kospi_tickers = []
-            
-            self.stdout.write(f"업비트 {len(upbit_tickers)}개, 빗썸 {len(bithumb_tickers)}개, ETF {len(kospi_tickers)}개, {len(active_timeframes)}개 타임프레임 수집 시작...")
+            self.stdout.write(f"업비트 {len(upbit_tickers)}개, 빗썸 {len(bithumb_tickers)}개, {len(active_timeframes)}개 타임프레임 수집 시작...")
 
             # 업비트 수집
             for ticker in upbit_tickers:
@@ -56,10 +47,7 @@ class Command(BaseCommand):
                 for tf in active_timeframes:
                     self._fetch_and_cache(ticker, tf, exchange='bithumb')
 
-            # KOSPI 수집
-            for ticker in kospi_tickers:
-                for tf in active_timeframes:
-                    self._fetch_and_cache(ticker, tf, exchange='kospi')
+
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error during crawl cycle: {e}"))
