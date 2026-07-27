@@ -137,6 +137,10 @@ def send_alert(strategy_name: str, results: list, strategy_id: int = None, excha
 
     if strategy_id and site_url:
         link  = f'{site_url}/strategy/{strategy_id}/'
-        text += f'\n\n<a href="{link}">🔗 웹에서 보기</a>'
+        # 텔레그램 메시지 하단에 사용자가 요청한 링크 형식 추가
+        text += f'\n\n🔗 <a href="{link}">웹사이트로이동하기 -({site_url.replace("https://", "").replace("http://", "")})</a>'
+    else:
+        # site_url이 없더라도 하드코딩된 주소 노출 (유저 요청)
+        text += '\n\n🔗 <a href="https://woniiscreener.duckdns.org">웹사이트로이동하기 -(woniiscreener.duckdns.org)</a>'
 
     return send_message(text)
