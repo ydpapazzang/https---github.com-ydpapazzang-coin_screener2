@@ -122,14 +122,13 @@
         background: var(--bg-color);
         border-top: 1px solid var(--border-color);
         border-radius: 20px 20px 0 0;
-        /* 하단 네비게이션(var(--nav-height))보다 위에 오도록 z-index를 크게, 그리고
-           옵션이 네비/모바일 홈 인디케이터(safe-area)에 가리지 않게 하단 여백을 충분히 준다. */
+        /* 팝업이 네비게이션 바 위로 올라오도록 bottom 속성과 여백 수정 */
         z-index: 5001; transition: bottom 0.3s cubic-bezier(0.1, 0.8, 0.2, 1);
-        padding: 24px 20px calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 24px);
+        padding: 24px 20px;
         max-height: 80vh; overflow-y: auto;
         box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
     }
-    .bottom-sheet.open { bottom: 0; }
+    .bottom-sheet.open { bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 0px)); }
     
     .sheet-handle {
         width: 40px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px;
