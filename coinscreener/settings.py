@@ -22,6 +22,12 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.vercel.app').split(',')
 
+# HTTPS 환경(DuckDNS 등)에서 POST 요청 시 CSRF 에러 방지
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.duckdns.org',
+    'https://*.vercel.app',
+]
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
