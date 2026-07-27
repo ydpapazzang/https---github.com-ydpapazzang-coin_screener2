@@ -28,6 +28,9 @@ CSRF_TRUSTED_ORIGINS = [
     'https://*.vercel.app',
 ]
 
+# Nginx 등 리버스 프록시 뒤에서 동작할 때 HTTPS 인식
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
