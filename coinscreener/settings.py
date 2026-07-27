@@ -3,8 +3,12 @@ Django settings for coinscreener project.
 Django 4.2.0
 """
 import dj_database_url
-from pathlib import Path
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# .env 파일 로드 (서버 환경변수 세팅용)
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
