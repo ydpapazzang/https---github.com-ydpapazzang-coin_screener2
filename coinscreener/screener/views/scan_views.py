@@ -393,22 +393,22 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
 
         cached_keys = set()
         for obj in cached_qs:
-            if (now - obj.updated_at).total_seconds() < max_cache_age(obj.timeframe):
-                data_dict = obj.data
-                try:
-                    df = pd.DataFrame(
-                        data_dict['data'],
-                        index=pd.to_datetime(data_dict['index'], unit='ms'),
-                        columns=data_dict['columns'],
-                    )
-                    df.index.name = None
-                    # 신선한 캐시는 길이와 무관하게 메모리 캐시에 등록 (짧은 이력 코인도 그대로 신뢰).
-                    if len(df) > 0:
-                        cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_{req_count}"
-                        cache.set(cache_key, df.tail(req_count), 180)
-                        cached_keys.add((obj.ticker, obj.timeframe))
-                except Exception:
-                    pass
+            # SQLite DB에 데이터가 존재하기만 하면 무조건 신뢰 (크롤러 봇이 업데이트를 전담)
+            data_dict = obj.data
+            try:
+                df = pd.DataFrame(
+                    data_dict['data'],
+                    index=pd.to_datetime(data_dict['index'], unit='ms'),
+                    columns=data_dict['columns'],
+                )
+                df.index.name = None
+                
+                if len(df) > 0:
+                    cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_{req_count}"
+                    cache.set(cache_key, df.tail(req_count), 180)
+                    cached_keys.add((obj.ticker, obj.timeframe))
+            except Exception:
+                pass
 
         # DB 캐시에 없거나 부실한 항목 병렬 사전 수집
         missing_tasks = []
