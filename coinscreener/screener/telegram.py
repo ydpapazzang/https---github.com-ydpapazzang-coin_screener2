@@ -37,11 +37,16 @@ def send_message(text: str) -> dict:
             'text':       text,
             'parse_mode': 'HTML',
         }, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        if data.get('ok'):
-            return {'ok': True}
-        return {'ok': False, 'error': data.get('description', '알 수 없는 오류')}
+        
+        try:
+            data = r.json()
+        except ValueError:
+            data = {}
+            
+        if r.status_code != 200 or not data.get('ok'):
+            return {'ok': False, 'error': data.get('description', f'텔레그램 전송 실패 (HTTP {r.status_code})')}
+            
+        return {'ok': True}
     except requests.exceptions.Timeout:
         return {'ok': False, 'error': '텔레그램 API 응답 시간 초과 (10초)'}
     except requests.exceptions.ConnectionError:
