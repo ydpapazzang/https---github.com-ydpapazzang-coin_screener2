@@ -58,6 +58,19 @@ def _check_conditions_at(df_map, conditions, idx: int) -> bool:
             
             if not (rv <= lv <= max_val):
                 return False
+        elif cond.operator in ('cross_up', 'cross_down'):
+            prev_offset = offset + 1
+            lv_prev = get_indicator_value(df, cond.left_indicator, cond.left_param, prev_offset, bb_std=bb_std)
+            rv_prev = get_indicator_value(df, cond.right_indicator, cond.right_param, prev_offset, bb_std=bb_std)
+            if lv_prev is None or rv_prev is None:
+                return False
+                
+            if cond.operator == 'cross_up':
+                if not (lv_prev <= rv_prev and lv > rv):
+                    return False
+            elif cond.operator == 'cross_down':
+                if not (lv_prev >= rv_prev and lv < rv):
+                    return False
         else:
             ops = {'gt': lv>rv, 'lt': lv<rv, 'gte': lv>=rv, 'lte': lv<=rv}
             if not ops.get(cond.operator, False):
