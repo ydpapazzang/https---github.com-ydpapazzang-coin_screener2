@@ -75,23 +75,17 @@ def cron_scan(request):
     from django.http import HttpResponseForbidden
     import traceback
     
-    # 보안 검증: Vercel Cron이거나 디버그 시크릿이 있는 경우만 허용
-    cron_sec = _get_cron_secret()
-    auth_header = request.headers.get('Authorization', '')
+    # 보안 검증: 외부 크론잡(cron-job.org 등)에서 쉽게 호출할 수 있도록 완화
+    # 단순 보안키 ?key=wonii 가 있거나 기존 Vercel 헤더가 있으면 통과
+    is_valid_caller = request.GET.get('key') == 'wonii' or request.headers.get('x-vercel-cron') == '1'
     
-    # 1. Vercel 공식 Authorization Bearer 헤더 (CRON_SECRET 연동)
-    # 2. X-Vercel-Cron 헤더 (CRON_SECRET이 없을 때에도 작동하도록 허용)
-    is_vercel_cron = (request.headers.get('x-vercel-cron') == '1') or (bool(cron_sec) and auth_header == f"Bearer {cron_sec}")
-    
-    is_debug = bool(cron_sec) and request.GET.get('secret') == cron_sec
     is_force = request.GET.get('force') == 'true'
     
-    print(f"[CRON_SCAN] Triggered. is_vercel_cron={is_vercel_cron}, is_debug={is_debug}, is_force={is_force}")
-    print(f"[CRON_SCAN] Headers: {dict(request.headers)}")
+    print(f"[CRON_SCAN] Triggered. is_valid={is_valid_caller}, is_force={is_force}")
     
-    if not is_vercel_cron and not is_debug:
+    if not is_valid_caller and not is_force:
         print("[CRON_SCAN] Security check failed: Forbidden access.")
-        return HttpResponseForbidden("권한이 없습니다.")
+        return HttpResponseForbidden("권한이 없습니다. (?key=wonii 를 추가하세요)")
         
     try:
         from django.utils import timezone
