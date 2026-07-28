@@ -4,3 +4,4 @@ from .cron_views import *
 from .api_views import *
 from .backtest_views import *
 from .ai_views import *
+from .danta_views import *

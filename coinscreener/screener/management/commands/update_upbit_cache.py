@@ -49,8 +49,59 @@ class Command(BaseCommand):
 
 
 
+            # 단타 추천 코인 실시간 성적 추적
+            self._monitor_recommendations()
+
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error during crawl cycle: {e}"))
+
+    def _monitor_recommendations(self):
+        from django.utils import timezone
+        from coinscreener.screener.models import DailyRecommendation
+        today_date = timezone.localtime().date()
+        
+        # 오늘자 추천 코인 중 아직 완료되지 않은 것들 추적
+        active_recs = DailyRecommendation.objects.filter(
+            date=today_date,
+            status__in=['pending', 'active']
+        )
+        if not active_recs.exists():
+            return
+            
+        self.stdout.write("오늘의 단타 추천 코인 성적 추적 중...")
+        for rec in active_recs:
+            try:
+                # 현재가 조회
+                current_price = pyupbit.get_current_price(rec.coin_ticker)
+                if not current_price:
+                    continue
+                    
+                # 최고가/최저가 업데이트
+                if rec.highest_price is None or current_price > rec.highest_price:
+                    rec.highest_price = current_price
+                if rec.lowest_price is None or current_price < rec.lowest_price:
+                    rec.lowest_price = current_price
+                    
+                # 상태 업데이트 로직
+                if rec.status == 'pending':
+                    if current_price >= rec.entry_price:
+                        rec.status = 'active'
+                        self.stdout.write(self.style.SUCCESS(f"[{rec.coin_ticker}] 진입가 도달! (상태: 매수완료)"))
+                
+                if rec.status == 'active':
+                    if current_price >= rec.target_price:
+                        rec.status = 'success'
+                        rec.result_pct = ((rec.target_price - rec.entry_price) / rec.entry_price) * 100
+                        self.stdout.write(self.style.SUCCESS(f"[{rec.coin_ticker}] 목표가 달성! (상태: 목표달성, 수익: {rec.result_pct:.2f}%)"))
+                    elif current_price <= rec.stop_loss:
+                        rec.status = 'failed'
+                        rec.result_pct = ((rec.stop_loss - rec.entry_price) / rec.entry_price) * 100
+                        self.stdout.write(self.style.WARNING(f"[{rec.coin_ticker}] 손절가 이탈... (상태: 손절이탈, 손실: {rec.result_pct:.2f}%)"))
+                        
+                rec.save()
+            except Exception as e:
+                pass
+            time.sleep(0.1)
 
     def _fetch_and_cache(self, ticker, timeframe, exchange='upbit'):
         # API Rate Limit 준수 (거래소별 조절)

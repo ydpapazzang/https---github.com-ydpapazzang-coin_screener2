@@ -35,4 +35,8 @@ urlpatterns = [
     path('cron/prefetch/',                           views.cron_prefetch,  name='cron_prefetch'),
     path('cron/migrate/',                            views.trigger_migrate,name='trigger_migrate'),
     path('cron/debug/',                              views.trigger_debug,  name='trigger_debug'),
+    
+    # 단타 및 통계 탭
+    path('danta/', views.danta_list, name='danta_list'),
+    path('stats/', views.stats_list, name='stats_list'),
 ]

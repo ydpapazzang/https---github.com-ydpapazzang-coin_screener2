@@ -262,3 +262,39 @@ class AlertHistory(models.Model):
 
     def __str__(self):
         return f"{self.strategy.name} - {self.symbol} ({self.created_at})"
+
+
+class DailyRecommendation(models.Model):
+    """오늘의 단타 추천 코인 (매일 오전 9시 생성)"""
+    date = models.DateField(verbose_name="추천일")
+    coin_ticker = models.CharField(max_length=50, verbose_name="티커")
+    coin_name = models.CharField(max_length=100, verbose_name="종목명")
+    entry_price = models.FloatField(verbose_name="진입 추천가")
+    target_price = models.FloatField(verbose_name="목표가")
+    stop_loss = models.FloatField(verbose_name="손절가")
+    k_value = models.FloatField(default=0.5, verbose_name="적용된 K값")
+    reason = models.TextField(verbose_name="추천 이유")
+    
+    status_choices = [
+        ('pending', '진입대기'),
+        ('active', '매수완료'),
+        ('success', '목표달성'),
+        ('failed', '손절이탈'),
+        ('closed', '마감'),
+    ]
+    status = models.CharField(max_length=20, choices=status_choices, default='pending', verbose_name="상태")
+    result_pct = models.FloatField(null=True, blank=True, verbose_name="최종 수익률(%)")
+    
+    # 성적 추적용
+    highest_price = models.FloatField(null=True, blank=True, verbose_name="진입 후 최고가")
+    lowest_price = models.FloatField(null=True, blank=True, verbose_name="진입 후 최저가")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', 'coin_ticker']
+        unique_together = ('date', 'coin_ticker')
+
+    def __str__(self):
+        return f"[{self.date}] {self.coin_name} - {self.get_status_display()}"

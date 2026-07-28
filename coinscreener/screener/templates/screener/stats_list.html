@@ -1,0 +1,154 @@
+{% extends 'screener/base.html' %}
+{% load humanize %}
+
+{% block title %}단타 성적표{% endblock %}
+
+{% block extra_head %}
+<style>
+    .stats-header {
+        padding: 24px 20px;
+        background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
+        border-radius: 0 0 20px 20px;
+        margin-bottom: 20px;
+        text-align: center;
+    }
+    
+    .stats-title {
+        font-size: 22px;
+        font-weight: 700;
+        margin-bottom: 16px;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .stats-summary {
+        display: flex;
+        justify-content: space-around;
+        background: rgba(0,0,0,0.2);
+        padding: 16px;
+        border-radius: 12px;
+    }
+    
+    .summary-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .summary-val {
+        font-size: 20px;
+        font-weight: 700;
+        color: #fff;
+    }
+    
+    .summary-label {
+        font-size: 12px;
+        color: rgba(255,255,255,0.7);
+        margin-top: 4px;
+    }
+
+    .record-list {
+        padding: 0 20px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .record-card {
+        background-color: var(--surface-color);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: 1px solid rgba(255,255,255,0.05);
+    }
+    
+    .rec-left {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .rec-date {
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
+    
+    .rec-name {
+        font-size: 16px;
+        font-weight: 700;
+    }
+    
+    .rec-right {
+        text-align: right;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .rec-status {
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .rec-pct {
+        font-size: 18px;
+        font-weight: 700;
+    }
+    
+    .pct-up { color: var(--up-color); }
+    .pct-down { color: var(--down-color); }
+    .pct-zero { color: #888; }
+    
+</style>
+{% endblock %}
+
+{% block topbar %}
+{% endblock %}
+
+{% block content %}
+<div class="stats-header">
+    <div class="stats-title">단타 누적 성적표</div>
+    <div class="stats-summary">
+        <div class="summary-box">
+            <div class="summary-val">{{ total }}건</div>
+            <div class="summary-label">총 픽</div>
+        </div>
+        <div class="summary-box">
+            <div class="summary-val">{{ win_rate }}%</div>
+            <div class="summary-label">승률</div>
+        </div>
+        <div class="summary-box">
+            <div class="summary-val">{{ wins }}승 {{ losses }}패</div>
+            <div class="summary-label">전적</div>
+        </div>
+    </div>
+</div>
+
+<div class="record-list">
+    {% if not recommendations %}
+        <div style="text-align: center; color: var(--text-secondary); margin-top: 40px;">
+            아직 성적 데이터가 없습니다.
+        </div>
+    {% else %}
+        {% for rec in recommendations %}
+        <div class="record-card">
+            <div class="rec-left">
+                <div class="rec-date">{{ rec.date|date:"y.m.d" }} KST</div>
+                <div class="rec-name">{{ rec.coin_name }}</div>
+            </div>
+            <div class="rec-right">
+                <div class="rec-status">{{ rec.get_status_display }}</div>
+                {% if rec.result_pct %}
+                    <div class="rec-pct {% if rec.result_pct > 0 %}pct-up{% elif rec.result_pct < 0 %}pct-down{% else %}pct-zero{% endif %}">
+                        {% if rec.result_pct > 0 %}+{% endif %}{{ rec.result_pct|floatformat:2 }}%
+                    </div>
+                {% else %}
+                    <div class="rec-pct pct-zero">-</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}
