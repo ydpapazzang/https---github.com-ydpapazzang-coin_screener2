@@ -162,7 +162,7 @@ def cron_scan(request):
                     'telegram_result': res
                 })
             else:
-                warn_msg = f"전략 '{strategy.name}': 텔레그램 환경변수(TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)가 Vercel에 설정되지 않았습니다."
+                warn_msg = f"전략 '{strategy.name}': 텔레그램 환경변수(TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)가 환경변수에 설정되지 않았습니다."
                 print(f"[CRON_SCAN] {warn_msg}")
                 warnings.append(warn_msg)
                 results_summary.append({
