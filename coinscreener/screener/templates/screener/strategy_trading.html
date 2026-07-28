@@ -208,9 +208,12 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
         </a>
         {% if strategy %}
-        <div class="title-dropdown" onclick="editStrategyName()">
-            <span id="strategy-name-text">{{ strategy.name }}</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="var(--text-secondary)"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="title-dropdown" onclick="openStrategySheet()">
+                <span id="strategy-name-text">{{ strategy.name }}</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+            </div>
+            <svg onclick="editStrategyName()" width="16" height="16" viewBox="0 0 24 24" fill="var(--text-secondary)" style="cursor:pointer; margin-left:4px;"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
         </div>
         {% else %}
         <div class="title-dropdown">전략 선택</div>
@@ -230,6 +233,25 @@
             <p style="margin-top: 10px;">홈에서 전략을 먼저 선택하거나 생성해주세요.</p>
         </div>
     {% else %}
+    
+    <!-- Strategy Select Bottom Sheet -->
+    <div class="bs-overlay" id="strategy-picker-overlay" onclick="closeStrategySheet()"></div>
+    <div class="bottom-sheet" id="strategy-picker-sheet">
+        <div class="bs-header">
+            <div class="bs-title">전략 선택</div>
+            <button type="button" class="bs-close" onclick="closeStrategySheet()">×</button>
+        </div>
+        <div style="padding: 16px 20px;">
+            {% for s in strategies %}
+            <div style="padding: 14px 16px; border-radius: 12px; margin-bottom: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; {% if s.id == strategy.id %}background: rgba(45, 123, 254, 0.15); border: 1px solid rgba(45, 123, 254, 0.3); color: var(--primary-color); font-weight: 700;{% else %}background: rgba(255,255,255,0.03);{% endif %}" onclick="window.location.href='{% url 'strategy_trading' s.id %}'">
+                {{ s.name }}
+                {% if s.id == strategy.id %}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
     
     <!-- Telegram Alert Toggle -->
     <div class="alert-toggle-box" id="tg-alert-box">
@@ -744,6 +766,16 @@
                 if(data.ok) span.textContent = newName.trim();
             });
         }
+    }
+    
+    function openStrategySheet() {
+        document.getElementById('strategy-picker-overlay').classList.add('active');
+        document.getElementById('strategy-picker-sheet').classList.add('active');
+    }
+    
+    function closeStrategySheet() {
+        document.getElementById('strategy-picker-overlay').classList.remove('active');
+        document.getElementById('strategy-picker-sheet').classList.remove('active');
     }
 
     // Form Interactions
