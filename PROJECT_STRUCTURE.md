@@ -1,6 +1,6 @@
 # 🪙 Woniiscreener 프로젝트 구조 명세서 (Project Architecture)
 
-본 문서는 구글 클라우드(GCP) 이전 이후, 최적화가 완료된 현재 시점의 시스템 구조와 핵심 모듈의 역할을 정리한 문서입니다.
+본 문서는 구글 클라우드(GCP) 이전 이후, 래리 윌리엄스 돌파 전략 및 백테스팅 엔진이 추가된 현재 시점의 시스템 구조와 핵심 모듈의 역할을 정리한 문서입니다.
 
 ## 🏗 인프라 구조 (Infrastructure)
 * **호스팅:** 구글 클라우드 플랫폼 (GCP e2-micro 인스턴스 / Ubuntu)
@@ -23,34 +23,40 @@ coin-screener/
 │   ├── urls.py               # 메인 URL 라우팅
 │   └── screener/
 │       ├── models.py         # 데이터베이스 모델 (Condition, Strategy, AlertSetting, OHLCVCache)
-│       ├── telegram.py       # 텔레그램 알림 발송 유틸리티 (메시지 렌더링, 딥링크 처리)
+│       ├── telegram.py       # 텔레그램 알림 발송 유틸리티 (메시지 렌더링, 딥링크 처리, 에러 핸들링)
+│       ├── engine.py         # [핵심] 차트 지표(EMA, 일목균형표 등) 계산 및 실시간 돌파(Cross) 연산 엔진
+│       ├── backtest.py       # [핵심] 과거 데이터를 활용한 시뮬레이션 및 백테스트 전용 평가 엔진
 │       ├── management/
 │       │   └── commands/     # 백그라운드 크롤링 봇 스크립트
 │       │       ├── update_upbit_cache.py   # 코인(업비트,빗썸) 캐시 봇 (5분 무한 루프)
 │       │       └── update_kospi_cache.py   # 코스피(ETF) 캐시 봇 (평일 낮 1시간 주기)
 │       └── views/
-│           ├── scan_views.py       # 스크리너 엔진 (DB 캐시 기반 종목 필터링 로직)
-│           ├── cron_views.py       # 스케줄된 알림 발송 로직 (UptimeRobot 등에서 호출)
-│           └── strategy_views.py   # 사용자의 전략 저장, 웹에서 1회 테스트 발송 요청 처리
+│           ├── scan_views.py       # 실시간 스크리너 엔진 (DB 캐시 기반 종목 필터링 로직)
+│           ├── cron_views.py       # 스케줄된 알림 발송 로직 (매일 아침 9시 알림 등)
+│           ├── strategy_views.py   # 사용자의 전략 저장, 웹에서 1회 테스트 발송 요청 처리
+│           └── backtest_views.py   # 웹 화면과 backtest.py를 이어주는 백테스트 API 엔드포인트
 ├── db.sqlite3                # 로컬 데이터베이스 파일
-├── requirements.txt          # 파이썬 라이브러리 목록 (pyupbit, pybithumb, FinanceDataReader, python-dotenv 등)
-└── .env                      # (Git 제외) 텔레그램 토큰 등 민감한 환경 변수 저장소
+├── requirements.txt          # 파이썬 라이브러리 목록 (pyupbit, pybithumb, python-dotenv 등)
+└── .env                      # (Git 제외) 텔레그램 토큰 등 민감한 환경 변수 저장소 (보안)
 ```
 
 ## 🚀 시스템 동작 원리 (Data Flow)
 
 1. **데이터 수집 (Background Bots):**
    * `update_upbit_cache`와 `update_kospi_cache`가 각각 자신의 주기에 맞춰 거래소 API 및 네이버 증권을 호출합니다.
-   * 가져온 OHLCV(시가,고가,저가,종가,거래량) 데이터는 `OHLCVCache`라는 SQLite 테이블에 영구 저장됩니다. (과거의 실시간 API 의존성 완전 탈피)
+   * 가져온 OHLCV(시가,고가,저가,종가,거래량) 데이터는 `OHLCVCache`라는 SQLite 테이블에 영구 저장됩니다.
 
-2. **종목 검색 및 웹 조회 (Frontend -> Django):**
-   * 사용자가 화면에서 검색 버튼을 누르거나 조건식을 저장하면 `scan_views.py`가 호출됩니다.
-   * `scan_views.py`는 실시간 API를 전혀 호출하지 않고, 오직 SQLite(`OHLCVCache`)에 이미 차곡차곡 쌓여있는 최신 데이터만 빠르게 읽어와서 수 초 내에 결과를 화면에 뿌려줍니다.
+2. **종목 검색 엔진 (`engine.py` & `scan_views.py`):**
+   * 사용자가 설정한 전략 조건(예: EMA 정배열, 일목 구름대 상향 돌파 등)을 `engine.py`가 실시간으로 분석합니다.
+   * O(1) 캐싱과 DataFrame 최적화를 통해 수 초 내에 전체 마켓을 스캔하여 일치하는 종목을 반환합니다.
 
-3. **텔레그램 알림 발송 (Telegram Alert):**
-   * 봇이 텔레그램 메시지를 보낼 때는 `telegram.py`를 거치게 됩니다.
-   * 알림 하단에는 `🔗 웹사이트로이동하기` 형식의 깔끔한 링크가 삽입되며, 스마트폰 앱 딥링크 연결도 지원합니다.
-   * 텔레그램 토큰(비밀번호)은 깃허브에 노출되지 않도록 서버 내의 `.env` 파일에 안전하게 보관됩니다.
+3. **백테스팅 엔진 (`backtest.py`):**
+   * 특정 코인에 대해 과거 데이터를 기반으로 래리 윌리엄스 등의 전략을 시뮬레이션합니다.
+   * 승률, MDD(최대 낙폭), 누적 수익률 등을 계산하여 `backtest_views.py`를 통해 화면에 성적표를 출력합니다.
+
+4. **텔레그램 알림 발송 (`telegram.py`):**
+   * 봇이 텔레그램 메시지를 보낼 때는 에러 핸들링과 함께 `.env`에서 토큰을 안전하게 불러와 발송합니다.
+   * 알림 하단에는 `🔗 웹사이트로이동하기` 형식의 깔끔한 딥링크가 삽입됩니다.
 
 ## 📝 관리자 명령어 가이드
 새로운 코드를 업데이트하거나 서버가 멈췄을 때 사용하는 명령어들입니다.
@@ -59,10 +65,7 @@ coin-screener/
 # 최신 코드 깃허브에서 가져오기
 git pull origin main
 
-# Nginx(문지기) 재시작
-sudo systemctl restart nginx
-
-# 장고 웹서버 재시작
+# 장고 웹서버 재시작 (.env 설정 적용, 웹 버그 픽스 시)
 sudo systemctl restart coinscreener
 
 # 코인 봇(5분 주기) 재시작 및 로그 보기
