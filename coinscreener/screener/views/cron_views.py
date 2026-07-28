@@ -341,3 +341,20 @@ def strategy_scan_count(request, strategy_id):
 
 
 
+
+@csrf_exempt
+def cron_daily_picks(request):
+    try:
+        if request.GET.get('key') != 'wonii':
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden('권한이 없습니다.')
+        from django.core.management import call_command
+        import threading
+        def run_command(): call_command('generate_daily_picks')
+        t = threading.Thread(target=run_command)
+        t.start()
+        from django.http import JsonResponse
+        return JsonResponse({'ok': True, 'message': 'Started.'})
+    except Exception as e:
+        from django.http import JsonResponse
+        return JsonResponse({'ok': False, 'error': str(e)})
