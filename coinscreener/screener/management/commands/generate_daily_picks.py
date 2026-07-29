@@ -19,6 +19,52 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"[{today_date}] 오늘의 단타 추천 코인 생성을 시작합니다..."))
 
+        self.stdout.write("비트코인(BTC) 시장 상황 필터링 중...")
+        try:
+            # 1. BTC 1시간봉 EMA20 > EMA60 및 최근 1시간 하락폭 체크
+            btc_60m = pyupbit.get_ohlcv("KRW-BTC", interval="minute60", count=100)
+            if btc_60m is not None and len(btc_60m) > 60:
+                ema20 = btc_60m['close'].ewm(span=20, adjust=False).mean().iloc[-1]
+                ema60 = btc_60m['close'].ewm(span=60, adjust=False).mean().iloc[-1]
+                if ema20 <= ema60:
+                    self.stdout.write(self.style.WARNING(f"[{today_date}] BTC 1시간봉 EMA20({ema20:.0f}) <= EMA60({ema60:.0f}). 오늘은 단타를 쉬는 날입니다."))
+                    return
+
+                # 최근 1시간 하락폭 체크 (직전 종가 대비 현재가 등락률)
+                btc_change = (btc_60m['close'].iloc[-1] - btc_60m['close'].iloc[-2]) / btc_60m['close'].iloc[-2] * 100
+                if btc_change <= -1.5:
+                    self.stdout.write(self.style.WARNING(f"[{today_date}] BTC 최근 1시간 하락폭({btc_change:.2f}%)이 -1.5%를 초과했습니다. 오늘은 단타를 쉬는 날입니다."))
+                    return
+            else:
+                self.stdout.write(self.style.ERROR("BTC 1시간봉 데이터를 가져오지 못했습니다."))
+                return
+
+            # 2. BTC 15분봉 RSI > 50 체크
+            btc_15m = pyupbit.get_ohlcv("KRW-BTC", interval="minute15", count=100)
+            if btc_15m is not None and len(btc_15m) > 15:
+                delta = btc_15m["close"].diff()
+                ups = delta.clip(lower=0)
+                downs = (-delta).clip(lower=0)
+                period = 14
+                au = ups.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+                ad = downs.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
+                RS = au / ad.replace(0, 1e-10)
+                rsi = 100 - (100 / (1 + RS))
+                current_rsi = rsi.iloc[-1]
+
+                if current_rsi <= 50:
+                    self.stdout.write(self.style.WARNING(f"[{today_date}] BTC 15분봉 RSI({current_rsi:.1f})가 50 이하입니다. 오늘은 단타를 쉬는 날입니다."))
+                    return
+            else:
+                self.stdout.write(self.style.ERROR("BTC 15분봉 데이터를 가져오지 못했습니다."))
+                return
+
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"BTC 필터 확인 중 오류 발생: {e}"))
+            return
+
+        self.stdout.write(self.style.SUCCESS("BTC 필터 통과! 종목 스캔을 시작합니다."))
+
         # 1. 전일 거래대금 상위 코인 찾기 (업비트 원화 마켓 전체 조회)
         tickers = pyupbit.get_tickers(fiat="KRW")
         vol_data = []
