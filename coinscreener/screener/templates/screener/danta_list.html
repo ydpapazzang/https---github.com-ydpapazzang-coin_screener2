@@ -156,6 +156,11 @@
         <div style="text-align: center; color: var(--text-secondary); margin-top: 40px;">
             아직 추천된 코인이 없습니다.<br>오전 9시를 기다려주세요!
         </div>
+    {% elif recommendations.0.status == 'skipped' %}
+        <div style="text-align: center; color: var(--text-secondary); margin-top: 40px; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 12px;">
+            오늘은 추천 코인이 없습니다.<br><br>
+            <span style="color: var(--text-tertiary); font-size: 14px;">사유 : {{ recommendations.0.reason }}</span>
+        </div>
     {% else %}
         {% for rec in recommendations %}
         <div class="coin-card" onclick="openSheet('{{ rec.id }}')">

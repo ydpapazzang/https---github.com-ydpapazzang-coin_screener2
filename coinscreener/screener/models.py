@@ -281,6 +281,7 @@ class DailyRecommendation(models.Model):
         ('success', '목표달성'),
         ('failed', '손절이탈'),
         ('closed', '마감'),
+        ('skipped', '단타휴식'),
     ]
     status = models.CharField(max_length=20, choices=status_choices, default='pending', verbose_name="상태")
     result_pct = models.FloatField(null=True, blank=True, verbose_name="최종 수익률(%)")

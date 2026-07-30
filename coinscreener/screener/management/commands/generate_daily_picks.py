@@ -27,13 +27,17 @@ class Command(BaseCommand):
                 ema20 = btc_60m['close'].ewm(span=20, adjust=False).mean().iloc[-1]
                 ema60 = btc_60m['close'].ewm(span=60, adjust=False).mean().iloc[-1]
                 if ema20 <= ema60:
-                    self.stdout.write(self.style.WARNING(f"[{today_date}] BTC 1시간봉 EMA20({ema20:.0f}) <= EMA60({ema60:.0f}). 오늘은 단타를 쉬는 날입니다."))
+                    reason_msg = f"BTC 1시간봉 역배열 상태 (EMA20 < EMA60)"
+                    self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
+                    DailyRecommendation.objects.create(date=today_date, coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
                     return
 
                 # 최근 1시간 하락폭 체크 (직전 종가 대비 현재가 등락률)
                 btc_change = (btc_60m['close'].iloc[-1] - btc_60m['close'].iloc[-2]) / btc_60m['close'].iloc[-2] * 100
                 if btc_change <= -1.5:
-                    self.stdout.write(self.style.WARNING(f"[{today_date}] BTC 최근 1시간 하락폭({btc_change:.2f}%)이 -1.5%를 초과했습니다. 오늘은 단타를 쉬는 날입니다."))
+                    reason_msg = f"BTC 최근 1시간 급락 (하락폭 {btc_change:.2f}%)"
+                    self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
+                    DailyRecommendation.objects.create(date=today_date, coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
                     return
             else:
                 self.stdout.write(self.style.ERROR("BTC 1시간봉 데이터를 가져오지 못했습니다."))
@@ -53,7 +57,9 @@ class Command(BaseCommand):
                 current_rsi = rsi.iloc[-1]
 
                 if current_rsi <= 50:
-                    self.stdout.write(self.style.WARNING(f"[{today_date}] BTC 15분봉 RSI({current_rsi:.1f})가 50 이하입니다. 오늘은 단타를 쉬는 날입니다."))
+                    reason_msg = f"BTC 15분봉 매수심리 악화 (RSI {current_rsi:.1f} <= 50)"
+                    self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
+                    DailyRecommendation.objects.create(date=today_date, coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
                     return
             else:
                 self.stdout.write(self.style.ERROR("BTC 15분봉 데이터를 가져오지 못했습니다."))
@@ -191,4 +197,21 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.SUCCESS(f"추천 등록 완료: {rec['ticker']} (진입가: {rec['entry_price']})"))
             
+        # 4. 텔레그램 메시지 발송
+        if recommendations:
+            from coinscreener.screener.telegram import send_message
+            msg_lines = ["🔥 오늘의 단타 AI 추천 코인 🔥\n"]
+            for i, rec in enumerate(recommendations, 1):
+                msg_lines.append(f"{i}. <b>{rec['name']}</b> ({rec['ticker']})")
+            
+            # Woniiscreener 링크 안내
+            msg_lines.append("\n👉 <a href='https://woniiscreener.duckdns.org/danta/'>웹사이트에서 타점 확인하기</a>")
+            
+            message_text = "\n".join(msg_lines)
+            res = send_message(message_text)
+            if res.get('ok'):
+                self.stdout.write(self.style.SUCCESS("텔레그램 발송 성공"))
+            else:
+                self.stdout.write(self.style.ERROR(f"텔레그램 발송 실패: {res.get('error')}"))
+
         self.stdout.write(self.style.SUCCESS("오늘의 단타 추천 스크립트 실행이 완료되었습니다."))
