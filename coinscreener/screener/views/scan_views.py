@@ -55,16 +55,32 @@ def _effective_scan_limit(exchange, vol_limit, full=False):
 
 
 
+# 티커+실시간 시세 목록을 짧게 캐싱(초). 반복 검색 시 업비트 시세 API 왕복(~0.9s)을
+# 건너뛰기 위함. 시세가 이만큼 지연될 수 있으나, 캔들 캐시(5분)·스크리너 용도상 무해하다.
+_TICKERS_FRESH_TTL = 30
+
+
 def _get_tickers(exchange, vol_limit):
     """거래소 티커 목록을 안정적으로 반환.
 
-    외부 API(pyupbit.get_tickers, 업비트 티커 API)나 서버리스 DB 연결이 간헐적으로
-    실패하면 빈 목록이 반환되어 '0/0 종목'으로 검색이 멈추는 문제가 있었다.
-    이를 막기 위해:
+    성능: 동일 (exchange, vol_limit) 요청은 _TICKERS_FRESH_TTL초 동안 캐시된 목록을
+    그대로 반환해, 매 검색마다 반복되던 실시간 시세 API 왕복을 제거한다.
+
+    안정성: 외부 API나 DB가 간헐적으로 실패해 빈 목록이 나오면 '0/0 종목'으로 검색이
+    멈추므로,
       1) 원본 조회를 최대 2회 재시도하고,
-      2) 성공(비어있지 않음)하면 마지막 정상 목록을 캐시에 저장,
+      2) 성공(비어있지 않음)하면 fresh 캐시(짧게)와 last_good 캐시(5분)에 저장,
       3) 그래도 비면 마지막 정상 목록을 폴백으로 사용한다."""
+    fresh_key = f"tickers_fresh_{exchange}_{vol_limit}"
     last_good_key = f"tickers_lastgood_{exchange}_{vol_limit}"
+
+    # 짧은 fresh 캐시 히트 시 시세 API 호출 없이 즉시 반환
+    try:
+        fresh = cache.get(fresh_key)
+        if fresh:
+            return fresh
+    except Exception:
+        pass
 
     result = []
     for attempt in range(2):
@@ -74,8 +90,9 @@ def _get_tickers(exchange, vol_limit):
             logger.error(f"_get_tickers_raw error ({exchange}): {e}", exc_info=True)
             result = []
         if result:
-            # 정상 목록을 5분간 보관해 두었다가 일시적 실패 시 재사용
+            # fresh(짧게) + last_good(5분, 장애 폴백용) 동시 저장
             try:
+                cache.set(fresh_key, result, _TICKERS_FRESH_TTL)
                 cache.set(last_good_key, result, 300)
             except Exception:
                 pass
