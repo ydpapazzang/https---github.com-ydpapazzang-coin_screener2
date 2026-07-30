@@ -304,7 +304,7 @@
 <div class="coin-list">
     {% if results %}
         {% for r in results %}
-        <div class="coin-card" data-volume="{{ r.volume|default:0 }}" data-change="{{ r.change_rate|default:0 }}" data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}" onclick="window.open('{% if request.GET.exchange == "kospi" %}https://finance.naver.com/item/main.naver?code={{ r.symbol }}{% elif request.GET.exchange == "bithumb" %}https://www.bithumb.com/react/trade/order/{{ r.symbol }}_KRW{% else %}https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}{% endif %}', '_blank')">
+        <div class="coin-card" data-volume="{{ r.volume|default:0 }}" data-change="{{ r.change_rate|default:0 }}" data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}" onclick="window.open('{% if request.GET.exchange == "kospi" %}https://stock.naver.com/domestic/stock/{{ r.symbol }}/price{% elif request.GET.exchange == "bithumb" %}https://www.bithumb.com/react/trade/order/{{ r.symbol }}_KRW{% else %}https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}{% endif %}', '_blank')">
             <div class="card-left">
                 <div class="rank">{{ forloop.counter }}</div>
                 <div class="coin-info">

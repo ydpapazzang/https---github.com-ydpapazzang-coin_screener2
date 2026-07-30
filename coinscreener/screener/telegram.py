@@ -89,7 +89,7 @@ def market_link(exchange: str, symbol: str) -> str:
         return f'https://www.bithumb.com/react/trade/order/{coin}-KRW'
     if exchange == 'kospi':
         # 코스피는 symbol이 종목코드(예: 005930)
-        return f'https://m.stock.naver.com/domestic/stock/{symbol}/total'
+        return f'https://stock.naver.com/domestic/stock/{symbol}/price'
     return ''
 
 
