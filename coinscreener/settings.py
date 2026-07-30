@@ -6,7 +6,6 @@ import dj_database_url
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from django.core.exceptions import ImproperlyConfigured
 
 # .env 파일 로드 (서버 환경변수 세팅용)
 load_dotenv()
@@ -15,14 +14,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-# SECRET_KEY는 환경변수 필수. 개발(DEBUG=True)에서만 안전하지 않은 fallback 허용,
-# 운영(DEBUG=False)에서 미설정 시 예측 가능한 키로 구동되지 않도록 기동을 중단한다.
+# SECRET_KEY는 환경변수 설정을 권장한다.
+#  - DEBUG=True : 안전하지 않은 개발용 고정 fallback 사용
+#  - DEBUG=False & 미설정 : 기동을 막지 않도록 런타임 랜덤 키를 생성하되 경고를 남긴다.
+#    (재시작마다 키가 바뀌어 기존 세션/CSRF 토큰이 무효화되므로 운영에선 반드시 env로 고정할 것)
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     if DEBUG:
         SECRET_KEY = 'django-insecure-local-dev-only-change-in-production'
     else:
-        raise ImproperlyConfigured('DJANGO_SECRET_KEY 환경변수를 설정하세요.')
+        from django.core.management.utils import get_random_secret_key
+        SECRET_KEY = get_random_secret_key()
+        import logging
+        logging.getLogger(__name__).warning(
+            'DJANGO_SECRET_KEY 환경변수가 없어 임시 랜덤 키로 기동합니다. '
+            '재시작마다 세션/CSRF가 무효화되니 .env에 DJANGO_SECRET_KEY를 설정하세요.'
+        )
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.duckdns.org').split(',')
 
