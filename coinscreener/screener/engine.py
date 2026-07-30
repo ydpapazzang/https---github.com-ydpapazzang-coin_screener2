@@ -513,6 +513,122 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
         return False, [], None, 0, 0.0, None
 
 
+# 컬럼으로 캐싱(=사전계산)할 수 있는 지표 타입.
+# VAL/CLOSE/VOLUME*/CHANGE_RATE 는 값이 offset 의존적이거나 계산이 사소해 컬럼 캐싱하지 않는다.
+_COLUMN_INDICATORS = {
+    'MA', 'EMA', 'WMA', 'RSI',
+    'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER',
+    'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B',
+    'IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM', 'IC_CHIKOU', 'IC_CHIKOU_REF',
+}
+
+
+def indicator_column_name(indicator_type, param, bb_std=2.0):
+    """지표 캐시 컬럼명 규칙(웹 지연계산과 크롤러 사전계산이 반드시 동일하게 사용)."""
+    return f"{indicator_type}_{param}_{bb_std}"
+
+
+def ensure_indicator_column(df, indicator_type, param, bb_std=2.0):
+    """지표 컬럼을 df에 in-place로 추가하고 컬럼명을 반환한다.
+    - 이미 있으면 재계산하지 않는다(크롤러가 미리 넣어두면 웹은 계산을 건너뜀).
+    - 컬럼 캐싱 대상이 아니거나 계산 불가(param<1 등)면 None을 반환한다.
+    get_indicator_value의 계산 블록을 추출한 '단일 소스'로, 크롤러 사전계산과 공유된다."""
+    if indicator_type not in _COLUMN_INDICATORS:
+        return None
+    col_name = indicator_column_name(indicator_type, param, bb_std)
+    if col_name in df.columns:
+        return col_name
+
+    if indicator_type == 'MA':
+        if param < 1: return None
+        df[col_name] = df['close'].rolling(window=param).mean()
+
+    elif indicator_type == 'EMA':
+        if param < 1: return None
+        df[col_name] = df['close'].ewm(span=param, adjust=False).mean()
+
+    elif indicator_type == 'WMA':
+        if param < 1: return None
+        df[col_name] = calculate_wma(df['close'], period=param)
+
+    elif indicator_type == 'RSI':
+        if param < 1: return None
+        df[col_name] = calculate_rsi(df, period=param)
+
+    elif indicator_type in ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER'):
+        if param < 1: return None
+        std = bb_std if bb_std is not None else 2.0
+        bb = calculate_bollinger(df['close'], period=param, std=std)
+        df['BB_UPPER_{}_{}'.format(param, bb_std)] = bb['BB_UPPER']
+        df['BB_MIDDLE_{}_{}'.format(param, bb_std)] = bb['BB_MIDDLE']
+        df['BB_LOWER_{}_{}'.format(param, bb_std)] = bb['BB_LOWER']
+
+    elif indicator_type == 'IC_TENKAN':
+        p = max(1, param)
+        df[col_name] = (df['high'].rolling(window=p).max() + df['low'].rolling(window=p).min()) / 2
+
+    elif indicator_type == 'IC_KIJUN':
+        p = max(1, param)
+        df[col_name] = (df['high'].rolling(window=p).max() + df['low'].rolling(window=p).min()) / 2
+
+    elif indicator_type == 'IC_SPAN_A':
+        tenkan = (df['high'].rolling(window=9).max() + df['low'].rolling(window=9).min()) / 2
+        kijun = (df['high'].rolling(window=26).max() + df['low'].rolling(window=26).min()) / 2
+        span_a = (tenkan + kijun) / 2
+        df[col_name] = span_a.shift(param)
+
+    elif indicator_type == 'IC_SPAN_B':
+        span_b = (df['high'].rolling(window=52).max() + df['low'].rolling(window=52).min()) / 2
+        df[col_name] = span_b.shift(param)
+
+    elif indicator_type in ('IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM'):
+        tenkan = (df['high'].rolling(window=9).max() + df['low'].rolling(window=9).min()) / 2
+        kijun = (df['high'].rolling(window=26).max() + df['low'].rolling(window=26).min()) / 2
+        span_a = (tenkan + kijun) / 2
+        span_a_shifted = span_a.shift(param)
+
+        span_b = (df['high'].rolling(window=52).max() + df['low'].rolling(window=52).min()) / 2
+        span_b_shifted = span_b.shift(param)
+
+        df['IC_CLOUD_TOP_{}_{}'.format(param, bb_std)] = np.maximum(span_a_shifted, span_b_shifted)
+        df['IC_CLOUD_BOTTOM_{}_{}'.format(param, bb_std)] = np.minimum(span_a_shifted, span_b_shifted)
+
+    elif indicator_type == 'IC_CHIKOU':
+        df[col_name] = df['close']
+
+    elif indicator_type == 'IC_CHIKOU_REF':
+        df[col_name] = df['close'].shift(param)
+
+    else:
+        return None
+
+    return col_name if col_name in df.columns else None
+
+
+def indicator_specs_by_timeframe(conditions):
+    """조건들에서 (타임프레임 -> {(indicator_type, param, bb_std)}) 사전계산 명세를 수집.
+    웹의 bb_std 기본값(None -> 2.0) 규칙을 그대로 따라 컬럼명이 정확히 일치하게 한다."""
+    specs = {}
+    for c in conditions:
+        bb = c.bb_std if c.bb_std is not None else 2.0
+        for ind, prm in ((c.left_indicator, c.left_param), (c.right_indicator, c.right_param)):
+            if ind in _COLUMN_INDICATORS:
+                specs.setdefault(c.timeframe, set()).add((ind, prm, bb))
+    return specs
+
+
+def prewarm_indicators(df, specs):
+    """specs(iterable of (indicator_type, param, bb_std))에 해당하는 지표 컬럼을 df에 미리 채운다.
+    크롤러가 저장 직전 호출해 두면, 웹 검색의 get_indicator_value가 계산을 건너뛴다."""
+    if not specs:
+        return
+    for indicator_type, param, bb_std in specs:
+        try:
+            ensure_indicator_column(df, indicator_type, param, bb_std)
+        except Exception:
+            pass
+
+
 def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
     """
     DataFrame에서 특정 시점(offset)의 지표값을 반환.
@@ -563,73 +679,11 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
         val = avg_val * multiplier
         return None if pd.isna(val) else float(val)
 
-    # O(1) DataFrame 컬럼 캐싱
-    col_name = f"{indicator_type}_{param}_{bb_std}"
-    
+    # O(1) DataFrame 컬럼 캐싱.
+    # 컬럼이 있으면(크롤러가 미리 계산해 둔 경우 포함) 계산을 건너뛰고 값만 읽는다.
+    col_name = indicator_column_name(indicator_type, param, bb_std)
     if col_name not in df.columns:
-        if indicator_type == 'MA':
-            if param < 1: return None
-            df[col_name] = df['close'].rolling(window=param).mean()
-
-        elif indicator_type == 'EMA':
-            if param < 1: return None
-            df[col_name] = df['close'].ewm(span=param, adjust=False).mean()
-
-        elif indicator_type == 'WMA':
-            if param < 1: return None
-            df[col_name] = calculate_wma(df['close'], period=param)
-
-        elif indicator_type == 'RSI':
-            if param < 1: return None
-            df[col_name] = calculate_rsi(df, period=param)
-
-        elif indicator_type in ('BB_UPPER', 'BB_MIDDLE', 'BB_LOWER'):
-            if param < 1: return None
-            std = bb_std if bb_std is not None else 2.0
-            bb = calculate_bollinger(df['close'], period=param, std=std)
-            df['BB_UPPER_{}_{}'.format(param, bb_std)] = bb['BB_UPPER']
-            df['BB_MIDDLE_{}_{}'.format(param, bb_std)] = bb['BB_MIDDLE']
-            df['BB_LOWER_{}_{}'.format(param, bb_std)] = bb['BB_LOWER']
-            if col_name not in df.columns:
-                return None
-
-        elif indicator_type == 'IC_TENKAN':
-            p = max(1, param)
-            df[col_name] = (df['high'].rolling(window=p).max() + df['low'].rolling(window=p).min()) / 2
-
-        elif indicator_type == 'IC_KIJUN':
-            p = max(1, param)
-            df[col_name] = (df['high'].rolling(window=p).max() + df['low'].rolling(window=p).min()) / 2
-
-        elif indicator_type == 'IC_SPAN_A':
-            tenkan = (df['high'].rolling(window=9).max() + df['low'].rolling(window=9).min()) / 2
-            kijun = (df['high'].rolling(window=26).max() + df['low'].rolling(window=26).min()) / 2
-            span_a = (tenkan + kijun) / 2
-            df[col_name] = span_a.shift(param)
-
-        elif indicator_type == 'IC_SPAN_B':
-            span_b = (df['high'].rolling(window=52).max() + df['low'].rolling(window=52).min()) / 2
-            df[col_name] = span_b.shift(param)
-
-        elif indicator_type in ('IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM'):
-            tenkan = (df['high'].rolling(window=9).max() + df['low'].rolling(window=9).min()) / 2
-            kijun = (df['high'].rolling(window=26).max() + df['low'].rolling(window=26).min()) / 2
-            span_a = (tenkan + kijun) / 2
-            span_a_shifted = span_a.shift(param)
-
-            span_b = (df['high'].rolling(window=52).max() + df['low'].rolling(window=52).min()) / 2
-            span_b_shifted = span_b.shift(param)
-            
-            df['IC_CLOUD_TOP_{}_{}'.format(param, bb_std)] = np.maximum(span_a_shifted, span_b_shifted)
-            df['IC_CLOUD_BOTTOM_{}_{}'.format(param, bb_std)] = np.minimum(span_a_shifted, span_b_shifted)
-
-        elif indicator_type == 'IC_CHIKOU':
-            df[col_name] = df['close']
-
-        elif indicator_type == 'IC_CHIKOU_REF':
-            df[col_name] = df['close'].shift(param)
-            
-        else:
+        if ensure_indicator_column(df, indicator_type, param, bb_std) is None:
             return None
 
     val = df[col_name].iloc[target_idx]

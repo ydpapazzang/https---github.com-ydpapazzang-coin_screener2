@@ -31,21 +31,25 @@ class Command(BaseCommand):
                 self.stdout.write("활성화된 조건식이 없어 수집을 생략합니다.")
                 return
 
+            # (D) 저장 시점에 지표를 미리 계산해 넣기 위한 타임프레임별 지표 명세 수집
+            from coinscreener.screener.engine import indicator_specs_by_timeframe
+            specs_by_tf = indicator_specs_by_timeframe(list(Condition.objects.all()))
+
             # 거래소 코인 및 ETF 목록 가져오기
             upbit_tickers = pyupbit.get_tickers(fiat="KRW")
             bithumb_tickers = pybithumb.get_tickers()
-            
+
             self.stdout.write(f"업비트 {len(upbit_tickers)}개, 빗썸 {len(bithumb_tickers)}개, {len(active_timeframes)}개 타임프레임 수집 시작...")
 
             # 업비트 수집
             for ticker in upbit_tickers:
                 for tf in active_timeframes:
-                    self._fetch_and_cache(ticker, tf, exchange='upbit')
+                    self._fetch_and_cache(ticker, tf, exchange='upbit', specs=specs_by_tf.get(tf))
 
             # 빗썸 수집
             for ticker in bithumb_tickers:
                 for tf in active_timeframes:
-                    self._fetch_and_cache(ticker, tf, exchange='bithumb')
+                    self._fetch_and_cache(ticker, tf, exchange='bithumb', specs=specs_by_tf.get(tf))
 
 
 
@@ -103,7 +107,7 @@ class Command(BaseCommand):
                 pass
             time.sleep(0.1)
 
-    def _fetch_and_cache(self, ticker, timeframe, exchange='upbit'):
+    def _fetch_and_cache(self, ticker, timeframe, exchange='upbit', specs=None):
         # API Rate Limit 준수 (거래소별 조절)
         if exchange == 'kospi':
             time.sleep(0.10)
@@ -134,19 +138,23 @@ class Command(BaseCommand):
 
             if df is not None and not df.empty:
                 df.index.name = None
-                
+
+                # (D) 저장 직전 지표 컬럼 사전계산 → 웹 검색은 계산을 건너뛰고 값만 읽음
+                from coinscreener.screener.engine import prewarm_indicators
+                prewarm_indicators(df, specs)
+
                 data_dict = {
                     'index': df.index.view('int64').tolist(),
                     'columns': df.columns.tolist(),
                     'data': df.values.tolist(),
                 }
-                
+
                 OHLCVCache.objects.update_or_create(
                     ticker=ticker,
                     timeframe=timeframe,
                     defaults={'data': data_dict}
                 )
-                
+
                 cache_key = f"ohlcv_{ticker}_{timeframe}_200"
                 cache.set(cache_key, df, 180)
                 

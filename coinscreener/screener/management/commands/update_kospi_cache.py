@@ -48,6 +48,10 @@ class Command(BaseCommand):
                 self.stdout.write("활성화된 조건식이 없어 수집을 생략합니다.")
                 return
 
+            # (D) 저장 시점 지표 사전계산용 명세 수집
+            from coinscreener.screener.engine import indicator_specs_by_timeframe
+            specs_by_tf = indicator_specs_by_timeframe(list(Condition.objects.all()))
+
             try:
                 etf_df = fdr.StockListing('ETF/KR')
                 etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
@@ -55,17 +59,17 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(f"ETF 목록 가져오기 실패: {e}")
                 kospi_tickers = []
-            
+
             self.stdout.write(f"ETF {len(kospi_tickers)}개, {len(active_timeframes)}개 타임프레임 수집 시작...")
 
             for ticker in kospi_tickers:
                 for tf in active_timeframes:
-                    self._fetch_and_cache(ticker, tf)
+                    self._fetch_and_cache(ticker, tf, specs=specs_by_tf.get(tf))
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error during crawl cycle: {e}"))
 
-    def _fetch_and_cache(self, ticker, timeframe):
+    def _fetch_and_cache(self, ticker, timeframe, specs=None):
         time.sleep(0.10) # API Rate limit (네이버 금융은 0.1초면 충분)
         try:
             df = fdr.DataReader(ticker)
@@ -77,7 +81,11 @@ class Command(BaseCommand):
 
                 if df is not None and not df.empty:
                     df.index.name = None
-                    
+
+                    # (D) 저장 직전 지표 컬럼 사전계산
+                    from coinscreener.screener.engine import prewarm_indicators
+                    prewarm_indicators(df, specs)
+
                     data_dict = {
                         'index': df.index.view('int64').tolist(),
                         'columns': df.columns.tolist(),
