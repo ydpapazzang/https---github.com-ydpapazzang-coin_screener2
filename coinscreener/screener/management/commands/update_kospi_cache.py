@@ -1,4 +1,5 @@
 import time
+import json
 import datetime
 import FinanceDataReader as fdr
 import pandas as pd
@@ -86,11 +87,9 @@ class Command(BaseCommand):
                     from coinscreener.screener.engine import prewarm_indicators
                     prewarm_indicators(df, specs)
 
-                    data_dict = {
-                        'index': df.index.view('int64').tolist(),
-                        'columns': df.columns.tolist(),
-                        'data': df.values.tolist(),
-                    }
+                    # 지표 선행구간 NaN이 있어도 유효 JSON이 되도록 to_json(NaN->null) 사용.
+                    # df.values.tolist()는 NaN 토큰을 만들어 SQLite JSON_VALID 제약에 걸린다.
+                    data_dict = json.loads(df.to_json(orient='split'))
                     
                     OHLCVCache.objects.update_or_create(
                         ticker=ticker,
