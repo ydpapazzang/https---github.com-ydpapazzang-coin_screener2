@@ -318,15 +318,16 @@ class BacktestOffsetTestCase(TestCase):
         response = self.client.get('/cron/scan/')
         self.assertEqual(response.status_code, 403)
 
+    @patch.dict('os.environ', {'CRON_SECRET': 'test_cron_secret'})
     def test_cron_scan_success(self):
-        """보안 키(?key=wonii)를 전달했을 때 크론 스캔이 성공적으로 수행되는지 검증"""
-        response = self.client.get('/cron/scan/?key=wonii')
+        """올바른 CRON_SECRET(?secret=)을 전달했을 때 크론 스캔이 성공적으로 수행되는지 검증"""
+        response = self.client.get('/cron/scan/?secret=test_cron_secret')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])
 
-        # 강제 실행 플래그(&force=true)를 통한 성공 검증
-        response = self.client.get('/cron/scan/?force=true')
+        # secret과 함께 강제 실행 플래그(&force=true)를 전달해도 성공하는지 검증
+        response = self.client.get('/cron/scan/?secret=test_cron_secret&force=true')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])

@@ -75,17 +75,15 @@ def cron_scan(request):
     from django.http import HttpResponseForbidden
     import traceback
 
-    # 보안 검증: 외부 크론잡(crontab, cron-job.org 등)에서 호출.
-    # 단순 보안키 ?key=wonii 가 있으면 통과
-    is_valid_caller = request.GET.get('key') == 'wonii'
-    
-    is_force = request.GET.get('force') == 'true'
-    
-    print(f"[CRON_SCAN] Triggered. is_valid={is_valid_caller}, is_force={is_force}")
-    
-    if not is_valid_caller and not is_force:
+    # 보안 검증: 외부 크론잡(crontab, cron-job.org 등)에서 ?secret=<CRON_SECRET> 로 호출.
+    # CRON_SECRET 미설정 시 무조건 차단한다. force는 인증을 우회하지 못하며 시간 필터만 제어한다.
+    cron_sec = _get_cron_secret()
+    if not cron_sec or request.GET.get('secret') != cron_sec:
         print("[CRON_SCAN] Security check failed: Forbidden access.")
-        return HttpResponseForbidden("권한이 없습니다. (?key=wonii 를 추가하세요)")
+        return HttpResponseForbidden("권한이 없습니다.")
+
+    is_force = request.GET.get('force') == 'true'
+    print(f"[CRON_SCAN] Triggered. is_force={is_force}")
         
     try:
         from django.utils import timezone
@@ -345,7 +343,8 @@ def strategy_scan_count(request, strategy_id):
 @csrf_exempt
 def cron_daily_picks(request):
     try:
-        if request.GET.get('key') != 'wonii':
+        cron_sec = _get_cron_secret()
+        if not cron_sec or request.GET.get('secret') != cron_sec:
             from django.http import HttpResponseForbidden
             return HttpResponseForbidden('권한이 없습니다.')
         from django.core.management import call_command

@@ -6,19 +6,23 @@ import dj_database_url
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # .env 파일 로드 (서버 환경변수 세팅용)
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# 환경변수에서 읽기. 없으면 개발용 fallback 사용
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-local-dev-only-change-in-production'
-)
-
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+
+# SECRET_KEY는 환경변수 필수. 개발(DEBUG=True)에서만 안전하지 않은 fallback 허용,
+# 운영(DEBUG=False)에서 미설정 시 예측 가능한 키로 구동되지 않도록 기동을 중단한다.
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-local-dev-only-change-in-production'
+    else:
+        raise ImproperlyConfigured('DJANGO_SECRET_KEY 환경변수를 설정하세요.')
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.duckdns.org').split(',')
 

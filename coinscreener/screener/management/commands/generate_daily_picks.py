@@ -43,18 +43,14 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR("BTC 1시간봉 데이터를 가져오지 못했습니다."))
                 return
 
-            # 2. BTC 15분봉 RSI > 50 체크
+            # 2. BTC 15분봉 RSI > 50 체크 (engine.calculate_rsi와 동일한 Wilder 방식 사용)
+            from coinscreener.screener.engine import calculate_rsi
             btc_15m = pyupbit.get_ohlcv("KRW-BTC", interval="minute15", count=100)
             if btc_15m is not None and len(btc_15m) > 15:
-                delta = btc_15m["close"].diff()
-                ups = delta.clip(lower=0)
-                downs = (-delta).clip(lower=0)
-                period = 14
-                au = ups.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
-                ad = downs.ewm(alpha=1.0 / period, min_periods=period, adjust=False).mean()
-                RS = au / ad.replace(0, 1e-10)
-                rsi = 100 - (100 / (1 + RS))
-                current_rsi = rsi.iloc[-1]
+                current_rsi = calculate_rsi(btc_15m, 14).iloc[-1]
+                if pd.isna(current_rsi):
+                    self.stdout.write(self.style.ERROR("BTC 15분봉 RSI 계산 결과가 유효하지 않습니다."))
+                    return
 
                 if current_rsi <= 50:
                     reason_msg = f"BTC 15분봉 매수심리 악화 (RSI {current_rsi:.1f} <= 50)"
@@ -132,14 +128,15 @@ class Command(BaseCommand):
                             trades += 1
                             target = entry_price * 1.02
                             stop = entry_price * 0.985
-                            
-                            # 일봉 데이터만으로는 고가/저가 중 어느 것을 먼저 터치했는지 완벽히 알 수 없지만,
-                            # 단순화를 위해 고가가 target 이상이면 익절로 간주
-                            if curr_candle['high'] >= target:
+
+                            # 일봉 데이터만으로는 고가/저가 중 어느 것을 먼저 터치했는지 알 수 없다.
+                            # 승률을 낙관적으로 왜곡하지 않도록, 같은 봉에서 손절가에 닿았으면
+                            # 손절을 우선 적용(보수적 가정)한다.
+                            if curr_candle['low'] <= stop:
+                                total_pct -= 1.5
+                            elif curr_candle['high'] >= target:
                                 wins += 1
                                 total_pct += 2.0
-                            elif curr_candle['low'] <= stop:
-                                total_pct -= 1.5
                             else:
                                 # 종가 마감
                                 close_pct = ((curr_candle['close'] - entry_price) / entry_price) * 100
