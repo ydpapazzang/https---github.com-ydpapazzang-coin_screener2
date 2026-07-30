@@ -71,13 +71,13 @@ def backtest_run(request, strategy_id):
 
 @csrf_exempt
 def cron_scan(request):
-    """Vercel Cron: 30분 주기로 한국 표준시(KST)를 계산하여, 예약된 활성 알림 스캔 및 텔레그램 발송"""
+    """크론: 30분 주기로 한국 표준시(KST)를 계산하여, 예약된 활성 알림 스캔 및 텔레그램 발송"""
     from django.http import HttpResponseForbidden
     import traceback
-    
-    # 보안 검증: 외부 크론잡(cron-job.org 등)에서 쉽게 호출할 수 있도록 완화
-    # 단순 보안키 ?key=wonii 가 있거나 기존 Vercel 헤더가 있으면 통과
-    is_valid_caller = request.GET.get('key') == 'wonii' or request.headers.get('x-vercel-cron') == '1'
+
+    # 보안 검증: 외부 크론잡(crontab, cron-job.org 등)에서 호출.
+    # 단순 보안키 ?key=wonii 가 있으면 통과
+    is_valid_caller = request.GET.get('key') == 'wonii'
     
     is_force = request.GET.get('force') == 'true'
     
@@ -118,7 +118,7 @@ def cron_scan(request):
         
         if not active_settings.exists():
             if is_force:
-                warnings.append("활성화된 알림 설정(AlertSetting)이 존재하지 않습니다. Vercel 배포 시 SQLite 데이터가 초기화되었거나, 웹 페이지에서 알림 설정을 켜지 않았을 수 있습니다.")
+                warnings.append("활성화된 알림 설정(AlertSetting)이 존재하지 않습니다. 웹 페이지에서 알림 설정을 켜지 않았을 수 있습니다.")
             else:
                 warnings.append(f"현재 KST {current_hour}시에 예약 활성화된 알림 설정이 없습니다. (만약 즉시 강제 테스트를 원하시면 URL 뒤에 &force=true 를 붙여 접속해 주세요.)")
         

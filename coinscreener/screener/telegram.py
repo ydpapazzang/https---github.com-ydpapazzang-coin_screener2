@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def _get_token() -> str:
-    """매 호출마다 환경변수를 새로 읽음 (Vercel 환경변수 반영 보장)"""
+    """매 호출마다 환경변수를 새로 읽음 (런타임 환경변수 반영 보장)"""
     return os.environ.get('TELEGRAM_BOT_TOKEN', '')
 
 
@@ -94,16 +94,11 @@ def market_link(exchange: str, symbol: str) -> str:
 
 
 def _site_url() -> str:
-    """알림 링크에 사용할 사이트 절대 URL (SITE_URL 우선, 없으면 VERCEL_URL)."""
+    """알림 링크에 사용할 사이트 절대 URL (SITE_URL 환경변수)."""
     site_url = os.environ.get('SITE_URL', '').strip()
-    source = 'SITE_URL'
-    if not site_url:
-        site_url = os.environ.get('VERCEL_URL', '').strip()
-        source = 'VERCEL_URL'
     if site_url and not site_url.startswith('http'):
         site_url = 'https://' + site_url
     site_url = site_url.rstrip('/')
-    print(f"[TELEGRAM] Link site_url: '{site_url}' (retrieved from {source})")
     return site_url
 
 

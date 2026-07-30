@@ -20,12 +20,11 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.vercel.app').split(',')
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1,.duckdns.org').split(',')
 
 # HTTPS 환경(DuckDNS 등)에서 POST 요청 시 CSRF 에러 방지
 CSRF_TRUSTED_ORIGINS = [
     'https://*.duckdns.org',
-    'https://*.vercel.app',
 ]
 
 # Nginx 등 리버스 프록시 뒤에서 동작할 때 HTTPS 인식
@@ -75,7 +74,7 @@ WSGI_APPLICATION = 'coinscreener.wsgi.application'
 # ────────────────────────────────────────────
 # DB 설정 (오류 수정 버전)
 # ────────────────────────────────────────────
-# Vercel 환경변수(DATABASE_URL)를 체크하고, 있으면 Neon 연동 / 없으면 로컬 SQLite fallback
+# DATABASE_URL 환경변수가 있으면 외부 DB(PostgreSQL 등) 연동 / 없으면 로컬 SQLite fallback
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
@@ -118,10 +117,10 @@ USE_I18N = True
 USE_TZ = True
 
 # ────────────────────────────────────────────
-# 정적 파일 설정 (Vercel 필수 누락 보완)
+# 정적 파일 설정
 # ────────────────────────────────────────────
 STATIC_URL = 'static/'
-# Vercel 빌드 시 정적 파일들을 한곳에 모아 서빙할 수 있도록 경로 지정
+# collectstatic 시 정적 파일들을 한곳에 모아 WhiteNoise로 서빙
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 

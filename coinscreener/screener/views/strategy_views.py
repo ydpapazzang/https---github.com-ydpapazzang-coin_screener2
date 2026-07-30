@@ -393,7 +393,7 @@ def alert_save(request, strategy_id):
         return JsonResponse({'ok': False, 'error': '잘못된 요청'}, status=400)
 
     try:
-        alert_hour = 9  # Vercel Hobby 크론 제한(하루 1회)으로 오전 9시 고정
+        alert_hour = 9  # 일일 알림은 오전 9시 정각 고정
         alert_min  = 0  # 30분 단위 제외, 정각만 사용
         vol_limit  = int(body.get('vol_limit', 0))
     except (ValueError, TypeError) as e:

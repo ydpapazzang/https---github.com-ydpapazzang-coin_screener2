@@ -318,17 +318,15 @@ class BacktestOffsetTestCase(TestCase):
         response = self.client.get('/cron/scan/')
         self.assertEqual(response.status_code, 403)
 
-    @patch.dict('os.environ', {'CRON_SECRET': 'test_cron_secret'})
     def test_cron_scan_success(self):
-        """디버그 토큰을 전달하거나 Vercel Cron 헤더를 전달했을 때 크론 스캔이 성공적으로 수행되는지 검증"""
-        # 1. Vercel Cron 헤더를 통한 성공 검증
-        response = self.client.get('/cron/scan/', HTTP_X_VERCEL_CRON='1')
+        """보안 키(?key=wonii)를 전달했을 때 크론 스캔이 성공적으로 수행되는지 검증"""
+        response = self.client.get('/cron/scan/?key=wonii')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])
-        
-        # 2. 디버그 쿼리 토큰을 통한 성공 검증
-        response = self.client.get('/cron/scan/?secret=test_cron_secret')
+
+        # 강제 실행 플래그(&force=true)를 통한 성공 검증
+        response = self.client.get('/cron/scan/?force=true')
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])

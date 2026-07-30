@@ -15,6 +15,7 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
+from .. import telegram as tg
 
 logger = logging.getLogger(__name__)
 
@@ -250,11 +251,10 @@ def cron_prefetch(request):
     from ..engine import get_ohlcv_with_retry
     import json
     
-    is_cron = request.headers.get("x-vercel-cron") == "1"
     cron_sec = _get_cron_secret()
-    is_debug = bool(cron_sec) and request.GET.get("secret") == cron_sec
-    
-    if not is_cron and not is_debug:
+    is_authorized = bool(cron_sec) and request.GET.get("secret") == cron_sec
+
+    if not is_authorized:
         return HttpResponseForbidden("Forbidden")
         
     try:
@@ -552,7 +552,7 @@ def coin_search_stream(request, strategy_id):
         if tf_override:
             cache_key += f"_{tf_override}"
 
-        # Vercel 서버리스 환경에서는 컨테이너 간 LocMemCache가 공유되지 않으므로, 
+        # 프로세스 간 LocMemCache가 공유되지 않는 환경을 고려해,
         # 검색 결과를 DB(OHLCVCache)를 활용하여 임시 저장합니다. (무한 리다이렉트 방지)
         from ..models import OHLCVCache
         try:
@@ -609,7 +609,7 @@ def coin_search_results(request, strategy_id):
     
     cache_key  = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
     
-    # DB(OHLCVCache)에서 결과 읽어오기 (Vercel 환경 지원)
+    # DB(OHLCVCache)에서 결과 읽어오기
     from ..models import OHLCVCache
     import dateutil.parser
     try:
