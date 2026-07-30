@@ -412,6 +412,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
     DB에 아예 없는 항목은 병렬 HTTP로 즉시 채운다(콜드 스타트).
     exchange 명시 시 라이브 재조회의 거래소 라우팅이 정확해짐(빗썸)."""
     try:
+        import time as _time
         from ..models import OHLCVCache
         from django.core.cache import cache
         import pandas as pd
@@ -423,6 +424,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
         tickers = [t['ticker'] if isinstance(t, dict) else t for t in tickers_data]
 
         # 1) 가벼운 메타 조회: 큰 data 컬럼을 빼고 (id, ticker, timeframe, updated_at)만 읽는다.
+        _tm0 = _time.perf_counter()
         meta_qs = OHLCVCache.objects.filter(
             ticker__in=tickers, timeframe__in=active_timeframes
         ).values('id', 'ticker', 'timeframe', 'updated_at')
@@ -436,8 +438,10 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
                 cached = _PARSED_OHLCV.get(key)
             if cached is None or cached[0] != m['updated_at']:
                 stale_ids.append(m['id'])
+        t_meta = _time.perf_counter() - _tm0
 
         # 2) 변경된(또는 처음 보는) 항목만 무거운 data를 읽어 파싱한다.
+        _tp0 = _time.perf_counter()
         if stale_ids:
             for obj in OHLCVCache.objects.filter(id__in=stale_ids):
                 data_dict = obj.data
@@ -458,6 +462,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
                     if len(_PARSED_OHLCV) >= _PARSED_OHLCV_MAX and key not in _PARSED_OHLCV:
                         _PARSED_OHLCV.clear()
                     _PARSED_OHLCV[key] = (obj.updated_at, df)
+        t_parse = _time.perf_counter() - _tp0
 
         # 3) 요청 타임프레임에 대해 파싱된 프레임을 요청 단위 LocMemCache에 적재.
         #    check_strategy가 지표 컬럼을 in-place로 추가하므로 캐시 원본 보호를 위해 copy() 전달.
@@ -476,6 +481,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
             (t, tf) for t in tickers for tf in active_timeframes
             if (t, tf) not in present_keys
         ]
+        _tf0 = _time.perf_counter()
         if missing_tasks:
             def _fetch_one(item):
                 t, tf = item
@@ -483,6 +489,15 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=24) as executor:
                 list(executor.map(_fetch_one, missing_tasks))
+        t_live = _time.perf_counter() - _tf0
+
+        # [측정] 프리페치 내부 분해: 메타조회 / 재파싱(변경분) / 누락 라이브조회.
+        #   코스피에서 t_live가 크면 '캐시 워밍'이 답, t_parse가 크면 파싱/사전계산(D)이 답.
+        print(
+            f"[PREFETCH_TIMING] ex={exchange} present={len(present_keys)} "
+            f"reparsed={len(stale_ids)} missing_live={len(missing_tasks)} | "
+            f"meta={t_meta:.2f}s parse={t_parse:.2f}s live={t_live:.2f}s"
+        )
     except Exception as e:
         print(f"Bulk cache prefetch error: {e}")
 
@@ -518,7 +533,9 @@ def coin_search_stream(request, strategy_id):
 
         # (B) vol_limit=0(전체)이라도 full=1이 아니면 거래대금 상위 N만 스캔(업비트/코스피)
         scan_limit = _effective_scan_limit(exchange, vol_limit, full_scan)
+        _t_tickers0 = time.perf_counter()
         tickers_data = _get_tickers(exchange, scan_limit)
+        t_tickers = time.perf_counter() - _t_tickers0
         total   = len(tickers_data)
 
         # 티커를 못 불러오면(외부 API/DB 일시 장애) 조용히 멈추지 않고 명확히 알림
@@ -570,10 +587,13 @@ def coin_search_stream(request, strategy_id):
                 pass
             return None
 
+        _t_prefetch0 = time.perf_counter()
         _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=exchange)
+        t_prefetch = time.perf_counter() - _t_prefetch0
 
         # 프리페치 후 대부분 캐시 히트이고, 잔여 라이브 조회는 engine._throttle()로 전역
         # 속도 제한되므로 워커를 늘려도 안전하다. (병렬 처리로 스캔 지연 최소화)
+        _t_scan0 = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
             futures = {executor.submit(process_ticker, t): t for t in tickers_data}
             last_sent_pct = -1
@@ -598,6 +618,15 @@ def coin_search_stream(request, strategy_id):
                         "matched": len(results),
                         "last_match": last_match,
                     }) + "\n\n"
+        t_scan = time.perf_counter() - _t_scan0
+
+        # [측정] 구간별 소요시간 로그: 4초가 어디서 쓰이는지 확정용 (journalctl에서 확인)
+        print(
+            f"[SEARCH_TIMING] ex={exchange} tickers={total} matched={len(results)} "
+            f"api_err={error_occurred} | get_tickers={t_tickers:.2f}s "
+            f"prefetch(parse)={t_prefetch:.2f}s scan(calc)={t_scan:.2f}s "
+            f"total={time.time() - start_time:.2f}s"
+        )
 
         results.sort(key=lambda x: x.get('volume', 0), reverse=True)
         last_updated = timezone.now()
