@@ -23,6 +23,35 @@ def _get_cron_secret():
     return os.environ.get('CRON_SECRET', '')
 
 
+# ─────────────────────────────────────────────────────────────
+# (A) 인프로세스 파싱 캐시
+#   (ticker, timeframe) -> (updated_at, DataFrame)
+#   크롤러가 5분 주기로 OHLCVCache를 갱신하므로, updated_at이 바뀌기 전까지
+#   JSON→DataFrame 재파싱을 건너뛴다. runserver가 단일 장수 프로세스라
+#   검색 요청 간에 파싱 결과가 재사용된다(= 반복 검색이 매우 빨라짐).
+# ─────────────────────────────────────────────────────────────
+import threading
+_PARSED_OHLCV = {}
+_PARSED_OHLCV_LOCK = threading.Lock()
+_PARSED_OHLCV_MAX = 4000  # 티커×타임프레임 상한(메모리 방어)
+
+
+# (B) 상호작용 검색 기본 스캔 범위
+#   vol_limit=0(전체)로 들어와도, 거래대금 정렬을 신뢰할 수 있는 거래소는
+#   상위 N개만 스캔해 속도를 높인다. full=1이면 진짜 전체를 스캔한다.
+DEFAULT_SCAN_LIMIT = 150
+
+
+def _effective_scan_limit(exchange, vol_limit, full=False):
+    """상호작용 검색에 적용할 실질 스캔 상한을 반환.
+    - full=True 이거나 사용자가 명시적 vol_limit(>0)을 지정하면 그대로 둔다.
+    - vol_limit=0(전체) 이고 거래대금(-amount) 정렬이 신뢰 가능한 거래소(업비트/코스피)면
+      상위 DEFAULT_SCAN_LIMIT 만 스캔한다. (빗썸은 정렬이 거래량 순이 아니라 제외)"""
+    if vol_limit == 0 and not full and exchange in ('upbit', 'kospi'):
+        return DEFAULT_SCAN_LIMIT
+    return vol_limit
+
+
 
 
 
@@ -234,12 +263,14 @@ def coin_search(request, strategy_id):
 
     # 캐시 없음 → 로딩 페이지 (JS가 SSE로 진행)
     send_telegram = request.GET.get('send_telegram', '0')
+    full_scan = '1' if request.GET.get('full') == '1' else '0'
     return render(request, 'screener/search_loading.html', {
         'strategy':  strategy,
         'exchange':  exchange,
         'vol_limit': vol_limit,
         'send_telegram': send_telegram,
         'timeframe': tf_override or '',
+        'full': full_scan,
     })
 
 
@@ -373,62 +404,83 @@ def trigger_debug(request):
 
 def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
     """OHLCVCache DB에서 필요한 OHLCV 데이터를 일괄 조회해 메모리 캐시에 적재.
-    DB에 누락된 항목은 병렬 HTTP 요청으로 즉시 채워 1~2초 내에 완료시킴.
+
+    (A) 인프로세스 파싱 캐시 적용:
+      - 먼저 (id, ticker, timeframe, updated_at)만 가볍게 조회한다(무거운 data 컬럼 제외).
+      - 인프로세스 캐시의 updated_at과 비교해 '변경된 항목의 data'만 다시 읽어 파싱한다.
+      - 대부분의 반복 검색은 크롤러 갱신(5분) 전이라 재파싱이 0에 수렴한다.
+    DB에 아예 없는 항목은 병렬 HTTP로 즉시 채운다(콜드 스타트).
     exchange 명시 시 라이브 재조회의 거래소 라우팅이 정확해짐(빗썸)."""
     try:
         from ..models import OHLCVCache
         from django.core.cache import cache
         import pandas as pd
-        import datetime
         import concurrent.futures
-        from ..engine import get_ohlcv_with_retry
+        from ..engine import get_ohlcv_with_retry, get_max_required_len
 
-        from ..engine import get_max_required_len, max_cache_age
         req_count = get_max_required_len(conditions)
         active_timeframes = set(c.timeframe for c in conditions)
         tickers = [t['ticker'] if isinstance(t, dict) else t for t in tickers_data]
 
-        cached_qs = OHLCVCache.objects.filter(ticker__in=tickers, timeframe__in=active_timeframes)
-        now = datetime.datetime.now(datetime.timezone.utc)
+        # 1) 가벼운 메타 조회: 큰 data 컬럼을 빼고 (id, ticker, timeframe, updated_at)만 읽는다.
+        meta_qs = OHLCVCache.objects.filter(
+            ticker__in=tickers, timeframe__in=active_timeframes
+        ).values('id', 'ticker', 'timeframe', 'updated_at')
 
-        cached_keys = set()
-        for obj in cached_qs:
-            # SQLite DB에 데이터가 존재하기만 하면 무조건 신뢰 (크롤러 봇이 업데이트를 전담)
-            data_dict = obj.data
-            try:
-                df = pd.DataFrame(
-                    data_dict['data'],
-                    index=pd.to_datetime(data_dict['index'], unit='ms'),
-                    columns=data_dict['columns'],
-                )
-                df.index.name = None
-                
-                if len(df) > 0:
-                    cache_key = f"ohlcv_{obj.ticker}_{obj.timeframe}_{req_count}"
-                    cache.set(cache_key, df.tail(req_count), 180)
-                    cached_keys.add((obj.ticker, obj.timeframe))
-            except Exception:
-                pass
+        present_keys = set()
+        stale_ids = []
+        for m in meta_qs:
+            key = (m['ticker'], m['timeframe'])
+            present_keys.add(key)
+            with _PARSED_OHLCV_LOCK:
+                cached = _PARSED_OHLCV.get(key)
+            if cached is None or cached[0] != m['updated_at']:
+                stale_ids.append(m['id'])
 
-        # DB 캐시에 없거나 부실한 항목 병렬 사전 수집
-        missing_tasks = []
-        for t in tickers:
-            for tf in active_timeframes:
-                if (t, tf) not in cached_keys:
-                    missing_tasks.append((t, tf))
+        # 2) 변경된(또는 처음 보는) 항목만 무거운 data를 읽어 파싱한다.
+        if stale_ids:
+            for obj in OHLCVCache.objects.filter(id__in=stale_ids):
+                data_dict = obj.data
+                try:
+                    df = pd.DataFrame(
+                        data_dict['data'],
+                        index=pd.to_datetime(data_dict['index'], unit='ms'),
+                        columns=data_dict['columns'],
+                    )
+                    df.index.name = None
+                except Exception:
+                    continue
+                if len(df) == 0:
+                    continue
+                key = (obj.ticker, obj.timeframe)
+                with _PARSED_OHLCV_LOCK:
+                    # 상한 초과 시 단순 방어적으로 비운다(장수 프로세스 메모리 보호).
+                    if len(_PARSED_OHLCV) >= _PARSED_OHLCV_MAX and key not in _PARSED_OHLCV:
+                        _PARSED_OHLCV.clear()
+                    _PARSED_OHLCV[key] = (obj.updated_at, df)
 
+        # 3) 요청 타임프레임에 대해 파싱된 프레임을 요청 단위 LocMemCache에 적재.
+        #    check_strategy가 지표 컬럼을 in-place로 추가하므로 캐시 원본 보호를 위해 copy() 전달.
+        for key in present_keys:
+            with _PARSED_OHLCV_LOCK:
+                entry = _PARSED_OHLCV.get(key)
+            if entry is None:
+                continue
+            df = entry[1]
+            cache_key = f"ohlcv_{key[0]}_{key[1]}_{req_count}"
+            cache.set(cache_key, df.tail(req_count).copy(), 180)
+
+        # 4) DB에 아예 없는 항목은 라이브로 채운다(콜드 스타트).
+        #    개별 sleep 대신 engine._throttle() 전역 속도 제한에 위임(워커를 늘려도 ≈9req/s로 안전).
+        missing_tasks = [
+            (t, tf) for t in tickers for tf in active_timeframes
+            if (t, tf) not in present_keys
+        ]
         if missing_tasks:
-            from ..engine import get_max_required_len
-            req_count = get_max_required_len(conditions)
-
-            # 개별 sleep 대신 engine._throttle() 전역 속도 제한에 위임.
-            # 워커를 늘려도 실제 요청 속도는 전역적으로 ≈9req/s로 제한되어 안전하다.
             def _fetch_one(item):
                 t, tf = item
                 get_ohlcv_with_retry(t, tf, count=req_count, exchange=exchange)
 
-            # 워커 24개: 빗썸은 거래소별 스로틀이 낮아 워커 수가 실질 처리량을 좌우.
-            # 업비트는 스로틀(0.11s)이 9req/s로 묶으므로 워커가 많아도 버스트되지 않음.
             with concurrent.futures.ThreadPoolExecutor(max_workers=24) as executor:
                 list(executor.map(_fetch_one, missing_tasks))
     except Exception as e:
@@ -454,6 +506,7 @@ def coin_search_stream(request, strategy_id):
             c.timeframe = tf_override
 
     send_telegram = request.GET.get('send_telegram') == '1'
+    full_scan = request.GET.get('full') == '1'
 
     def event_stream():
         import time
@@ -463,7 +516,9 @@ def coin_search_stream(request, strategy_id):
             yield "data: " + json.dumps({"type": "error", "msg": "조건이 없습니다."}) + "\n\n"
             return
 
-        tickers_data = _get_tickers(exchange, vol_limit)
+        # (B) vol_limit=0(전체)이라도 full=1이 아니면 거래대금 상위 N만 스캔(업비트/코스피)
+        scan_limit = _effective_scan_limit(exchange, vol_limit, full_scan)
+        tickers_data = _get_tickers(exchange, scan_limit)
         total   = len(tickers_data)
 
         # 티커를 못 불러오면(외부 API/DB 일시 장애) 조용히 멈추지 않고 명확히 알림

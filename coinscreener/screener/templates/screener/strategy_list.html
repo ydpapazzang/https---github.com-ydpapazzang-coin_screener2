@@ -210,6 +210,7 @@
 </header>
 <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; gap: 8px; background: var(--bg-color); position: sticky; top: 61px; z-index: 99;">
     <input type="text" id="search-input" oninput="filterStrategies()" placeholder="전략 이름 검색..." style="flex:1; background: var(--surface-color); border: 1px solid var(--border-color); color: var(--text-primary); padding: 10px 14px; border-radius: 10px; outline: none; font-size: 14px;">
+    <button id="full-scan-btn" onclick="toggleFullScan()" title="켜면 전체 코인을 스캔(느림), 끄면 거래대금 상위 150개만 빠르게 검색합니다. (업비트/코스피)" style="background: var(--surface-color); color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 10px; padding: 0 12px; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer;">범위: 상위150</button>
     <button id="scan-all-btn" onclick="scanAllStrategies()" style="background: rgba(45,123,254,0.1); color: var(--primary-color); border: 1px solid rgba(45,123,254,0.3); border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;">전체 스캔</button>
 </div>
 {% endblock %}
@@ -365,9 +366,25 @@
     });
 
     /* ── Search & Scan ── */
+    function isFullScan() { return localStorage.getItem('scan_full') === '1'; }
+    function renderFullScanBtn() {
+        const b = document.getElementById('full-scan-btn');
+        if (!b) return;
+        const on = isFullScan();
+        b.textContent = on ? '범위: 전체' : '범위: 상위150';
+        b.style.color = on ? '#10b981' : 'var(--text-secondary)';
+        b.style.borderColor = on ? 'rgba(16,185,129,0.4)' : 'var(--border-color)';
+    }
+    function toggleFullScan() {
+        localStorage.setItem('scan_full', isFullScan() ? '0' : '1');
+        renderFullScanBtn();
+    }
+    window.addEventListener('DOMContentLoaded', renderFullScanBtn);
+
     function runSearch(id) {
         const ex = document.getElementById('ex-val-' + id).value;
-        const url = `/strategy/${id}/search/?exchange=${ex}&vol_limit=0&refresh=1`;
+        const full = isFullScan() ? '1' : '0';
+        const url = `/strategy/${id}/search/?exchange=${ex}&vol_limit=0&refresh=1&full=${full}`;
         window.location.href = url;
     }
     function goToResults(id) {
@@ -393,7 +410,8 @@
             badge.style.display = 'none';
             
             const ex = document.getElementById('ex-val-' + id).value;
-            let url = `/strategy/${id}/scan-count/?exchange=${ex}&vol_limit=0`;
+            const full = isFullScan() ? '1' : '0';
+            let url = `/strategy/${id}/scan-count/?exchange=${ex}&vol_limit=0&full=${full}`;
             
             try {
                 const response = await fetch(url);

@@ -15,7 +15,7 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
-from .scan_views import _get_tickers, _bulk_prefetch_ohlcv
+from .scan_views import _get_tickers, _bulk_prefetch_ohlcv, _effective_scan_limit
 from .. import telegram as tg
 from .strategy_views import process_scan_and_alert
 
@@ -259,7 +259,10 @@ def strategy_scan_count(request, strategy_id):
         for c in conditions:
             c.timeframe = tf_override
 
-    tickers = _get_tickers(exchange, vol_limit)
+    # (B) 검색 결과와 동일 범위로 카운트하도록 상위 N 캡을 함께 적용 (full=1이면 전체)
+    full_scan = request.GET.get('full') == '1'
+    scan_limit = _effective_scan_limit(exchange, vol_limit, full_scan)
+    tickers = _get_tickers(exchange, scan_limit)
     _bulk_prefetch_ohlcv(tickers, conditions, exchange=exchange)
     results = []
     error_occurred = False
