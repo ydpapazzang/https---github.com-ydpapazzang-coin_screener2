@@ -11,6 +11,7 @@
   1. `coinscreener.service`: Django 웹 애플리케이션 구동 (`manage.py runserver 0.0.0.0:8000`)
   2. `upbit-crawler.service`: 업비트 & 빗썸 24시간 5분 주기 크롤러
   3. `kospi-crawler.service`: 코스피/ETF 전용 1시간 주기 크롤러 (평일 09:00~15:30 전용)
+  4. **`Crontab` 스케줄러**: 매일 아침 09:00 정각 `generate_daily_picks.py` 실행 (오늘의 단타 AI 추천) 및 자동 배포(`git pull`)
 
 ---
 
@@ -29,7 +30,8 @@ coin-screener/
 │       ├── management/
 │       │   └── commands/     # 백그라운드 크롤링 봇 스크립트
 │       │       ├── update_upbit_cache.py   # 코인(업비트,빗썸) 캐시 봇 (5분 무한 루프)
-│       │       └── update_kospi_cache.py   # 코스피(ETF) 캐시 봇 (평일 낮 1시간 주기)
+│       │       ├── update_kospi_cache.py   # 코스피(ETF) 캐시 봇 (평일 낮 1시간 주기)
+│       │       └── generate_daily_picks.py # [핵심] 일일 단타 추천 봇 (K값 최적화 및 BTC 시장 필터 적용)
 │       └── views/
 │           ├── scan_views.py       # 실시간 스크리너 엔진 (DB 캐시 기반 종목 필터링 로직)
 │           ├── cron_views.py       # 스케줄된 알림 발송 로직 (매일 아침 9시 알림 등)
@@ -54,7 +56,12 @@ coin-screener/
    * 특정 코인에 대해 과거 데이터를 기반으로 래리 윌리엄스 등의 전략을 시뮬레이션합니다.
    * 승률, MDD(최대 낙폭), 누적 수익률 등을 계산하여 `backtest_views.py`를 통해 화면에 성적표를 출력합니다.
 
-4. **텔레그램 알림 발송 (`telegram.py`):**
+4. **일일 단타 추천 봇 (`generate_daily_picks.py`):**
+   * 매일 아침 9시 크론탭(Crontab)에 의해 자동 실행됩니다.
+   * 래리 윌리엄스 변동성 돌파 전략을 기반으로 최근 14일 백테스트를 수행해 최적의 K값을 찾아 3종목을 추천합니다.
+   * **[BTC 방어 필터]** 비트코인의 1시간봉 EMA(20>60), 1시간 급락 여부(-1.5% 초과), 15분봉 RSI(>50)를 먼저 점검하여, 하락장에서는 단타 추천을 쉬는 로직이 탑재되어 있습니다.
+
+5. **텔레그램 알림 발송 (`telegram.py`):**
    * 봇이 텔레그램 메시지를 보낼 때는 에러 핸들링과 함께 `.env`에서 토큰을 안전하게 불러와 발송합니다.
    * 알림 하단에는 `🔗 웹사이트로이동하기` 형식의 깔끔한 딥링크가 삽입됩니다.
 
@@ -75,4 +82,7 @@ sudo journalctl -u upbit-crawler -n 50 -f
 # 코스피 봇(1시간 주기) 재시작 및 로그 보기
 sudo systemctl restart kospi-crawler
 sudo journalctl -u kospi-crawler -n 50 -f
+
+# 크론탭(Crontab) 스케줄 관리 열기 (단타 봇, 자동 배포 등 확인)
+crontab -e
 ```
