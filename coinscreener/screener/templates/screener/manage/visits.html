@@ -1,0 +1,78 @@
+{% extends 'screener/manage/base_manage.html' %}
+{% load humanize %}
+{% block title %}방문 기록{% endblock %}
+{% block content %}
+<div class="page-head">
+    <h1>방문 기록</h1>
+    <span class="sub">최근 {{ days }}일 · {{ total_visits|intcomma }} PV / 순 IP {{ uniq_ips|intcomma }}</span>
+</div>
+
+<form class="filters" method="get">
+    <select name="days" onchange="this.form.submit()">
+        <option value="7"  {% if days == 7 %}selected{% endif %}>최근 7일</option>
+        <option value="14" {% if days == 14 %}selected{% endif %}>최근 14일</option>
+        <option value="30" {% if days == 30 %}selected{% endif %}>최근 30일</option>
+    </select>
+</form>
+
+<div class="section">
+    <h2>일별 방문수 (PV)</h2>
+    {% if daily %}
+    <div class="bars">
+        {% for row in daily %}
+        <div class="bar-col" title="{{ row.d }} · {{ row.c }}PV / {{ row.u }}IP">
+            <div class="bar-val">{{ row.c }}</div>
+            <div class="bar" style="height: {% widthratio row.c max_c 100 %}%"></div>
+            <div class="bar-lbl">{{ row.d|date:"m/d" }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">아직 방문 기록이 없습니다.</div>
+    {% endif %}
+</div>
+
+<div class="section">
+    <h2>인기 경로 Top 10</h2>
+    <table>
+        <thead><tr><th>경로</th><th class="num">방문수</th></tr></thead>
+        <tbody>
+        {% for p in top_paths %}
+            <tr><td>{{ p.path }}</td><td class="num">{{ p.c|intcomma }}</td></tr>
+        {% empty %}
+            <tr><td colspan="2" class="empty">기록 없음</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>최근 방문 로그</h2>
+    <table>
+        <thead>
+            <tr><th>시각</th><th>IP</th><th>경로</th><th>브라우저</th><th>Referer</th></tr>
+        </thead>
+        <tbody>
+        {% for v in page %}
+            <tr>
+                <td>{{ v.created_at|date:"m-d H:i:s" }}</td>
+                <td>{{ v.ip|default:"-" }}</td>
+                <td>{{ v.path }}</td>
+                <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis;">{{ v.user_agent|default:"-"|truncatechars:60 }}</td>
+                <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">{{ v.referer|default:"-"|truncatechars:40 }}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="5" class="empty">기록이 없습니다.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page.paginator.num_pages > 1 %}
+    <div class="pager">
+        {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}&days={{ days }}">← 이전</a>{% endif %}
+        <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?page={{ page.next_page_number }}&days={{ days }}">다음 →</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

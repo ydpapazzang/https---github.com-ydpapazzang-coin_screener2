@@ -264,6 +264,27 @@ class AlertHistory(models.Model):
         return f"{self.strategy.name} - {self.symbol} ({self.created_at})"
 
 
+class VisitLog(models.Model):
+    """방문 기록 (백오피스 접속자 추적용). 페이지뷰만 가벼운 미들웨어로 기록."""
+    path = models.CharField(max_length=300, db_index=True, verbose_name="경로")
+    method = models.CharField(max_length=8, default='GET', verbose_name="메서드")
+    ip = models.GenericIPAddressField(null=True, blank=True, db_index=True, verbose_name="IP")
+    user_agent = models.CharField(max_length=300, blank=True, verbose_name="User-Agent")
+    referer = models.CharField(max_length=300, blank=True, verbose_name="Referer")
+    status_code = models.IntegerField(default=200, verbose_name="응답 코드")
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="방문 시각")
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['created_at']),
+            models.Index(fields=['ip']),
+        ]
+
+    def __str__(self):
+        return f"{self.ip} {self.path} ({self.created_at})"
+
+
 class DailyRecommendation(models.Model):
     """오늘의 단타 추천 코인 (매일 오전 9시 생성)"""
     date = models.DateField(verbose_name="추천일")

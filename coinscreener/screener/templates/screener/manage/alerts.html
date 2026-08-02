@@ -1,0 +1,60 @@
+{% extends 'screener/manage/base_manage.html' %}
+{% load humanize %}
+{% block title %}알람 이력{% endblock %}
+{% block content %}
+<div class="page-head">
+    <h1>알람 이력</h1>
+    <span class="sub">총 {{ page.paginator.count|intcomma }} 건</span>
+</div>
+
+<form class="filters" method="get">
+    <select name="strategy">
+        <option value="">전체 전략</option>
+        {% for s in strategies %}
+        <option value="{{ s.id }}" {% if cur_strategy == s.id|stringformat:"s" %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    <select name="days">
+        <option value="">전체 기간</option>
+        <option value="1"  {% if cur_days == '1' %}selected{% endif %}>최근 1일</option>
+        <option value="7"  {% if cur_days == '7' %}selected{% endif %}>최근 7일</option>
+        <option value="30" {% if cur_days == '30' %}selected{% endif %}>최근 30일</option>
+    </select>
+    <button type="submit">필터</button>
+</form>
+
+<div class="section">
+    <table>
+        <thead>
+            <tr>
+                <th>시각</th><th>전략</th><th>심볼</th>
+                <th class="num">가격</th><th class="num">거래대금</th>
+                <th>상태</th><th>텔레그램</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for a in page %}
+            <tr>
+                <td>{{ a.created_at|date:"m-d H:i" }}</td>
+                <td>{{ a.strategy.name }}</td>
+                <td>{{ a.symbol }}</td>
+                <td class="num">{{ a.price|floatformat:"-2"|intcomma }}</td>
+                <td class="num">{{ a.volume|floatformat:0|intcomma }}</td>
+                <td>{{ a.status }}</td>
+                <td>{% if a.is_notified %}✅{% else %}—{% endif %}</td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="7" class="empty">기록이 없습니다.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page.paginator.num_pages > 1 %}
+    <div class="pager">
+        {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}&strategy={{ cur_strategy }}&days={{ cur_days }}">← 이전</a>{% endif %}
+        <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?page={{ page.next_page_number }}&strategy={{ cur_strategy }}&days={{ cur_days }}">다음 →</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

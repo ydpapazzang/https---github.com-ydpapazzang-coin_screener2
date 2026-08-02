@@ -40,4 +40,10 @@ urlpatterns = [
     # 단타 및 통계 탭
     path('danta/', views.danta_list, name='danta_list'),
     path('stats/', views.stats_list, name='stats_list'),
+
+    # 백오피스 (PC 관리자용, 슈퍼유저 로그인 필요)
+    path('manage/',        views.manage_dashboard, name='manage_dashboard'),
+    path('manage/alerts/', views.manage_alerts,    name='manage_alerts'),
+    path('manage/danta/',  views.manage_danta,     name='manage_danta'),
+    path('manage/visits/', views.manage_visits,    name='manage_visits'),
 ]

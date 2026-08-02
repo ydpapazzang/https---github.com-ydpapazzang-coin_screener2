@@ -1,0 +1,69 @@
+{% extends 'screener/manage/base_manage.html' %}
+{% load humanize %}
+{% block title %}단타 이력{% endblock %}
+{% block content %}
+<div class="page-head">
+    <h1>단타 이력</h1>
+    <span class="sub">필터 기준 {{ stats.total }} 건</span>
+</div>
+
+<div class="cards">
+    <div class="card"><div class="label">승률</div><div class="value">{{ stats.win_rate }}<small> %</small></div><div class="foot">{{ stats.wins }}승 {{ stats.losses }}패</div></div>
+    <div class="card"><div class="label">누적 수익률</div><div class="value {% if stats.cum_pct >= 0 %}pos{% else %}neg{% endif %}">{{ stats.cum_pct }}<small> %</small></div><div class="foot">확정 손익 합계</div></div>
+    <div class="card"><div class="label">총 추천</div><div class="value">{{ stats.total }}<small> 건</small></div></div>
+</div>
+
+<form class="filters" method="get">
+    <select name="status">
+        <option value="">전체 상태</option>
+        {% for val, lbl in status_choices %}
+        <option value="{{ val }}" {% if cur_status == val %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+    </select>
+    <select name="days">
+        <option value="">전체 기간</option>
+        <option value="7"  {% if cur_days == '7' %}selected{% endif %}>최근 7일</option>
+        <option value="30" {% if cur_days == '30' %}selected{% endif %}>최근 30일</option>
+        <option value="90" {% if cur_days == '90' %}selected{% endif %}>최근 90일</option>
+    </select>
+    <button type="submit">필터</button>
+</form>
+
+<div class="section">
+    <table>
+        <thead>
+            <tr>
+                <th>추천일</th><th>종목</th>
+                <th class="num">진입가</th><th class="num">목표가</th><th class="num">손절가</th>
+                <th class="num">K</th><th>상태</th><th class="num">수익률</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in page %}
+            <tr>
+                <td>{{ r.date|date:"Y-m-d" }}</td>
+                <td>{{ r.coin_name }} <span style="color:var(--text-dim)">{{ r.coin_ticker }}</span></td>
+                <td class="num">{{ r.entry_price|floatformat:"-2"|intcomma }}</td>
+                <td class="num">{{ r.target_price|floatformat:"-2"|intcomma }}</td>
+                <td class="num">{{ r.stop_loss|floatformat:"-2"|intcomma }}</td>
+                <td class="num">{{ r.k_value }}</td>
+                <td><span class="badge b-{{ r.status }}">{{ r.get_status_display }}</span></td>
+                <td class="num {% if r.result_pct >= 0 %}pos{% elif r.result_pct %}neg{% endif %}">
+                    {% if r.result_pct is not None %}{{ r.result_pct|floatformat:2 }}%{% else %}—{% endif %}
+                </td>
+            </tr>
+        {% empty %}
+            <tr><td colspan="8" class="empty">기록이 없습니다.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    {% if page.paginator.num_pages > 1 %}
+    <div class="pager">
+        {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}&status={{ cur_status }}&days={{ cur_days }}">← 이전</a>{% endif %}
+        <span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?page={{ page.next_page_number }}&status={{ cur_status }}&days={{ cur_days }}">다음 →</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
