@@ -64,6 +64,53 @@ def manage_dashboard(request):
 
     last_pick = DailyRecommendation.objects.order_by('-date').values_list('date', flat=True).first()
 
+    # ─────────── 차트 데이터 (Chart.js, 브라우저 렌더링) ───────────
+    chart_days = 14
+    since = timezone.now() - timezone.timedelta(days=chart_days)
+    date_range = [today - timezone.timedelta(days=i) for i in range(chart_days - 1, -1, -1)]
+    day_labels = [d.strftime('%m/%d') for d in date_range]
+
+    # 방문 추이 (봇 404 제외: 2xx/3xx 만)
+    visit_daily = (
+        VisitLog.objects.filter(created_at__gte=since, status_code__lt=400)
+        .annotate(d=TruncDate('created_at')).values('d')
+        .annotate(pv=Count('id'), uv=Count('ip', distinct=True))
+    )
+    vmap = {row['d']: row for row in visit_daily}
+    pv_series = [vmap.get(d, {}).get('pv', 0) for d in date_range]
+    uv_series = [vmap.get(d, {}).get('uv', 0) for d in date_range]
+
+    # 알람 발생 추이
+    alert_daily = (
+        AlertHistory.objects.filter(created_at__gte=since)
+        .annotate(d=TruncDate('created_at')).values('d').annotate(c=Count('id'))
+    )
+    amap = {row['d']: row['c'] for row in alert_daily}
+    alert_series = [amap.get(d, 0) for d in date_range]
+
+    # 단타 누적 수익률 곡선 (확정 손익만, 날짜순 누적)
+    decided = (
+        DailyRecommendation.objects.filter(result_pct__isnull=False)
+        .order_by('date').values('date', 'result_pct')
+    )
+    day_sum = {}
+    for row in decided:
+        day_sum[row['date']] = day_sum.get(row['date'], 0.0) + (row['result_pct'] or 0.0)
+    equity_labels, equity_series, _cum = [], [], 0.0
+    for d in sorted(day_sum):
+        _cum += day_sum[d]
+        equity_labels.append(d.strftime('%m/%d'))
+        equity_series.append(round(_cum, 2))
+
+    # 단타 승/패 도넛 + 상태 분포 도넛
+    winloss_series = [danta_all['wins'], danta_all['losses']]
+    smap = dict(
+        DailyRecommendation.objects.values('status')
+        .annotate(c=Count('id')).values_list('status', 'c')
+    )
+    status_labels = [lbl for val, lbl in DailyRecommendation.status_choices]
+    status_series = [smap.get(val, 0) for val, lbl in DailyRecommendation.status_choices]
+
     ctx = {
         'now': now,
         'alerts_today': alerts_today,
@@ -79,6 +126,16 @@ def manage_dashboard(request):
         'cache_tickers': cache_tickers,
         'last_pick': last_pick,
         'active': 'dashboard',
+        # 차트
+        'day_labels': day_labels,
+        'pv_series': pv_series,
+        'uv_series': uv_series,
+        'alert_series': alert_series,
+        'equity_labels': equity_labels,
+        'equity_series': equity_series,
+        'winloss_series': winloss_series,
+        'status_labels': status_labels,
+        'status_series': status_series,
     }
     return render(request, 'screener/manage/dashboard.html', ctx)
 

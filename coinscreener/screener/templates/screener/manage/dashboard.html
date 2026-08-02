@@ -1,6 +1,18 @@
 {% extends 'screener/manage/base_manage.html' %}
 {% load humanize %}
 {% block title %}대시보드{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+    .chart-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-bottom: 22px; }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px; }
+    .chart-card h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+    .chart-wrap { position: relative; height: 240px; }
+    .donut-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .donut-wrap { position: relative; height: 220px; }
+    @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="page-head">
     <h1>대시보드</h1>
@@ -53,12 +65,98 @@
     </div>
 </div>
 
-<div class="section">
-    <h2>바로가기</h2>
-    <p style="color:var(--text-dim); font-size:13px; line-height:1.9">
-        · <a href="{% url 'manage_alerts' %}" style="color:var(--primary)">알람 이력</a> — 전략별 매칭·텔레그램 발송 기록<br>
-        · <a href="{% url 'manage_danta' %}" style="color:var(--primary)">단타 이력</a> — 일일 추천 성적 (승/패/수익률)<br>
-        · <a href="{% url 'manage_visits' %}" style="color:var(--primary)">방문 기록</a> — 접속자 IP·경로·일별 방문수
-    </p>
+<div class="chart-grid">
+    <div class="chart-card">
+        <h2>일별 방문 추이 (최근 14일)</h2>
+        <div class="chart-wrap"><canvas id="chartVisits"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h2>단타 누적 수익률 곡선</h2>
+        <div class="chart-wrap"><canvas id="chartEquity"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h2>알람 발생 추이 (최근 14일)</h2>
+        <div class="chart-wrap"><canvas id="chartAlerts"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h2>단타 승/패 · 상태 분포</h2>
+        <div class="donut-row">
+            <div class="donut-wrap"><canvas id="chartWinLoss"></canvas></div>
+            <div class="donut-wrap"><canvas id="chartStatus"></canvas></div>
+        </div>
+    </div>
 </div>
+
+{{ day_labels|json_script:"d-labels" }}
+{{ pv_series|json_script:"d-pv" }}
+{{ uv_series|json_script:"d-uv" }}
+{{ alert_series|json_script:"d-alert" }}
+{{ equity_labels|json_script:"d-eqlabels" }}
+{{ equity_series|json_script:"d-eq" }}
+{{ winloss_series|json_script:"d-winloss" }}
+{{ status_labels|json_script:"d-statuslabels" }}
+{{ status_series|json_script:"d-status" }}
+
+<script>
+(function () {
+    if (typeof Chart === 'undefined') return;
+    var J = function (id) { return JSON.parse(document.getElementById(id).textContent); };
+
+    Chart.defaults.color = '#9aa3ad';
+    Chart.defaults.font.family = "'Pretendard', sans-serif";
+    var grid = 'rgba(255,255,255,0.06)';
+    var BLUE = '#2d7bfe', GREEN = '#26a17b', RED = '#f23645', AMBER = '#f5a623', GRAY = '#5c6470';
+
+    var axes = {
+        x: { grid: { color: grid }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+        y: { grid: { color: grid }, beginAtZero: true }
+    };
+
+    // 1) 방문 추이 (면적 라인 + 순방문 라인)
+    new Chart(document.getElementById('chartVisits'), {
+        type: 'line',
+        data: {
+            labels: J('d-labels'),
+            datasets: [
+                { label: 'PV', data: J('d-pv'), borderColor: BLUE, backgroundColor: 'rgba(45,123,254,0.15)', fill: true, tension: 0.35, pointRadius: 0 },
+                { label: '순방문(IP)', data: J('d-uv'), borderColor: GREEN, backgroundColor: 'transparent', tension: 0.35, pointRadius: 0 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: axes, plugins: { legend: { labels: { boxWidth: 12 } } } }
+    });
+
+    // 2) 누적 수익률 곡선
+    var eq = J('d-eq');
+    var eqUp = eq.length && eq[eq.length - 1] >= 0;
+    new Chart(document.getElementById('chartEquity'), {
+        type: 'line',
+        data: {
+            labels: J('d-eqlabels'),
+            datasets: [{ label: '누적 수익률(%)', data: eq, borderColor: eqUp ? RED : BLUE, backgroundColor: eqUp ? 'rgba(242,54,69,0.12)' : 'rgba(45,123,254,0.12)', fill: true, tension: 0.25, pointRadius: 0 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { x: axes.x, y: { grid: { color: grid } } }, plugins: { legend: { display: false } } }
+    });
+
+    // 3) 알람 발생 추이 (막대)
+    new Chart(document.getElementById('chartAlerts'), {
+        type: 'bar',
+        data: { labels: J('d-labels'), datasets: [{ label: '알람 건수', data: J('d-alert'), backgroundColor: BLUE, borderRadius: 4 }] },
+        options: { responsive: true, maintainAspectRatio: false, scales: axes, plugins: { legend: { display: false } } }
+    });
+
+    // 4a) 승/패 도넛
+    new Chart(document.getElementById('chartWinLoss'), {
+        type: 'doughnut',
+        data: { labels: ['성공', '실패'], datasets: [{ data: J('d-winloss'), backgroundColor: [GREEN, RED], borderColor: '#181b21', borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } }, title: { display: true, text: '승/패' } } }
+    });
+
+    // 4b) 상태 분포 도넛
+    new Chart(document.getElementById('chartStatus'), {
+        type: 'doughnut',
+        data: { labels: J('d-statuslabels'), datasets: [{ data: J('d-status'), backgroundColor: [GRAY, BLUE, GREEN, RED, '#33383f', AMBER], borderColor: '#181b21', borderWidth: 2 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }, title: { display: true, text: '상태 분포' } } }
+    });
+})();
+</script>
 {% endblock %}
