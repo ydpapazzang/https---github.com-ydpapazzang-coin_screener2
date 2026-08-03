@@ -7,7 +7,7 @@ from django.shortcuts import render
 from django.http import Http404
 
 # 문의/개인정보 담당 연락처 (애드센스는 연락 수단을 요구)
-CONTACT_EMAIL = 'laureatelim@gmail.com'
+CONTACT_EMAIL = 'i.am.psw86@gmail.com'
 
 
 def more_menu(request):
