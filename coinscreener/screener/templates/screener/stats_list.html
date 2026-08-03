@@ -125,6 +125,13 @@
     </div>
 </div>
 
+<div class="disclaimer">
+    ⚠️ 아래 성적은 과거 추천의 <b>가상 성과 기록</b>이며 미래 수익을 보장하지 않습니다.
+    투자 판단과 책임은 본인에게 있습니다. <a href="{% url 'terms' %}">이용약관</a>
+</div>
+
+{% include 'screener/partials/ad_slot.html' with slot='' label='성적 상단' %}
+
 <div class="record-list">
     {% if not recommendations %}
         <div style="text-align: center; color: var(--text-secondary); margin-top: 40px;">

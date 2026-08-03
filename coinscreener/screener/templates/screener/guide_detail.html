@@ -1,0 +1,25 @@
+{% extends 'screener/info_base.html' %}
+{% block title %}{{ g.title }}{% endblock %}
+{% block page_title %}가이드{% endblock %}
+{% block body %}
+<h1>{{ g.title }}</h1>
+<div class="updated">{{ g.summary }}</div>
+
+{{ g.body|safe }}
+
+{% include 'screener/partials/ad_slot.html' with slot='' label='가이드 본문' %}
+
+<div class="disclaimer">
+    ⚠️ 본 콘텐츠는 교육·정보 제공 목적이며 투자 권유가 아닙니다. 투자 판단과 책임은 본인에게 있습니다.
+    자세한 내용은 <a href="{% url 'terms' %}">이용약관</a>을 확인하세요.
+</div>
+
+<h2 style="margin-top:28px">다른 가이드</h2>
+<ul>
+{% for other in guides %}
+    {% if other.slug != g.slug %}
+    <li><a href="{% url 'guide_detail' other.slug %}">{{ other.title }}</a></li>
+    {% endif %}
+{% endfor %}
+</ul>
+{% endblock %}

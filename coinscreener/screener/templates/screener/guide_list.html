@@ -1,0 +1,26 @@
+{% extends 'screener/info_base.html' %}
+{% block title %}투자 가이드{% endblock %}
+{% block page_title %}투자 가이드{% endblock %}
+{% block info_head %}
+<style>
+    .guide-card {
+        display: block; background: var(--surface-color);
+        border: 1px solid var(--border-color); border-radius: 14px;
+        padding: 18px; margin-bottom: 12px; text-decoration: none; color: var(--text-primary);
+    }
+    .guide-card:active { opacity: 0.75; }
+    .guide-card .g-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    .guide-card .g-sum { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+</style>
+{% endblock %}
+{% block body %}
+<h1>투자 가이드</h1>
+<div class="updated">전략과 지표를 쉽게 이해하기</div>
+
+{% for g in guides %}
+<a class="guide-card" href="{% url 'guide_detail' g.slug %}">
+    <div class="g-title">{{ g.title }}</div>
+    <div class="g-sum">{{ g.summary }}</div>
+</a>
+{% endfor %}
+{% endblock %}

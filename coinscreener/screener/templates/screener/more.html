@@ -1,0 +1,38 @@
+{% extends 'screener/info_base.html' %}
+{% block title %}더보기{% endblock %}
+{% block page_title %}더보기{% endblock %}
+{% block info_head %}
+<style>
+    .menu-list { display: flex; flex-direction: column; gap: 10px; }
+    .menu-item {
+        display: flex; align-items: center; justify-content: space-between;
+        background: var(--surface-color); border: 1px solid var(--border-color);
+        border-radius: 12px; padding: 16px 18px; color: var(--text-primary);
+        text-decoration: none; font-size: 15px; font-weight: 500;
+    }
+    .menu-item:active { opacity: 0.7; }
+    .menu-item .arrow { color: var(--text-secondary); }
+    .menu-section { color: var(--text-secondary); font-size: 12px; margin: 18px 4px 8px; }
+</style>
+{% endblock %}
+{% block body %}
+<h1>더보기</h1>
+<div class="updated">서비스 정보와 이용 안내</div>
+
+<div class="menu-section">가이드</div>
+<div class="menu-list">
+    <a class="menu-item" href="{% url 'guide_list' %}">📚 투자 가이드 · 지표 설명 <span class="arrow">›</span></a>
+</div>
+
+<div class="menu-section">서비스</div>
+<div class="menu-list">
+    <a class="menu-item" href="{% url 'about' %}">ℹ️ 서비스 소개 <span class="arrow">›</span></a>
+    <a class="menu-item" href="{% url 'contact' %}">✉️ 문의하기 <span class="arrow">›</span></a>
+</div>
+
+<div class="menu-section">약관 및 정책</div>
+<div class="menu-list">
+    <a class="menu-item" href="{% url 'privacy' %}">🔒 개인정보처리방침 <span class="arrow">›</span></a>
+    <a class="menu-item" href="{% url 'terms' %}">📄 이용약관 <span class="arrow">›</span></a>
+</div>
+{% endblock %}

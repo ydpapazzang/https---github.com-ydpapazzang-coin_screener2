@@ -151,6 +151,14 @@
     <div class="danta-subtitle">{{ date|date:"Y년 m월 d일" }} (KST 09:00 갱신)</div>
 </div>
 
+<div class="disclaimer">
+    ⚠️ 아래 추천은 과거 데이터 기반 <b>참고 정보</b>이며 투자 권유·수익 보장이 아닙니다.
+    암호화폐는 원금 손실 위험이 큽니다. 투자 판단과 책임은 본인에게 있습니다.
+    <a href="{% url 'terms' %}">이용약관</a>
+</div>
+
+{% include 'screener/partials/ad_slot.html' with slot='' label='단타 상단' %}
+
 <div class="card-list">
     {% if not recommendations %}
         <div style="text-align: center; color: var(--text-secondary); margin-top: 40px;">

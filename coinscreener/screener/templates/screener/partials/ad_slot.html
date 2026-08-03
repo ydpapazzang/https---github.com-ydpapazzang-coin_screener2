@@ -1,0 +1,20 @@
+{% comment %}
+재사용 광고 슬롯.
+- ADSENSE_CLIENT 설정 시: 실제 애드센스 광고 노출 (data-ad-slot=슬롯 필요).
+- 미설정 + 개발환경: '광고 자리' 표시로 위치 확인.
+- 미설정 + 운영환경: 아무것도 렌더링하지 않음(빈 자리).
+사용: {% include 'screener/partials/ad_slot.html' with slot='1234567890' label='단타상단' %}
+{% endcomment %}
+{% if ADSENSE_CLIENT %}
+<div class="ad-slot">
+    <ins class="adsbygoogle"
+         style="display:block"
+         data-ad-client="{{ ADSENSE_CLIENT }}"
+         data-ad-slot="{{ slot }}"
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+</div>
+{% elif IS_DEBUG %}
+<div class="ad-slot ad-slot--placeholder">광고 자리{% if label %} · {{ label }}{% endif %}</div>
+{% endif %}

@@ -6,3 +6,4 @@ from .backtest_views import *
 from .ai_views import *
 from .danta_views import *
 from .manage_views import *
+from .info_views import *

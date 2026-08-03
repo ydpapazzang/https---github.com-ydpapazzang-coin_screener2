@@ -41,6 +41,15 @@ urlpatterns = [
     path('danta/', views.danta_list, name='danta_list'),
     path('stats/', views.stats_list, name='stats_list'),
 
+    # 정보/약관/가이드 페이지 (애드센스 승인·신뢰도용)
+    path('more/',    views.more_menu, name='more_menu'),
+    path('about/',   views.about,     name='about'),
+    path('privacy/', views.privacy,   name='privacy'),
+    path('terms/',   views.terms,     name='terms'),
+    path('contact/', views.contact,   name='contact'),
+    path('guide/',            views.guide_list,   name='guide_list'),
+    path('guide/<slug:slug>/', views.guide_detail, name='guide_detail'),
+
     # 백오피스 (PC 관리자용, 슈퍼유저 로그인 필요)
     path('manage/',        views.manage_dashboard, name='manage_dashboard'),
     path('manage/alerts/', views.manage_alerts,    name='manage_alerts'),

@@ -41,6 +41,10 @@ CSRF_TRUSTED_ORIGINS = [
 # Nginx 등 리버스 프록시 뒤에서 동작할 때 HTTPS 인식
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# 구글 애드센스 퍼블리셔 ID (예: 'ca-pub-1234567890123456').
+# 승인 전에는 빈 값 → 광고 미노출(개발환경에서만 자리 표시). 승인 후 .env에 설정.
+ADSENSE_CLIENT = os.environ.get('ADSENSE_CLIENT', '')
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -77,6 +81,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'coinscreener.screener.context_processors.site',
             ],
         },
     },
