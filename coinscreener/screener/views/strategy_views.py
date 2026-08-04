@@ -15,6 +15,9 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
+from ..ownership import (
+    get_owner_key, get_owned_strategy, get_viewable_strategy, my_and_sample_strategies,
+)
 from .scan_views import _get_tickers, _bulk_prefetch_ohlcv
 
 logger = logging.getLogger(__name__)
@@ -34,8 +37,11 @@ def clear_strategy_cache(strategy_id):
 
 
 def strategy_list(request):
-    strategies = Strategy.objects.all().order_by('-created_at')
-    return render(request, 'screener/strategy_list.html', {'strategies': strategies})
+    mine, samples = my_and_sample_strategies(request)
+    return render(request, 'screener/strategy_list.html', {
+        'strategies': mine,
+        'samples': samples,
+    })
 
 
 def strategy_create(request):
@@ -44,25 +50,60 @@ def strategy_create(request):
         if not name:
             messages.error(request, "전략 이름을 입력해주세요.")
             return redirect('strategy_list')
-        strategy = Strategy.objects.create(name=name)
+        strategy = Strategy.objects.create(name=name, owner_key=get_owner_key(request))
         return redirect('strategy_detail', strategy_id=strategy.id)
     return redirect('strategy_list')
 
 
 def strategy_delete(request):
     if request.method == 'POST':
+        key = get_owner_key(request)
         strategy_ids = request.POST.getlist('strategy_ids')
-        for s_id in strategy_ids:
+        # 내가 소유한 전략만 삭제 (샘플/타인 전략 보호)
+        owned_ids = list(
+            Strategy.objects.filter(id__in=strategy_ids, owner_key=key).values_list('id', flat=True)
+        )
+        for s_id in owned_ids:
             clear_strategy_cache(s_id)
-        Strategy.objects.filter(id__in=strategy_ids).delete()
+        Strategy.objects.filter(id__in=owned_ids).delete()
     return redirect('strategy_list')
 
 
+def strategy_clone(request, strategy_id):
+    """공용 샘플 또는 내 전략을 복제해 내 소유의 새 전략으로 만든다."""
+    if request.method != 'POST':
+        return redirect('strategy_detail', strategy_id=strategy_id)
+    src = get_viewable_strategy(request, strategy_id)
+    key = get_owner_key(request)
+    new_name = src.name if src.is_sample else f"{src.name} (복사본)"
+    new_strategy = Strategy.objects.create(
+        name=new_name,
+        owner_key=key,
+        win_rate=src.win_rate,
+        stop_loss=src.stop_loss,
+        take_profit=src.take_profit,
+        capital_pct=src.capital_pct,
+    )
+    clones = [
+        Condition(
+            strategy=new_strategy,
+            timeframe=c.timeframe, offset=c.offset, offset_mode=c.offset_mode,
+            left_indicator=c.left_indicator, left_param=c.left_param,
+            operator=c.operator,
+            right_indicator=c.right_indicator, right_param=c.right_param,
+            bb_std=c.bb_std,
+        )
+        for c in src.conditions.all()
+    ]
+    if clones:
+        Condition.objects.bulk_create(clones)
+    return redirect('strategy_detail', strategy_id=new_strategy.id)
 
 
 def strategy_detail(request, strategy_id):
-    strategies = Strategy.objects.all().order_by('-created_at')
-    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    mine, samples = my_and_sample_strategies(request)
+    strategies = list(mine) + list(samples)
+    strategy   = get_viewable_strategy(request, strategy_id)
     conditions = strategy.conditions.all()
     # 최근 100건의 알림 이력 조회
     histories  = strategy.histories.all().order_by('-created_at')[:100]
@@ -75,7 +116,7 @@ def strategy_detail(request, strategy_id):
 
 
 def condition_add(request, strategy_id):
-    strategy = get_object_or_404(Strategy, id=strategy_id)
+    strategy = get_owned_strategy(request, strategy_id)
 
     if request.method != 'POST':
         return redirect('strategy_detail', strategy_id=strategy_id)
@@ -345,7 +386,9 @@ def condition_add(request, strategy_id):
 
 def condition_delete(request, strategy_id, condition_id):
     if request.method == 'POST':
-        condition = get_object_or_404(Condition, id=condition_id)
+        # 내 소유 전략의 조건만 삭제 가능
+        strategy = get_owned_strategy(request, strategy_id)
+        condition = get_object_or_404(Condition, id=condition_id, strategy=strategy)
         condition.delete()
         clear_strategy_cache(strategy_id)
     return redirect('strategy_detail', strategy_id=strategy_id)
@@ -364,7 +407,7 @@ import json as json
 @require_GET
 def alert_get(request, strategy_id):
     """GET: 전략의 알림 설정 반환"""
-    strategy = get_object_or_404(Strategy, id=strategy_id)
+    strategy = get_viewable_strategy(request, strategy_id)
     try:
         a = strategy.alert
         data = {
@@ -386,7 +429,7 @@ def alert_get(request, strategy_id):
 @require_POST
 def alert_save(request, strategy_id):
     """POST: 알림 설정 저장"""
-    strategy = get_object_or_404(Strategy, id=strategy_id)
+    strategy = get_owned_strategy(request, strategy_id)
     try:
         body = json.loads(request.body)
     except Exception:
@@ -495,7 +538,7 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
 @require_POST
 def alert_send_now(request, strategy_id):
     """POST: 즉시 스캔 후 텔레그램 발송"""
-    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    strategy   = get_owned_strategy(request, strategy_id)
     conditions = list(strategy.conditions.all())
 
     if not conditions:

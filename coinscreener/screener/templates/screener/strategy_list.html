@@ -248,8 +248,31 @@
             </div>
         </div>
         {% empty %}
-        <div class="empty-state">아직 전략이 없습니다. + 버튼으로 첫 전략을 만들어보세요!</div>
+        <div class="empty-state" style="padding:40px 20px 20px;">아직 내 전략이 없습니다.<br>+ 버튼으로 만들거나, 아래 예시 전략을 복제해보세요!</div>
         {% endfor %}
+
+        {% if samples %}
+        <div style="margin: 18px 4px 10px; color: var(--text-secondary); font-size: 12px; font-weight: 700;">
+            예시 전략 (공용 · 복제해서 사용)
+        </div>
+        {% for s in samples %}
+        <div class="strategy-card" data-name="{{ s.name|lower }}">
+            <div class="card-header">
+                <a href="{% url 'strategy_detail' s.id %}" class="strategy-name">
+                    {{ s.name }}
+                    <span style="font-size:10px; background:rgba(255,255,255,0.08); color:var(--text-secondary); padding:2px 7px; border-radius:8px; margin-left:6px; font-weight:600;">예시</span>
+                </a>
+                <div class="spinner-small" id="spinner-{{ s.id }}"></div>
+                <div class="badge-count" id="badge-{{ s.id }}" onclick="goToResults({{ s.id }})">0건</div>
+            </div>
+            <input type="hidden" id="ex-val-{{ s.id }}" value="upbit">
+            <div class="action-row">
+                <button type="button" class="btn-action btn-primary" onclick="runSearch({{ s.id }})">검색 실행</button>
+                <button type="button" class="btn-action btn-secondary" onclick="cloneStrategy({{ s.id }})">📋 복제</button>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
     </div>
 </form>
 
@@ -391,6 +414,18 @@
         const ex = document.getElementById('ex-val-' + id).value;
         let url = `/strategy/${id}/results/?exchange=${ex}&vol_limit=0`;
         window.location.href = url;
+    }
+
+    /* 예시(공용) 전략을 내 전략으로 복제 */
+    function cloneStrategy(id) {
+        const f = document.createElement('form');
+        f.method = 'POST';
+        f.action = `/strategy/${id}/clone/`;
+        const t = document.createElement('input');
+        t.type = 'hidden'; t.name = 'csrfmiddlewaretoken'; t.value = getCSRFToken();
+        f.appendChild(t);
+        document.body.appendChild(f);
+        f.submit();
     }
     
     async function scanAllStrategies() {

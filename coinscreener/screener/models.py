@@ -3,11 +3,18 @@ from django.db import models
 
 class Strategy(models.Model):
     name = models.CharField(max_length=100, verbose_name="전략명")
+    # 세션 기반 익명 소유자 키. NULL이면 공용 샘플(읽기전용, 누구나 복제 가능).
+    owner_key = models.CharField(max_length=64, null=True, blank=True, db_index=True, verbose_name="소유자 세션키")
     win_rate = models.FloatField(default=60.0, verbose_name="승률 (%)")
     stop_loss = models.FloatField(default=-8.0, verbose_name="손절 기준 (%)")
     take_profit = models.FloatField(default=24.0, verbose_name="목표 익절 (%)")
     capital_pct = models.IntegerField(default=20, verbose_name="진입 자본 비율 (%)")
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def is_sample(self):
+        """공용 샘플(소유자 없음) 여부."""
+        return not self.owner_key
 
     def get_meta_text(self):
         conds = self.conditions.all()

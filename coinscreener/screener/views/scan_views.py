@@ -15,6 +15,7 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
+from ..ownership import get_viewable_strategy
 from .. import telegram as tg
 
 logger = logging.getLogger(__name__)
@@ -258,7 +259,7 @@ def _get_tickers_raw(exchange, vol_limit):
 
 
 def coin_search(request, strategy_id):
-    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    strategy   = get_viewable_strategy(request, strategy_id)
     conditions = list(strategy.conditions.all())
 
     if not conditions:
@@ -523,7 +524,7 @@ def coin_search_stream(request, strategy_id):
     """SSE: 검색 진행률 + 최종 결과 스트리밍"""
     from django.http import StreamingHttpResponse
 
-    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    strategy   = get_viewable_strategy(request, strategy_id)
     conditions = list(strategy.conditions.all())
     exchange   = request.GET.get('exchange', 'upbit')
     try:
@@ -702,7 +703,7 @@ def coin_search_stream(request, strategy_id):
 
 def coin_search_results(request, strategy_id):
     """SSE 완료 후 결과 페이지 렌더 (캐시에서 읽음)"""
-    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    strategy   = get_viewable_strategy(request, strategy_id)
     exchange   = request.GET.get('exchange', 'upbit')
     vol_limit  = int(request.GET.get('vol_limit', 0) or 0)
     tf_override = request.GET.get('timeframe')

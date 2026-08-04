@@ -15,6 +15,7 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
+from ..ownership import get_owned_strategy, get_viewable_strategy, my_and_sample_strategies
 from .scan_views import _get_tickers, _bulk_prefetch_ohlcv, _effective_scan_limit
 from .. import telegram as tg
 from .strategy_views import process_scan_and_alert
@@ -37,8 +38,8 @@ def backtest_coins(request):
 
 @require_POST
 def backtest_run(request, strategy_id):
-    """POST: 백테스팅 실행"""
-    strategy   = get_object_or_404(Strategy, id=strategy_id)
+    """POST: 백테스팅 실행 (조회 가능 전략이면 샘플도 허용 — 읽기 전용 계산)"""
+    strategy   = get_viewable_strategy(request, strategy_id)
     conditions = list(strategy.conditions.all())
 
     if not conditions:
@@ -186,10 +187,11 @@ def cron_scan(request):
 
 
 def strategy_trading(request, strategy_id=None):
-    strategies = Strategy.objects.all().order_by('-created_at')
-    
+    mine, samples = my_and_sample_strategies(request)
+    strategies = list(mine) + list(samples)
+
     if strategy_id is None:
-        first_strat = strategies.first()
+        first_strat = strategies[0] if strategies else None
         if first_strat:
             return redirect('strategy_detail', strategy_id=first_strat.id)
         strategy = None
@@ -208,7 +210,7 @@ def strategy_trading(request, strategy_id=None):
 
 @require_POST
 def save_risk_settings(request, strategy_id):
-    strategy = get_object_or_404(Strategy, id=strategy_id)
+    strategy = get_owned_strategy(request, strategy_id)
     try:
         body = json.loads(request.body)
         stop_loss = float(body.get('stop_loss', -8.0))
@@ -226,7 +228,7 @@ def save_risk_settings(request, strategy_id):
 
 @require_POST
 def strategy_rename(request, strategy_id):
-    strategy = get_object_or_404(Strategy, id=strategy_id)
+    strategy = get_owned_strategy(request, strategy_id)
     try:
         body = json.loads(request.body)
         new_name = body.get('name', '').strip()
@@ -241,7 +243,7 @@ def strategy_rename(request, strategy_id):
 
 @require_GET
 def strategy_scan_count(request, strategy_id):
-    strategy = get_object_or_404(Strategy, id=strategy_id)
+    strategy = get_viewable_strategy(request, strategy_id)
     conditions = list(strategy.conditions.all())
     
     if not conditions:
