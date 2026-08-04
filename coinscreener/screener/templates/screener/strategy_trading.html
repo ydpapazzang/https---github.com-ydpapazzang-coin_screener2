@@ -213,7 +213,7 @@
                 <span id="strategy-name-text">{{ strategy.name }}</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
             </div>
-            {% if not strategy.is_sample %}
+            {% if not strategy.is_sample or request.user.is_staff %}
             <svg onclick="editStrategyName()" width="16" height="16" viewBox="0 0 24 24" fill="var(--text-secondary)" style="cursor:pointer; margin-left:4px;"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
             {% endif %}
         </div>
@@ -236,7 +236,7 @@
         </div>
     {% else %}
 
-    {% if strategy.is_sample %}
+    {% if strategy.is_sample and not request.user.is_staff %}
     <div style="margin: 12px 20px 4px; padding: 14px 16px; background: rgba(45,123,254,0.08); border: 1px solid rgba(45,123,254,0.3); border-radius: 12px;">
         <div style="font-size: 13px; color: var(--text-primary); line-height: 1.6;">
             📌 <b>예시(공용) 전략</b>입니다. 검색·백테스트는 가능하지만 편집은 안 됩니다.
@@ -268,7 +268,7 @@
         </div>
     </div>
     
-    {% if not strategy.is_sample %}
+    {% if not strategy.is_sample or request.user.is_staff %}
     <!-- Telegram Alert Toggle -->
     <div class="alert-toggle-box" id="tg-alert-box">
       <div class="alert-info">
@@ -312,7 +312,7 @@
                  <span>{% if cond.right_indicator == 'CLOSE' %}종가{% elif cond.right_indicator == 'VAL' %}{{ cond.right_param }}{% elif cond.right_indicator in 'MA,EMA,WMA' %}{{ cond.right_indicator }}({{ cond.right_param }}){% elif cond.right_indicator in 'BB_UPPER,BB_MIDDLE,BB_LOWER' %}{{ cond.get_right_indicator_display }}({{ cond.right_param }}, {{ cond.bb_std|default:"2.0" }}σ){% else %}{{ cond.get_right_indicator_display }} {{ cond.right_param }}{% endif %}</span>
                {% endif %}
            </div>
-           {% if not strategy.is_sample %}
+           {% if not strategy.is_sample or request.user.is_staff %}
            <form action="{% url 'condition_delete' strategy.id cond.id %}" method="post" style="margin:0;">
              {% csrf_token %}
              <button class="cond-del-btn" onclick="return confirm('조건을 삭제하시겠습니까?');">×</button>
@@ -324,7 +324,7 @@
         {% endfor %}
     </div>
 
-    {% if not strategy.is_sample %}
+    {% if not strategy.is_sample or request.user.is_staff %}
     <button class="add-cond-btn" onclick="openBottomSheet()">+ 지표 추가</button>
     {% endif %}
 

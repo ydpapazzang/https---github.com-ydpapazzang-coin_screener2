@@ -17,6 +17,7 @@ from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
 from ..ownership import (
     get_owner_key, get_owned_strategy, get_viewable_strategy, my_and_sample_strategies,
+    is_staff,
 )
 from .scan_views import _get_tickers, _bulk_prefetch_ohlcv
 
@@ -57,12 +58,12 @@ def strategy_create(request):
 
 def strategy_delete(request):
     if request.method == 'POST':
-        key = get_owner_key(request)
         strategy_ids = request.POST.getlist('strategy_ids')
-        # 내가 소유한 전략만 삭제 (샘플/타인 전략 보호)
-        owned_ids = list(
-            Strategy.objects.filter(id__in=strategy_ids, owner_key=key).values_list('id', flat=True)
-        )
+        # 내가 소유한 전략만 삭제 (샘플/타인 전략 보호). 관리자는 전체 삭제 허용.
+        qs = Strategy.objects.filter(id__in=strategy_ids)
+        if not is_staff(request):
+            qs = qs.filter(owner_key=get_owner_key(request))
+        owned_ids = list(qs.values_list('id', flat=True))
         for s_id in owned_ids:
             clear_strategy_cache(s_id)
         Strategy.objects.filter(id__in=owned_ids).delete()
