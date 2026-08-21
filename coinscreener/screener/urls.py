@@ -34,8 +34,6 @@ urlpatterns = [
     path('cron/scan/',                               views.cron_scan,      name='cron_scan'),
     path('cron/scan-debug/',                         views.cron_scan,      name='cron_scan_debug'),
     path('cron/prefetch/',                           views.cron_prefetch,  name='cron_prefetch'),
-    path('cron/migrate/',                            views.trigger_migrate,name='trigger_migrate'),
-    path('cron/debug/',                              views.trigger_debug,  name='trigger_debug'),
     path('cron/daily-picks/',                        views.cron_daily_picks, name='cron_daily_picks'),
     
     # 단타 및 통계 탭

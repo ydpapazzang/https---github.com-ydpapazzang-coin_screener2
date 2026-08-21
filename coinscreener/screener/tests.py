@@ -947,3 +947,12 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(cached_data['results'][0]['price'], 50000.0)
         self.assertEqual(cached_data['results'][0]['details'], '골든크로스')
         self.assertEqual(cached_data['results'][0]['volume_display'], '10.0억')
+
+class RemovedOperationalEndpointsTestCase(TestCase):
+    def test_remote_migration_endpoint_is_not_routable(self):
+        response = self.client.post('/cron/migrate/?secret=even-a-valid-secret')
+        self.assertEqual(response.status_code, 404)
+
+    def test_remote_debug_endpoint_is_not_routable(self):
+        response = self.client.get('/cron/debug/?secret=even-a-valid-secret')
+        self.assertEqual(response.status_code, 404)
