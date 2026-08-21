@@ -1,4 +1,3 @@
-import os
 import json
 import logging
 import traceback
@@ -16,13 +15,10 @@ import pyupbit
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
 from ..ownership import get_owned_strategy, get_viewable_strategy
+from ..cron_auth import is_cron_request_authorized
 from .. import telegram as tg
 
 logger = logging.getLogger(__name__)
-
-def _get_cron_secret():
-    return os.environ.get('CRON_SECRET', '')
-
 
 # ─────────────────────────────────────────────────────────────
 # (A) 인프로세스 파싱 캐시
@@ -304,10 +300,7 @@ def cron_prefetch(request):
     from ..engine import get_ohlcv_with_retry, save_ohlcv_cache
     import json
     
-    cron_sec = _get_cron_secret()
-    is_authorized = bool(cron_sec) and request.GET.get("secret") == cron_sec
-
-    if not is_authorized:
+    if not is_cron_request_authorized(request):
         return HttpResponseForbidden("Forbidden")
         
     try:
