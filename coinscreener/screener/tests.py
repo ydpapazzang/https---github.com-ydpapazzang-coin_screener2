@@ -320,14 +320,20 @@ class BacktestOffsetTestCase(TestCase):
 
     @patch.dict('os.environ', {'CRON_SECRET': 'test_cron_secret'})
     def test_cron_scan_success(self):
-        """올바른 CRON_SECRET(?secret=)을 전달했을 때 크론 스캔이 성공적으로 수행되는지 검증"""
-        response = self.client.get('/cron/scan/?secret=test_cron_secret')
+        """올바른 Bearer 토큰을 전달했을 때 크론 스캔이 성공하는지 검증"""
+        response = self.client.get(
+            '/cron/scan/',
+            HTTP_AUTHORIZATION='Bearer test_cron_secret',
+        )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])
 
-        # secret과 함께 강제 실행 플래그(&force=true)를 전달해도 성공하는지 검증
-        response = self.client.get('/cron/scan/?secret=test_cron_secret&force=true')
+        # 인증 헤더와 함께 강제 실행 플래그를 전달해도 성공하는지 검증
+        response = self.client.get(
+            '/cron/scan/?force=true',
+            HTTP_AUTHORIZATION='Bearer test_cron_secret',
+        )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data['ok'])
@@ -739,8 +745,12 @@ class CronAlertSlotTestCase(TestCase):
             'coinscreener.screener.views.cron_views.tg.send_alert',
             return_value={'ok': True},
         ):
-            first = self.client.get('/cron/scan/?secret=slot-secret')
-            second = self.client.get('/cron/scan/?secret=slot-secret')
+            first = self.client.get(
+                '/cron/scan/', HTTP_AUTHORIZATION='Bearer slot-secret'
+            )
+            second = self.client.get(
+                '/cron/scan/', HTTP_AUTHORIZATION='Bearer slot-secret'
+            )
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(first.json()['processed'], 1)
@@ -757,7 +767,9 @@ class CronAlertSlotTestCase(TestCase):
         with patch('django.utils.timezone.now', return_value=fixed_now), patch(
             'coinscreener.screener.views.cron_views.process_scan_and_alert'
         ) as mock_process:
-            response = self.client.get('/cron/scan/?secret=slot-secret')
+            response = self.client.get(
+                '/cron/scan/', HTTP_AUTHORIZATION='Bearer slot-secret'
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['processed'], 0)
@@ -947,6 +959,39 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(cached_data['results'][0]['price'], 50000.0)
         self.assertEqual(cached_data['results'][0]['details'], '골든크로스')
         self.assertEqual(cached_data['results'][0]['volume_display'], '10.0억')
+
+class CronBearerAuthorizationTestCase(TestCase):
+    @patch.dict('os.environ', {'CRON_SECRET': 'header-only-secret'})
+    def test_query_string_secret_is_rejected_for_all_cron_endpoints(self):
+        for path in ('/cron/scan/', '/cron/prefetch/', '/cron/daily-picks/'):
+            with self.subTest(path=path):
+                response = self.client.get(f'{path}?secret=header-only-secret')
+                self.assertEqual(response.status_code, 403)
+
+    @patch.dict('os.environ', {'CRON_SECRET': 'header-only-secret'})
+    @patch(
+        'coinscreener.screener.views.scan_views._get_tickers',
+        return_value=[],
+    )
+    def test_prefetch_accepts_bearer_token(self, _mock_get_tickers):
+        response = self.client.get(
+            '/cron/prefetch/',
+            HTTP_AUTHORIZATION='Bearer header-only-secret',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+
+    @patch.dict('os.environ', {'CRON_SECRET': 'header-only-secret'})
+    @patch('django.core.management.call_command')
+    def test_daily_picks_accepts_bearer_token(self, mock_call_command):
+        response = self.client.get(
+            '/cron/daily-picks/',
+            HTTP_AUTHORIZATION='Bearer header-only-secret',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        mock_call_command.assert_called_once_with('generate_daily_picks')
+
 
 class RemovedOperationalEndpointsTestCase(TestCase):
     def test_remote_migration_endpoint_is_not_routable(self):
