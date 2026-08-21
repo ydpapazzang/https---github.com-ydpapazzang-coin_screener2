@@ -77,6 +77,7 @@ sudo systemctl restart coinscreener
 
 # requirements.txt 또는 systemd 설정이 변경된 배포
 ./venv/bin/pip install -r requirements.txt
+chmod 600 .env
 sudo install -o root -g root -m 0644 deploy/coinscreener.service /etc/systemd/system/coinscreener.service
 sudo systemctl daemon-reload
 sudo systemctl restart coinscreener
