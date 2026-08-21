@@ -32,7 +32,8 @@ def validate_daily_candles(df, today_date):
         raise RecommendationRejected(f"필수 일봉 컬럼이 없습니다: {', '.join(missing)}")
 
     candles = df.copy()
-    prices = candles.loc[:, _REQUIRED_PRICE_COLUMNS].apply(
+    price_columns = list(_REQUIRED_PRICE_COLUMNS)
+    prices = candles.loc[:, price_columns].apply(
         pd.to_numeric, errors="coerce"
     )
     if not np.isfinite(prices.to_numpy(dtype=float)).all():
@@ -58,7 +59,7 @@ def validate_daily_candles(df, today_date):
             f"최신 일봉 날짜가 맞지 않습니다: {previous_date} / {last_date}"
         )
 
-    candles.loc[:, _REQUIRED_PRICE_COLUMNS] = prices
+    candles.loc[:, price_columns] = prices
     return candles
 
 
