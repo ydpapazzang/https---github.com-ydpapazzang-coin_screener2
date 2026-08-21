@@ -1,12 +1,11 @@
 import time
-import json
 import datetime
 import FinanceDataReader as fdr
 import pandas as pd
 from django.core.management.base import BaseCommand
 from django.core.cache import cache
 from django.utils import timezone
-from coinscreener.screener.models import Condition, OHLCVCache
+from coinscreener.screener.models import Condition
 
 class Command(BaseCommand):
     help = 'KOSPI(ETF) 데이터를 수집하여 캐시에 저장합니다. 평일 09:00~15:30 동안 1시간마다 작동합니다.'
@@ -84,20 +83,13 @@ class Command(BaseCommand):
                     df.index.name = None
 
                     # (D) 저장 직전 지표 컬럼 사전계산
-                    from coinscreener.screener.engine import prewarm_indicators
+                    from coinscreener.screener.engine import prewarm_indicators, save_ohlcv_cache
                     prewarm_indicators(df, specs)
 
-                    # 지표 선행구간 NaN이 있어도 유효 JSON이 되도록 to_json(NaN->null) 사용.
-                    # df.values.tolist()는 NaN 토큰을 만들어 SQLite JSON_VALID 제약에 걸린다.
-                    data_dict = json.loads(df.to_json(orient='split'))
-                    
-                    OHLCVCache.objects.update_or_create(
-                        ticker=ticker,
-                        timeframe=timeframe,
-                        defaults={'data': data_dict}
-                    )
+                    save_ohlcv_cache(ticker, timeframe, df)
                     
                     cache_key = f"ohlcv_{ticker}_{timeframe}_200"
-                    cache.set(cache_key, df, 180)
+                    from coinscreener.screener.engine import max_cache_age
+                    cache.set(cache_key, df, min(180, max_cache_age(timeframe)))
         except Exception as e:
             pass
