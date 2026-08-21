@@ -1,0 +1,30 @@
+[Unit]
+Description=Coin Screener Gunicorn Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=i_am_psw86
+WorkingDirectory=/home/i_am_psw86/myapp
+EnvironmentFile=-/home/i_am_psw86/myapp/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/home/i_am_psw86/myapp/venv/bin/python manage.py migrate --noinput
+ExecStart=/home/i_am_psw86/myapp/venv/bin/gunicorn \
+    --bind 127.0.0.1:8000 \
+    --workers 1 \
+    --worker-class gthread \
+    --threads 2 \
+    --timeout 600 \
+    --graceful-timeout 60 \
+    --access-logfile - \
+    --error-logfile - \
+    coinscreener.wsgi:application
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=70
+KillSignal=SIGTERM
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

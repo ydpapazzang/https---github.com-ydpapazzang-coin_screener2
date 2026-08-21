@@ -8,7 +8,7 @@
 * **리버스 프록시:** Nginx (80/443 포트 수신 ➔ Django 8000 포트로 전달)
 * **데이터베이스:** SQLite (`db.sqlite3`) - 단일 소스 캐시 DB로 활용
 * **백그라운드 서비스 (Systemd):**
-  1. `coinscreener.service`: Django 웹 애플리케이션 구동 (`manage.py runserver 0.0.0.0:8000`)
+  1. `coinscreener.service`: Gunicorn으로 Django 웹 애플리케이션 구동 (`127.0.0.1:8000`, worker 1개 / thread 2개)
   2. `upbit-crawler.service`: 업비트 & 빗썸 24시간 5분 주기 크롤러
   3. `kospi-crawler.service`: 코스피/ETF 전용 1시간 주기 크롤러 (평일 09:00~15:30 전용)
   4. **`Crontab` 스케줄러**: 매일 아침 09:00 정각 `generate_daily_picks.py` 실행 (오늘의 단타 AI 추천) 및 자동 배포(`git pull`)
@@ -72,8 +72,16 @@ coin-screener/
 # 최신 코드 깃허브에서 가져오기
 git pull origin main
 
-# 장고 웹서버 재시작 (.env 설정 적용, 웹 버그 픽스 시)
+# 일반 코드/.env 변경 후 웹서버 재시작
 sudo systemctl restart coinscreener
+
+# requirements.txt 또는 systemd 설정이 변경된 배포
+./venv/bin/pip install -r requirements.txt
+chmod 600 .env
+sudo install -o root -g root -m 0644 deploy/coinscreener.service /etc/systemd/system/coinscreener.service
+sudo systemctl daemon-reload
+sudo systemctl restart coinscreener
+sudo systemctl status coinscreener --no-pager -l
 
 # 코인 봇(5분 주기) 재시작 및 로그 보기
 sudo systemctl restart upbit-crawler

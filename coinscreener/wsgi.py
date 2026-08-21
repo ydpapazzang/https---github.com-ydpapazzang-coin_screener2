@@ -15,17 +15,8 @@ except ImportError:
     pass
 
 from django.core.wsgi import get_wsgi_application
-from django.core.management import call_command
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'coinscreener.settings')
 
 application = get_wsgi_application()
-
-try:
-    print("Running automatic database migrations...")
-    call_command('migrate', interactive=False)
-    print("Migrations completed successfully.")
-except Exception as e:
-    print(f"Error running automatic migrations: {e}")
-
 app = application
