@@ -80,7 +80,43 @@ def _resolve_exchange(ticker, exchange=None):
     return 'kospi'
 
 
-def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3, exchange=None):
+def save_cache_payload(ticker, timeframe, data, retries=3):
+    """OHLCVCache payload를 저장하며 짧은 SQLite write lock을 재시도한다."""
+    from django.db.utils import OperationalError
+    from .models import OHLCVCache
+
+    for attempt in range(retries):
+        try:
+            obj, _ = OHLCVCache.objects.update_or_create(
+                ticker=ticker,
+                timeframe=timeframe,
+                defaults={'data': data},
+            )
+            return obj
+        except OperationalError as exc:
+            is_locked = 'locked' in str(exc).lower()
+            if not is_locked or attempt == retries - 1:
+                raise
+            time.sleep(0.05 * (2 ** attempt))
+
+    return None
+
+
+def save_ohlcv_cache(ticker, interval, df, retries=3):
+    """OHLCV DataFrame을 직렬화해 재시도 가능한 DB 저장 경로로 보낸다.
+
+    호출자는 가능하면 이 함수를 작업 스레드 밖에서 실행해야 한다.
+    """
+    if df is None or df.empty:
+        return None
+
+    import json
+    json_data = json.loads(df.to_json(orient='split'))
+    return save_cache_payload(ticker, interval, json_data, retries=retries)
+
+
+def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
+                         exchange=None, persist_db=True):
     """전역 속도 제한이 적용된 OHLCV 조회. 신선한 캐시는 길이와 무관하게 즉시 사용한다.
     (짧은 상장이력 코인은 데이터가 적은 게 정상이며, 지표 계산 시 자연히 None 처리되므로
      길이 임계값으로 재조회 루프를 도는 대신 캐시를 그대로 신뢰한다.)
@@ -105,7 +141,7 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3, exch
                 df.index.name = None
                 df_tail = df.tail(count)
                 if len(df_tail) > 0:
-                    cache.set(cache_key, df_tail, 180)
+                    cache.set(cache_key, df_tail, min(180, max_cache_age(interval)))
                     return df_tail
     except Exception as e:
         logger.error(f"OHLCVCache read error for {ticker}: {e}", exc_info=True)
@@ -141,18 +177,15 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3, exch
                     
             if df is not None and not df.empty:
                 df.index.name = None
-                cache.set(cache_key, df, 180)
-                try:
-                    from .models import OHLCVCache
-                    import json
-                    json_data = json.loads(df.to_json(orient="split"))
-                    OHLCVCache.objects.update_or_create(
-                        ticker=ticker,
-                        timeframe=interval,
-                        defaults={"data": json_data}
-                    )
-                except Exception:
-                    pass
+                cache.set(cache_key, df, min(180, max_cache_age(interval)))
+                if persist_db:
+                    try:
+                        save_ohlcv_cache(ticker, interval, df)
+                    except Exception:
+                        logger.error(
+                            f"OHLCVCache write error for {ticker}/{interval}",
+                            exc_info=True,
+                        )
                 return df
             time.sleep(delay)
     except Exception as e:
@@ -330,7 +363,8 @@ def get_max_required_len(conditions):
     return min(max_len, 200) if max_len <= 200 else max_len
 
 
-def check_strategy(ticker, conditions, current_price=None, current_change_rate=None, exchange=None):
+def check_strategy(ticker, conditions, current_price=None, current_change_rate=None,
+                   exchange=None, persist_db=True):
     """
     특정 코인이 주어진 전략(조건 리스트)을 모두 만족하는지 확인.
     조건이 비어있으면 매칭하지 않음. exchange 명시 시 거래소 라우팅이 정확해짐(빗썸).
@@ -355,7 +389,10 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
             req_count = get_max_required_len(conditions)
             for cond in conditions:
                 if cond.timeframe not in data_cache:
-                    df = get_ohlcv_with_retry(ticker, interval=cond.timeframe, count=req_count, exchange=exchange)
+                    df = get_ohlcv_with_retry(
+                        ticker, interval=cond.timeframe, count=req_count,
+                        exchange=exchange, persist_db=persist_db,
+                    )
                     if df is None: return False
                     data_cache[cond.timeframe] = df
                 
@@ -448,7 +485,10 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
                 # 불필요한 라이브 API 호출을 막기 위해 이미 day가 조건에 없으면 패스
                 if any(c.timeframe == 'day' for c in conditions):
                     req_count = get_max_required_len(conditions)
-                    day_df = get_ohlcv_with_retry(ticker, interval='day', count=req_count, exchange=exchange)
+                    day_df = get_ohlcv_with_retry(
+                        ticker, interval='day', count=req_count,
+                        exchange=exchange, persist_db=persist_db,
+                    )
                     if day_df is not None:
                         data_cache['day'] = day_df
 

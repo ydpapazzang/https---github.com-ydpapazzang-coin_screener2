@@ -94,21 +94,26 @@ def cron_scan(request):
         now_kst = timezone.localtime(timezone.now())
         print(f"[CRON_SCAN] Current KST time: {now_kst}")
 
-        # 가장 가까운 정각(1시간 단위)으로 반올림 (30분 오차 범위 보정)
-        rounded_time = now_kst + datetime.timedelta(minutes=30)
-        current_hour = rounded_time.hour
-        
-        # 기본적으로 시간 필터를 적용하여 사용자가 설정한 시간(alert_hour)에만 스캔 수행
-        # 단, 수동 강제 테스트(&force=true) 시에는 시간 필터 없이 전체 스캔
+        # 크론이 30분 단위로 호출되므로 현재 30분 슬롯만 처리한다.
+        # 과거처럼 시간을 반올림하면 08:30과 09:00이 모두 09시 예약을 실행한다.
+        slot_minute = 0 if now_kst.minute < 30 else 30
+        slot_start = now_kst.replace(minute=slot_minute, second=0, microsecond=0)
+
+        # 기본적으로 현재 슬롯과 정확히 일치하는 설정만 처리한다.
+        # 단, 수동 강제 테스트(&force=true)는 시간 필터와 예약 실행 잠금을 우회한다.
         if is_force:
             active_settings = AlertSetting.objects.filter(enabled=True)
             print(f"[CRON_SCAN] (FORCE) Scanning all {active_settings.count()} active settings ignoring time.")
         else:
             active_settings = AlertSetting.objects.filter(
                 enabled=True,
-                alert_hour=current_hour
+                alert_hour=slot_start.hour,
+                alert_min=slot_start.minute,
             )
-            print(f"[CRON_SCAN] Scanning {active_settings.count()} active settings matching KST hour {current_hour}.")
+            print(
+                f"[CRON_SCAN] Scanning {active_settings.count()} active settings "
+                f"matching KST slot {slot_start:%H:%M}."
+            )
             
         processed_count = 0
         sent_count = 0
@@ -119,9 +124,20 @@ def cron_scan(request):
             if is_force:
                 warnings.append("활성화된 알림 설정(AlertSetting)이 존재하지 않습니다. 웹 페이지에서 알림 설정을 켜지 않았을 수 있습니다.")
             else:
-                warnings.append(f"현재 KST {current_hour}시에 예약 활성화된 알림 설정이 없습니다. (만약 즉시 강제 테스트를 원하시면 URL 뒤에 &force=true 를 붙여 접속해 주세요.)")
+                warnings.append(f"현재 KST {slot_start:%H:%M} 슬롯에 예약 활성화된 알림 설정이 없습니다. (즉시 강제 테스트는 &force=true)")
         
         for setting in active_settings:
+            if not is_force:
+                # 같은 예약 슬롯이 재호출되더라도 최초 요청 하나만 원자적으로 선점한다.
+                # 실패 재시도는 force=true로 명시적으로 수행할 수 있다.
+                from django.db.models import Q
+                claimed = AlertSetting.objects.filter(pk=setting.pk).filter(
+                    Q(last_run_at__isnull=True) | Q(last_run_at__lt=slot_start)
+                ).update(last_run_at=now_kst)
+                if not claimed:
+                    print(f"[CRON_SCAN] Already processed this slot: setting={setting.pk}")
+                    continue
+
             strategy = setting.strategy
             print(f"[CRON_SCAN] Scanning strategy: {strategy.name} (ID: {strategy.id})")
             conditions = list(strategy.conditions.all())
@@ -148,9 +164,14 @@ def cron_scan(request):
             
             # 텔레그램 발송 (중복 방지 처리된 tg_results 사용)
             if tg.is_configured():
-                res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id, exchange=setting.exchange)
+                # 매칭은 있지만 모두 12시간 중복 억제 대상이면 '매칭 없음'이라는
+                # 잘못된 메시지를 보내지 않고 조용히 건너뛴다.
+                if results and not tg_results:
+                    res = {'ok': True, 'skipped': True, 'reason': 'duplicate_suppressed'}
+                else:
+                    res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id, exchange=setting.exchange)
                 print(f"[CRON_SCAN] Telegram send result: {res}")
-                if res.get('ok'):
+                if res.get('ok') and not res.get('skipped'):
                     sent_count += 1
                 else:
                     warnings.append(f"텔레그램 발송 실패 ({strategy.name}): {res.get('error')}")
@@ -279,7 +300,8 @@ def strategy_scan_count(request, strategy_id):
                 ticker, conditions,
                 current_price=fast_price,
                 current_change_rate=fast_change_rate,
-                exchange=exchange
+                exchange=exchange,
+                persist_db=False,
             )
             if price is None:
                 return "API_ERROR"

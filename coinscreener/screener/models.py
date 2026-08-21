@@ -204,6 +204,7 @@ class AlertSetting(models.Model):
     alert_min   = models.IntegerField(default=0,  verbose_name="알림 시각 (분)")
     exchange    = models.CharField(max_length=20, default='upbit')
     vol_limit   = models.IntegerField(default=100)
+    last_run_at = models.DateTimeField(null=True, blank=True, verbose_name="마지막 예약 실행 시각")
     updated_at  = models.DateTimeField(auto_now=True)
 
     def __str__(self):

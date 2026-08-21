@@ -479,6 +479,17 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
 
     _bulk_prefetch_ohlcv(tickers, conditions, exchange=exchange)
 
+    # 최근 12시간 안에 실제 발송 대상으로 기록된 종목은 다시 보내지 않는다.
+    # 중복 스캔 자체는 이력에 남기되 is_notified=False로 구분한다.
+    duplicate_cutoff = timezone.now() - datetime.timedelta(hours=12)
+    recently_notified = set(
+        AlertHistory.objects.filter(
+            strategy=strategy,
+            is_notified=True,
+            created_at__gte=duplicate_cutoff,
+        ).values_list('symbol', flat=True)
+    )
+
     results = []
 
     def _proc(t_data):
@@ -493,20 +504,12 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
                 ticker, conditions,
                 current_price=fast_price,
                 current_change_rate=fast_change_rate,
-                exchange=exchange
+                exchange=exchange,
+                persist_db=False,
             )
             if is_match and price:
                 details_str = ", ".join(list(dict.fromkeys(details)))
-                should_notify = True
-                AlertHistory.objects.create(
-                    strategy=strategy,
-                    symbol=ticker,
-                    price=price,
-                    volume=volume,
-                    details=details_str,
-                    status=status,
-                    is_notified=should_notify
-                )
+                should_notify = ticker not in recently_notified
                 return {
                     'symbol':         ticker,
                     'name':           name,
@@ -526,7 +529,23 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
         for r in executor.map(_proc, tickers):
             if r:
                 results.append(r)
-                
+
+    # 워커는 계산만 담당하고 SQLite 쓰기는 요청 스레드에서 한 번에 수행한다.
+    # 여러 워커가 update/create를 동시에 실행할 때 발생하던 database is locked와
+    # 조용한 매칭 누락을 방지한다.
+    AlertHistory.objects.bulk_create([
+        AlertHistory(
+            strategy=strategy,
+            symbol=r['symbol'],
+            price=r['price'],
+            volume=r['volume'],
+            details=r['details'],
+            status=r['status'],
+            is_notified=r['should_notify'],
+        )
+        for r in results
+    ])
+
     # 거래대금 순으로 정렬
     results.sort(key=lambda x: x.get('volume', 0), reverse=True)
     
@@ -562,6 +581,14 @@ def alert_send_now(request, strategy_id):
 
     tickers = _get_tickers(exchange, vol_limit)
     results, tg_results = process_scan_and_alert(strategy, tickers, conditions, exchange=exchange)
+
+    if results and not tg_results:
+        return JsonResponse({
+            'ok': True,
+            'matched': len(results),
+            'sent': 0,
+            'duplicate_suppressed': True,
+        })
 
     res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id, exchange=exchange)
     if res['ok']:

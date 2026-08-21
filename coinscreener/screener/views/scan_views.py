@@ -15,7 +15,7 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
-from ..ownership import get_viewable_strategy
+from ..ownership import get_owned_strategy, get_viewable_strategy
 from .. import telegram as tg
 
 logger = logging.getLogger(__name__)
@@ -281,6 +281,10 @@ def coin_search(request, strategy_id):
 
     # 캐시 없음 → 로딩 페이지 (JS가 SSE로 진행)
     send_telegram = request.GET.get('send_telegram', '0')
+    if send_telegram == '1':
+        # 텔레그램은 사이트의 단일 봇/채팅방으로 전송되므로, 공용 샘플이나
+        # 타인의 전략을 조회할 수 있다는 이유만으로 발송 권한까지 주지 않는다.
+        get_owned_strategy(request, strategy_id)
     full_scan = '1' if request.GET.get('full') == '1' else '0'
     return render(request, 'screener/search_loading.html', {
         'strategy':  strategy,
@@ -297,7 +301,7 @@ def cron_prefetch(request):
     import traceback
     from django.http import JsonResponse, HttpResponseForbidden
     from ..models import OHLCVCache
-    from ..engine import get_ohlcv_with_retry
+    from ..engine import get_ohlcv_with_retry, save_ohlcv_cache
     import json
     
     cron_sec = _get_cron_secret()
@@ -353,24 +357,28 @@ def cron_prefetch(request):
         
         import concurrent.futures
 
-        def fetch_and_save(task):
-            # get_ohlcv_with_retry가 거래소별 스로틀·재시도·DB/메모리 캐싱을 모두 처리한다.
-            # 이미 신선한 캐시가 있으면 재조회하지 않고, 오래됐거나 없을 때만 갱신한다.
+        def fetch_only(task):
+            # 워커는 외부 조회만 수행하고 SQLite 저장은 요청 스레드에서 처리한다.
             try:
                 df = get_ohlcv_with_retry(
                     task["ticker"], task["timeframe"],
-                    count=200, exchange=task["exchange"]
+                    count=200, exchange=task["exchange"], persist_db=False,
                 )
-                return df is not None and len(df) > 0
+                return task, df
             except Exception:
-                return False
+                return task, None
             
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(fetch_and_save, t) for t in batch_tasks]
+            futures = [executor.submit(fetch_only, t) for t in batch_tasks]
             for future in concurrent.futures.as_completed(futures):
-                if future.result():
+                task, df = future.result()
+                if df is None or len(df) == 0:
+                    error_count += 1
+                    continue
+                try:
+                    save_ohlcv_cache(task["ticker"], task["timeframe"], df)
                     success_count += 1
-                else:
+                except Exception:
                     error_count += 1
                     
         next_start = end_idx if end_idx < total_tasks else 0
@@ -435,7 +443,13 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
         from django.core.cache import cache
         import pandas as pd
         import concurrent.futures
-        from ..engine import get_ohlcv_with_retry, get_max_required_len
+        from ..engine import (
+            get_ohlcv_with_retry,
+            get_max_required_len,
+            max_cache_age,
+            save_ohlcv_cache,
+        )
+        from django.utils import timezone
 
         req_count = get_max_required_len(conditions)
         active_timeframes = set(c.timeframe for c in conditions)
@@ -448,20 +462,36 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
         ).values('id', 'ticker', 'timeframe', 'updated_at')
 
         present_keys = set()
-        stale_ids = []
+        fresh_keys = set()
+        stale_keys = set()
+        reparse_ids = []
+        now = timezone.now()
         for m in meta_qs:
             key = (m['ticker'], m['timeframe'])
             present_keys.add(key)
+
+            # DB 행이 존재하더라도 해당 캔들 주기보다 오래됐다면 스캔 캐시에
+            # 다시 넣지 않는다. 메모리/파싱 캐시도 제거한 뒤 아래 라이브 갱신
+            # 대상으로 넘겨, 크롤러 장애가 오래된 신호로 위장되지 않게 한다.
+            age_seconds = (now - m['updated_at']).total_seconds()
+            if age_seconds >= max_cache_age(m['timeframe']):
+                stale_keys.add(key)
+                with _PARSED_OHLCV_LOCK:
+                    _PARSED_OHLCV.pop(key, None)
+                cache.delete(f"ohlcv_{key[0]}_{key[1]}_{req_count}")
+                continue
+
+            fresh_keys.add(key)
             with _PARSED_OHLCV_LOCK:
                 cached = _PARSED_OHLCV.get(key)
             if cached is None or cached[0] != m['updated_at']:
-                stale_ids.append(m['id'])
+                reparse_ids.append(m['id'])
         t_meta = _time.perf_counter() - _tm0
 
         # 2) 변경된(또는 처음 보는) 항목만 무거운 data를 읽어 파싱한다.
         _tp0 = _time.perf_counter()
-        if stale_ids:
-            for obj in OHLCVCache.objects.filter(id__in=stale_ids):
+        if reparse_ids:
+            for obj in OHLCVCache.objects.filter(id__in=reparse_ids):
                 data_dict = obj.data
                 try:
                     df = pd.DataFrame(
@@ -484,36 +514,55 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
 
         # 3) 요청 타임프레임에 대해 파싱된 프레임을 요청 단위 LocMemCache에 적재.
         #    check_strategy가 지표 컬럼을 in-place로 추가하므로 캐시 원본 보호를 위해 copy() 전달.
-        for key in present_keys:
+        for key in fresh_keys:
             with _PARSED_OHLCV_LOCK:
                 entry = _PARSED_OHLCV.get(key)
             if entry is None:
                 continue
             df = entry[1]
             cache_key = f"ohlcv_{key[0]}_{key[1]}_{req_count}"
-            cache.set(cache_key, df.tail(req_count).copy(), 180)
+            cache.set(
+                cache_key,
+                df.tail(req_count).copy(),
+                min(180, max_cache_age(key[1])),
+            )
 
-        # 4) DB에 아예 없는 항목은 라이브로 채운다(콜드 스타트).
+        # 4) DB에 없거나 오래된 항목은 라이브로 채운다.
         #    개별 sleep 대신 engine._throttle() 전역 속도 제한에 위임(워커를 늘려도 ≈9req/s로 안전).
-        missing_tasks = [
+        refresh_tasks = [
             (t, tf) for t in tickers for tf in active_timeframes
-            if (t, tf) not in present_keys
+            if (t, tf) not in fresh_keys
         ]
         _tf0 = _time.perf_counter()
-        if missing_tasks:
+        if refresh_tasks:
             def _fetch_one(item):
                 t, tf = item
-                get_ohlcv_with_retry(t, tf, count=req_count, exchange=exchange)
+                # 오래된 동일 count 메모리 캐시가 라이브 갱신을 가로막지 않게 보장.
+                cache.delete(f"ohlcv_{t}_{tf}_{req_count}")
+                df = get_ohlcv_with_retry(
+                    t,
+                    tf,
+                    count=req_count,
+                    exchange=exchange,
+                    persist_db=False,
+                )
+                return t, tf, df
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=24) as executor:
-                list(executor.map(_fetch_one, missing_tasks))
+                fetched = list(executor.map(_fetch_one, refresh_tasks))
+
+            # SQLite 쓰기는 워커 밖에서 순차 실행해 lock 경쟁을 줄인다.
+            for t, tf, df in fetched:
+                if df is not None and len(df) > 0:
+                    save_ohlcv_cache(t, tf, df)
         t_live = _time.perf_counter() - _tf0
 
         # [측정] 프리페치 내부 분해: 메타조회 / 재파싱(변경분) / 누락 라이브조회.
         #   코스피에서 t_live가 크면 '캐시 워밍'이 답, t_parse가 크면 파싱/사전계산(D)이 답.
         print(
             f"[PREFETCH_TIMING] ex={exchange} present={len(present_keys)} "
-            f"reparsed={len(stale_ids)} missing_live={len(missing_tasks)} | "
+            f"fresh={len(fresh_keys)} stale={len(stale_keys)} "
+            f"reparsed={len(reparse_ids)} refresh_live={len(refresh_tasks)} | "
             f"meta={t_meta:.2f}s parse={t_parse:.2f}s live={t_live:.2f}s"
         )
     except Exception as e:
@@ -539,6 +588,9 @@ def coin_search_stream(request, strategy_id):
             c.timeframe = tf_override
 
     send_telegram = request.GET.get('send_telegram') == '1'
+    if send_telegram:
+        # SSE URL을 직접 호출해 로딩 페이지의 검사를 우회하는 경우도 차단한다.
+        get_owned_strategy(request, strategy_id)
     full_scan = request.GET.get('full') == '1'
 
     def event_stream():
@@ -581,7 +633,8 @@ def coin_search_stream(request, strategy_id):
                     ticker, conditions,
                     current_price=fast_price,
                     current_change_rate=fast_change_rate,
-                    exchange=exchange
+                    exchange=exchange,
+                    persist_db=False,
                 )
                 if price is None:
                     return "API_ERROR"
@@ -656,18 +709,16 @@ def coin_search_stream(request, strategy_id):
 
         # 프로세스 간 LocMemCache가 공유되지 않는 환경을 고려해,
         # 검색 결과를 DB(OHLCVCache)를 활용하여 임시 저장합니다. (무한 리다이렉트 방지)
-        from ..models import OHLCVCache
+        from ..engine import save_cache_payload
         try:
-            OHLCVCache.objects.update_or_create(
-                ticker=cache_key,
-                timeframe="RESULT",
-                defaults={
-                    "data": {
-                        'results': results,
-                        'rate_limit_warning': error_occurred,
-                        'last_updated': last_updated.isoformat(),
-                        'elapsed_time': elapsed_seconds
-                    }
+            save_cache_payload(
+                cache_key,
+                "RESULT",
+                {
+                    'results': results,
+                    'rate_limit_warning': error_occurred,
+                    'last_updated': last_updated.isoformat(),
+                    'elapsed_time': elapsed_seconds,
                 }
             )
         except Exception as e:
@@ -676,17 +727,37 @@ def coin_search_stream(request, strategy_id):
         # 만약 자동 반복 스캔에서 텔레그램 전송이 활성화되었고, 조회된 건이 있으면 즉시 발송
         if send_telegram and results and tg.is_configured():
             try:
-                for r in results:
-                    AlertHistory.objects.create(
+                import datetime as _datetime
+                duplicate_cutoff = timezone.now() - _datetime.timedelta(hours=12)
+                recently_notified = set(
+                    AlertHistory.objects.filter(
+                        strategy=strategy,
+                        is_notified=True,
+                        created_at__gte=duplicate_cutoff,
+                    ).values_list('symbol', flat=True)
+                )
+                notify_results = [
+                    r for r in results if r['symbol'] not in recently_notified
+                ]
+                AlertHistory.objects.bulk_create([
+                    AlertHistory(
                         strategy=strategy,
                         symbol=r['symbol'],
                         price=r['price'],
                         volume=r['volume'],
                         details=r['details'],
                         status=r['status'],
-                        is_notified=True
+                        is_notified=r['symbol'] not in recently_notified,
                     )
-                tg.send_alert(strategy.name, results, strategy_id=strategy.id, exchange=exchange)
+                    for r in results
+                ])
+                if notify_results:
+                    tg.send_alert(
+                        strategy.name,
+                        notify_results,
+                        strategy_id=strategy.id,
+                        exchange=exchange,
+                    )
             except Exception as e:
                 print(f"자동 반복 스캔 중 텔레그램 발송 실패: {e}")
 

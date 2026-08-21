@@ -1,5 +1,5 @@
 import os
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from unittest.mock import patch
 import pandas as pd
 import numpy as np
@@ -407,6 +407,361 @@ class BacktestOffsetTestCase(TestCase):
 
         is_match, details, last_price, volume, change_rate, status = check_strategy('KRW-BTC', [cond_ma])
         self.assertTrue(is_match)
+
+
+class BulkPrefetchFreshnessTestCase(TestCase):
+    def setUp(self):
+        import json
+        from django.core.cache import cache
+        from .models import OHLCVCache
+        from .views import scan_views
+
+        cache.clear()
+        with scan_views._PARSED_OHLCV_LOCK:
+            scan_views._PARSED_OHLCV.clear()
+
+        self.strategy = Strategy.objects.create(name="Prefetch freshness")
+        self.condition = Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            offset=0,
+            left_indicator='CLOSE',
+            left_param=0,
+            operator='gt',
+            right_indicator='VAL',
+            right_param=0,
+        )
+        dates = pd.date_range('2026-01-01', periods=60, freq='D')
+        self.df = pd.DataFrame({
+            'open': [100.0] * 60,
+            'high': [110.0] * 60,
+            'low': [90.0] * 60,
+            'close': [105.0] * 60,
+            'volume': [1000.0] * 60,
+        }, index=dates)
+        self.cache_row = OHLCVCache.objects.create(
+            ticker='KRW-BTC',
+            timeframe='day',
+            data=json.loads(self.df.to_json(orient='split')),
+        )
+
+    @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
+    def test_fresh_db_cache_is_loaded_without_live_refresh(self, mock_get_ohlcv):
+        from django.core.cache import cache
+        from .views.scan_views import _bulk_prefetch_ohlcv
+
+        _bulk_prefetch_ohlcv(
+            [{'ticker': 'KRW-BTC'}], [self.condition], exchange='upbit'
+        )
+
+        mock_get_ohlcv.assert_not_called()
+        cached = cache.get('ohlcv_KRW-BTC_day_60')
+        self.assertIsNotNone(cached)
+        self.assertEqual(float(cached['close'].iloc[-1]), 105.0)
+
+    @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
+    def test_stale_db_cache_is_not_reused_and_live_refresh_runs(self, mock_get_ohlcv):
+        from django.core.cache import cache
+        from django.utils import timezone
+        from .models import OHLCVCache
+        from .views.scan_views import _bulk_prefetch_ohlcv
+
+        OHLCVCache.objects.filter(pk=self.cache_row.pk).update(
+            updated_at=timezone.now() - timedelta(days=2)
+        )
+        cache.set('ohlcv_KRW-BTC_day_60', self.df.copy(), 180)
+        mock_get_ohlcv.return_value = self.df
+
+        _bulk_prefetch_ohlcv(
+            [{'ticker': 'KRW-BTC'}], [self.condition], exchange='upbit'
+        )
+
+        mock_get_ohlcv.assert_called_once_with(
+            'KRW-BTC',
+            'day',
+            count=60,
+            exchange='upbit',
+            persist_db=False,
+        )
+        self.assertIsNone(cache.get('ohlcv_KRW-BTC_day_60'))
+
+    def test_live_fetch_workers_persist_on_the_request_thread(self):
+        import threading
+        from .models import OHLCVCache
+        from .views.scan_views import _bulk_prefetch_ohlcv
+
+        OHLCVCache.objects.filter(pk=self.cache_row.pk).delete()
+        caller_thread = threading.get_ident()
+        fetch_threads = []
+        write_threads = []
+
+        def fake_fetch(*args, **kwargs):
+            fetch_threads.append(threading.get_ident())
+            return self.df
+
+        def fake_save(*args, **kwargs):
+            write_threads.append(threading.get_ident())
+
+        with patch(
+            'coinscreener.screener.engine.get_ohlcv_with_retry',
+            side_effect=fake_fetch,
+        ), patch(
+            'coinscreener.screener.engine.save_ohlcv_cache',
+            side_effect=fake_save,
+        ):
+            _bulk_prefetch_ohlcv(
+                [{'ticker': 'KRW-BTC'}], [self.condition], exchange='upbit'
+            )
+
+        self.assertEqual(len(fetch_threads), 1)
+        self.assertNotEqual(fetch_threads[0], caller_thread)
+        self.assertEqual(write_threads, [caller_thread])
+
+
+class OHLCVCachePersistenceTestCase(TestCase):
+    def test_sqlite_lock_is_retried_with_backoff(self):
+        from django.db.utils import OperationalError
+        from .engine import save_ohlcv_cache
+        from .models import OHLCVCache
+
+        df = pd.DataFrame({
+            'open': [1.0], 'high': [1.0], 'low': [1.0],
+            'close': [1.0], 'volume': [1.0],
+        }, index=pd.date_range('2026-01-01', periods=1, freq='D'))
+        saved = object()
+
+        with patch.object(
+            OHLCVCache.objects,
+            'update_or_create',
+            side_effect=[
+                OperationalError('database is locked'),
+                OperationalError('database is locked'),
+                (saved, False),
+            ],
+        ) as mock_update, patch(
+            'coinscreener.screener.engine.time.sleep'
+        ) as mock_sleep:
+            result = save_ohlcv_cache('KRW-BTC', 'day', df)
+
+        self.assertIs(result, saved)
+        self.assertEqual(mock_update.call_count, 3)
+        self.assertEqual([c.args[0] for c in mock_sleep.call_args_list], [0.05, 0.1])
+
+
+class TelegramSearchAuthorizationTestCase(TestCase):
+    def setUp(self):
+        self.sample = Strategy.objects.create(name='Public sample')
+        Condition.objects.create(
+            strategy=self.sample,
+            timeframe='day',
+            left_indicator='CLOSE',
+            left_param=0,
+            operator='gt',
+            right_indicator='VAL',
+            right_param=0,
+        )
+
+    def test_public_sample_can_still_be_searched_without_telegram(self):
+        response = self.client.get(
+            f'/strategy/{self.sample.id}/search/?send_telegram=0'
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_public_sample_cannot_request_telegram_from_loading_route(self):
+        response = self.client.get(
+            f'/strategy/{self.sample.id}/search/?send_telegram=1'
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_public_sample_cannot_bypass_loading_route_via_sse(self):
+        response = self.client.get(
+            f'/strategy/{self.sample.id}/search-stream/?send_telegram=1'
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_owner_can_request_telegram_via_sse(self):
+        owner_key = 'test-owner-key'
+        session = self.client.session
+        session['owner_key'] = owner_key
+        session.save()
+        owned = Strategy.objects.create(name='Owned strategy', owner_key=owner_key)
+        Condition.objects.create(
+            strategy=owned,
+            timeframe='day',
+            left_indicator='CLOSE',
+            left_param=0,
+            operator='gt',
+            right_indicator='VAL',
+            right_param=0,
+        )
+
+        response = self.client.get(
+            f'/strategy/{owned.id}/search-stream/?send_telegram=1'
+        )
+        self.assertEqual(response.status_code, 200)
+        response.close()
+
+
+class AlertDeduplicationTestCase(TransactionTestCase):
+    def setUp(self):
+        from .models import AlertHistory
+
+        self.strategy = Strategy.objects.create(name='Dedup strategy')
+        self.condition = Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            left_indicator='CLOSE',
+            left_param=0,
+            operator='gt',
+            right_indicator='VAL',
+            right_param=0,
+        )
+        self.AlertHistory = AlertHistory
+        self.tickers = [{'ticker': 'KRW-BTC', 'name': '비트코인'}]
+
+    def _scan(self):
+        from .views.strategy_views import process_scan_and_alert
+
+        match = (True, ['조건 충족'], 100.0, 1_000_000.0, 1.0, 'new')
+        with patch(
+            'coinscreener.screener.views.strategy_views._bulk_prefetch_ohlcv'
+        ), patch(
+            'coinscreener.screener.views.strategy_views.check_strategy',
+            return_value=match,
+        ):
+            return process_scan_and_alert(
+                self.strategy, self.tickers, [self.condition], exchange='upbit'
+            )
+
+    def test_recently_notified_symbol_is_suppressed_for_twelve_hours(self):
+        self.AlertHistory.objects.create(
+            strategy=self.strategy,
+            symbol='KRW-BTC',
+            price=100.0,
+            is_notified=True,
+        )
+
+        results, telegram_results = self._scan()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(telegram_results, [])
+        newest = self.AlertHistory.objects.order_by('-created_at').first()
+        self.assertFalse(newest.is_notified)
+
+    def test_symbol_can_be_notified_again_after_twelve_hours(self):
+        from django.utils import timezone
+
+        history = self.AlertHistory.objects.create(
+            strategy=self.strategy,
+            symbol='KRW-BTC',
+            price=100.0,
+            is_notified=True,
+        )
+        self.AlertHistory.objects.filter(pk=history.pk).update(
+            created_at=timezone.now() - timedelta(hours=13)
+        )
+
+        results, telegram_results = self._scan()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(telegram_results), 1)
+        newest = self.AlertHistory.objects.order_by('-created_at').first()
+        self.assertTrue(newest.is_notified)
+
+    def test_alert_history_bulk_write_runs_on_request_thread(self):
+        import threading
+        from .views.strategy_views import process_scan_and_alert
+
+        caller_thread = threading.get_ident()
+        write_threads = []
+        match = (True, ['조건 충족'], 100.0, 1_000_000.0, 1.0, 'new')
+
+        def capture_bulk_create(rows):
+            write_threads.append(threading.get_ident())
+            return rows
+
+        with patch(
+            'coinscreener.screener.views.strategy_views._bulk_prefetch_ohlcv'
+        ), patch(
+            'coinscreener.screener.views.strategy_views.check_strategy',
+            return_value=match,
+        ), patch.object(
+            self.AlertHistory.objects,
+            'bulk_create',
+            side_effect=capture_bulk_create,
+        ):
+            process_scan_and_alert(
+                self.strategy, self.tickers, [self.condition], exchange='upbit'
+            )
+
+        self.assertEqual(write_threads, [caller_thread])
+
+
+class CronAlertSlotTestCase(TestCase):
+    def setUp(self):
+        from .models import AlertSetting
+
+        self.strategy = Strategy.objects.create(name='Scheduled strategy')
+        Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            left_indicator='CLOSE',
+            left_param=0,
+            operator='gt',
+            right_indicator='VAL',
+            right_param=0,
+        )
+        self.setting = AlertSetting.objects.create(
+            strategy=self.strategy,
+            enabled=True,
+            alert_hour=9,
+            alert_min=0,
+            exchange='upbit',
+            vol_limit=10,
+        )
+
+    @patch.dict('os.environ', {'CRON_SECRET': 'slot-secret'})
+    def test_same_schedule_slot_runs_only_once(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        fixed_now = datetime(2026, 8, 21, 9, 5, tzinfo=ZoneInfo('Asia/Seoul'))
+        with patch('django.utils.timezone.now', return_value=fixed_now), patch(
+            'coinscreener.screener.views.cron_views.process_scan_and_alert',
+            return_value=([], []),
+        ) as mock_process, patch(
+            'coinscreener.screener.views.cron_views._get_tickers',
+            return_value=[],
+        ), patch(
+            'coinscreener.screener.views.cron_views.tg.is_configured',
+            return_value=True,
+        ), patch(
+            'coinscreener.screener.views.cron_views.tg.send_alert',
+            return_value={'ok': True},
+        ):
+            first = self.client.get('/cron/scan/?secret=slot-secret')
+            second = self.client.get('/cron/scan/?secret=slot-secret')
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()['processed'], 1)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()['processed'], 0)
+        self.assertEqual(mock_process.call_count, 1)
+
+    @patch.dict('os.environ', {'CRON_SECRET': 'slot-secret'})
+    def test_eight_thirty_does_not_run_nine_oclock_schedule(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        fixed_now = datetime(2026, 8, 21, 8, 30, tzinfo=ZoneInfo('Asia/Seoul'))
+        with patch('django.utils.timezone.now', return_value=fixed_now), patch(
+            'coinscreener.screener.views.cron_views.process_scan_and_alert'
+        ) as mock_process:
+            response = self.client.get('/cron/scan/?secret=slot-secret')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['processed'], 0)
+        mock_process.assert_not_called()
 
 
 class StrategyTradingViewsTestCase(TestCase):
