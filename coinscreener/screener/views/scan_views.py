@@ -395,39 +395,6 @@ def cron_prefetch(request):
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e), "trace": traceback.format_exc()})
 
-@csrf_exempt
-def trigger_migrate(request):
-    cron_sec = _get_cron_secret()
-    if not cron_sec or request.GET.get('secret') != cron_sec:
-        from django.http import HttpResponseForbidden
-        return HttpResponseForbidden("권한이 없습니다.")
-        
-    from django.core.management import call_command
-    import io
-    out = io.StringIO()
-    try:
-        call_command('migrate', interactive=False, stdout=out)
-        return JsonResponse({'ok': True, 'log': out.getvalue()})
-    except Exception as e:
-        return JsonResponse({'ok': False, 'error': str(e)})
-
-@csrf_exempt
-def trigger_debug(request):
-    cron_sec = _get_cron_secret()
-    if not cron_sec or request.GET.get('secret') != cron_sec:
-        from django.http import HttpResponseForbidden
-        return HttpResponseForbidden("권한이 없습니다.")
-        
-    try:
-        from ..models import OHLCVCache
-        count = OHLCVCache.objects.count()
-        timeframes = list(OHLCVCache.objects.values_list('timeframe', flat=True).distinct())
-        return JsonResponse({'ok': True, 'count': count, 'timeframes': timeframes})
-    except Exception as e:
-        import traceback
-        return JsonResponse({'ok': False, 'error': str(e), 'trace': traceback.format_exc()})
-
-
 def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
     """OHLCVCache DB에서 필요한 OHLCV 데이터를 일괄 조회해 메모리 캐시에 적재.
 
