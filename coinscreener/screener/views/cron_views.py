@@ -1,4 +1,3 @@
-import os
 import json
 import logging
 import traceback
@@ -16,15 +15,12 @@ import pyupbit
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
 from ..ownership import get_owned_strategy, get_viewable_strategy, my_and_sample_strategies
+from ..cron_auth import is_cron_request_authorized
 from .scan_views import _get_tickers, _bulk_prefetch_ohlcv, _effective_scan_limit
 from .. import telegram as tg
 from .strategy_views import process_scan_and_alert
 
 logger = logging.getLogger(__name__)
-
-def _get_cron_secret():
-    return os.environ.get('CRON_SECRET', '')
-
 
 
 from ..backtest import run_backtest, MAJOR_COINS
@@ -76,10 +72,9 @@ def cron_scan(request):
     from django.http import HttpResponseForbidden
     import traceback
 
-    # 보안 검증: 외부 크론잡(crontab, cron-job.org 등)에서 ?secret=<CRON_SECRET> 로 호출.
+    # URL과 액세스 로그에 자격 증명이 남지 않도록 Authorization: Bearer 헤더만 허용한다.
     # CRON_SECRET 미설정 시 무조건 차단한다. force는 인증을 우회하지 못하며 시간 필터만 제어한다.
-    cron_sec = _get_cron_secret()
-    if not cron_sec or request.GET.get('secret') != cron_sec:
+    if not is_cron_request_authorized(request):
         print("[CRON_SCAN] Security check failed: Forbidden access.")
         return HttpResponseForbidden("권한이 없습니다.")
 
@@ -370,8 +365,7 @@ def strategy_scan_count(request, strategy_id):
 @csrf_exempt
 def cron_daily_picks(request):
     try:
-        cron_sec = _get_cron_secret()
-        if not cron_sec or request.GET.get('secret') != cron_sec:
+        if not is_cron_request_authorized(request):
             from django.http import HttpResponseForbidden
             return HttpResponseForbidden('권한이 없습니다.')
         from django.core.management import call_command
