@@ -1,3 +1,4 @@
+import math
 import time
 import pandas as pd
 import pyupbit
@@ -101,7 +102,7 @@ class Command(BaseCommand):
                     # df.iloc[-2] 가 전일 데이터, df.iloc[-1] 이 당일 데이터(09시 이후 진행중)
                     prev_day = df.iloc[-2]
                     value = float(prev_day['value'])
-                    if pd.notna(value) and value > 0:
+                    if math.isfinite(value) and value > 0:
                         vol_data.append({
                             'ticker': ticker,
                             'value': value,
