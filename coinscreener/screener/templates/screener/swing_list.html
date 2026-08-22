@@ -1,0 +1,109 @@
+{% extends 'screener/base.html' %}
+{% load humanize %}
+
+{% block title %}스윙 추천{% endblock %}
+
+{% block extra_head %}
+<style>
+    .swing-header {
+        padding: 28px 20px;
+        background: linear-gradient(135deg, #654ea3 0%, #3f2b73 100%);
+        border-radius: 0 0 20px 20px;
+        text-align: center;
+    }
+    .swing-title {
+        margin-bottom: 8px;
+        font-size: 22px;
+        font-weight: 700;
+    }
+    .swing-subtitle {
+        color: rgba(255,255,255,0.78);
+        font-size: 13px;
+    }
+    .swing-empty {
+        margin: 28px 20px;
+        padding: 28px 20px;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px;
+        background: var(--surface-color);
+        text-align: center;
+    }
+    .swing-empty-icon { font-size: 34px; }
+    .swing-empty-title {
+        margin-top: 12px;
+        font-size: 17px;
+        font-weight: 700;
+    }
+    .swing-empty-copy {
+        margin-top: 10px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1.6;
+    }
+    .swing-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 20px;
+    }
+    .swing-card {
+        padding: 18px;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        background: var(--surface-color);
+    }
+    .swing-card-title { font-size: 17px; font-weight: 700; }
+    .swing-card-type {
+        margin-left: 6px;
+        color: #b9a4ff;
+        font-size: 11px;
+    }
+    .swing-card-copy {
+        margin-top: 10px;
+        color: var(--text-secondary);
+        font-size: 12px;
+        line-height: 1.55;
+    }
+</style>
+{% endblock %}
+
+{% block topbar %}{% endblock %}
+
+{% block content %}
+<div class="swing-header">
+    <div class="swing-title">📈 스윙 AI 추천</div>
+    <div class="swing-subtitle">며칠 이상 보유하는 전략을 준비하고 있습니다.</div>
+</div>
+
+<div class="disclaimer">
+    ⚠️ 스윙 추천 로직은 아직 확정되지 않았습니다. 전략 검증이 끝나기 전에는
+    실제 추천을 생성하지 않습니다.
+</div>
+
+{% if recommendations %}
+<div class="swing-list">
+    {% for rec in recommendations %}
+    <div class="swing-card">
+        <div class="swing-card-title">
+            {{ rec.coin_name }}
+            <span class="swing-card-type">{{ rec.coin_ticker }} · 스윙</span>
+        </div>
+        <div class="swing-card-copy">
+            진입 추천가 {{ rec.entry_price|floatformat:-2|intcomma }}원 ·
+            목표가 {{ rec.target_price|floatformat:-2|intcomma }}원 ·
+            손절가 {{ rec.stop_loss|floatformat:-2|intcomma }}원
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="swing-empty">
+    <div class="swing-empty-icon">🧭</div>
+    <div class="swing-empty-title">스윙 전략 준비 중</div>
+    <div class="swing-empty-copy">
+        투자 기간, 진입 조건, 목표가와 손절 기준을 검증한 뒤 공개할 예정입니다.<br>
+        현재는 메뉴와 성적 기록 구조만 준비되어 있습니다.
+    </div>
+</div>
+{% endif %}
+{% endblock %}
