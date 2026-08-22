@@ -109,7 +109,8 @@
             text-decoration: none;
             font-size: 10px;
             gap: 4px;
-            width: 20%;
+            flex: 1;
+            min-width: 0;
         }
 
         .nav-item.active {
@@ -199,6 +200,10 @@
             <a href="{% url 'danta_list' %}" class="nav-item {% if request.resolver_match.url_name == 'danta_list' %}active{% endif %}">
                 <svg class="nav-icon" viewBox="0 0 24 24"><path d="M16 11V3H8v6H2v12h20V11h-6zm-6-6h4v14h-4V5zm-6 6h4v8H4v-8zm16 8h-4v-6h4v6z"/></svg>
                 <span>단타</span>
+            </a>
+            <a href="{% url 'swing_list' %}" class="nav-item {% if request.resolver_match.url_name == 'swing_list' %}active{% endif %}">
+                <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 7-8v4h2V3h-8v2h4.2L13 11l-4-4-7 7 1 3z"/></svg>
+                <span>스윙</span>
             </a>
             <a href="{% url 'stats_list' %}" class="nav-item {% if request.resolver_match.url_name == 'stats_list' %}active{% endif %}">
                 <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>
