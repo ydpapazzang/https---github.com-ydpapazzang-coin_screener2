@@ -1,4 +1,5 @@
 from datetime import timedelta
+import threading
 from unittest.mock import patch
 
 import pandas as pd
@@ -142,6 +143,10 @@ class RecommendationMonitorTestCase(TestCase):
         self.assertAlmostEqual(recommendation.max_profit_pct, 8.0)
 
     @patch.object(Command, '_monitor_recommendations')
-    def test_monitor_runs_even_without_strategy_conditions(self, mock_monitor):
-        Command()._run_crawler()
+    def test_independent_monitor_loop_runs_and_stops_cleanly(self, mock_monitor):
+        stop_event = threading.Event()
+        mock_monitor.side_effect = stop_event.set
+
+        Command()._monitor_loop(stop_event)
+
         mock_monitor.assert_called_once_with()
