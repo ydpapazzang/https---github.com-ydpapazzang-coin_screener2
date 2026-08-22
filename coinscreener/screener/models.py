@@ -294,8 +294,21 @@ class VisitLog(models.Model):
 
 
 class DailyRecommendation(models.Model):
-    """오늘의 단타 추천 코인 (매일 오전 9시 생성)"""
+    """단타·스윙 추천과 성적을 함께 저장하는 모델."""
+
+    trade_type_choices = [
+        ('danta', '단타'),
+        ('swing', '스윙'),
+    ]
+
     date = models.DateField(verbose_name="추천일")
+    trade_type = models.CharField(
+        max_length=10,
+        choices=trade_type_choices,
+        default='danta',
+        db_index=True,
+        verbose_name="매매 유형",
+    )
     coin_ticker = models.CharField(max_length=50, verbose_name="티커")
     coin_name = models.CharField(max_length=100, verbose_name="종목명")
     entry_price = models.FloatField(verbose_name="진입 추천가")
@@ -334,8 +347,11 @@ class DailyRecommendation(models.Model):
         return ((self.highest_price - self.entry_price) / self.entry_price) * 100
 
     class Meta:
-        ordering = ['-date', 'coin_ticker']
-        unique_together = ('date', 'coin_ticker')
+        ordering = ['-date', 'trade_type', 'coin_ticker']
+        unique_together = ('date', 'coin_ticker', 'trade_type')
 
     def __str__(self):
-        return f"[{self.date}] {self.coin_name} - {self.get_status_display()}"
+        return (
+            f"[{self.date}] [{self.get_trade_type_display()}] "
+            f"{self.coin_name} - {self.get_status_display()}"
+        )
