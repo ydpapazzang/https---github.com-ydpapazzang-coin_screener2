@@ -89,6 +89,13 @@ class StatsListViewTestCase(TestCase):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
         self.assertAlmostEqual(recommendation.max_profit_pct, 10.0)
 
+    def test_pre_entry_observation_is_not_reported_as_max_profit(self):
+        recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-ETH')
+        recommendation.highest_price = 99.0
+        recommendation.save()
+
+        self.assertIsNone(recommendation.max_profit_pct)
+
 
 class RecommendationMonitorTestCase(TestCase):
     def _recommendation(self, **overrides):
