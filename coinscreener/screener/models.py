@@ -322,6 +322,13 @@ class DailyRecommendation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    @property
+    def max_profit_pct(self):
+        """진입 후 관측된 최고가 기준 최대 수익률."""
+        if not self.entry_price or self.highest_price is None:
+            return None
+        return ((self.highest_price - self.entry_price) / self.entry_price) * 100
+
     class Meta:
         ordering = ['-date', 'coin_ticker']
         unique_together = ('date', 'coin_ticker')
