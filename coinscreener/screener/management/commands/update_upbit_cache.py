@@ -106,6 +106,7 @@ class Command(BaseCommand):
         # 목표 달성 종목도 당일 종료까지 추적해 실제 관측 최고가를 보존한다.
         tracked_recs = DailyRecommendation.objects.filter(
             date=today_date,
+            trade_type='danta',
             status__in=['pending', 'active', 'success']
         )
         if not tracked_recs.exists():
