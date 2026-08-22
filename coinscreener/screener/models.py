@@ -325,7 +325,11 @@ class DailyRecommendation(models.Model):
     @property
     def max_profit_pct(self):
         """진입 후 관측된 최고가 기준 최대 수익률."""
-        if not self.entry_price or self.highest_price is None:
+        if (
+            not self.entry_price
+            or self.highest_price is None
+            or self.highest_price < self.entry_price
+        ):
             return None
         return ((self.highest_price - self.entry_price) / self.entry_price) * 100
 
