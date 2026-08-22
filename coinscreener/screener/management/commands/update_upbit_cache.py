@@ -11,7 +11,7 @@ from django.core.cache import cache
 from coinscreener.screener.models import Condition
 
 class Command(BaseCommand):
-    help = '5분마다 조건식에 사용된 타임프레임의 업비트, 빗썸, KOSPI(ETF) 데이터를 수집하여 캐시에 저장합니다.'
+    help = '코인 OHLCV 캐시를 반복 수집하고 단타 추천 성적은 독립적으로 60초마다 추적합니다.'
 
     MONITOR_INTERVAL_SECONDS = 60
 
