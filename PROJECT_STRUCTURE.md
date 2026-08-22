@@ -9,7 +9,7 @@
 * **데이터베이스:** SQLite (`db.sqlite3`) - 단일 소스 캐시 DB로 활용
 * **백그라운드 서비스 (Systemd):**
   1. `coinscreener.service`: Gunicorn으로 Django 웹 애플리케이션 구동 (`127.0.0.1:8000`, worker 1개 / thread 2개)
-  2. `upbit-crawler.service`: 업비트 & 빗썸 24시간 5분 주기 크롤러
+  2. `upbit-crawler.service`: 업비트 & 빗썸 24시간 크롤러 + 전체 수집과 독립된 60초 단타 성적 추적 스레드
   3. `kospi-crawler.service`: 코스피/ETF 전용 1시간 주기 크롤러 (평일 09:00~15:30 전용)
   4. **`Crontab` 스케줄러**: 매일 아침 09:00 정각 `generate_daily_picks.py` 실행 (오늘의 단타 AI 추천) 및 자동 배포(`git pull`)
 
@@ -29,7 +29,7 @@ coin-screener/
 │       ├── backtest.py       # [핵심] 과거 데이터를 활용한 시뮬레이션 및 백테스트 전용 평가 엔진
 │       ├── management/
 │       │   └── commands/     # 백그라운드 크롤링 봇 스크립트
-│       │       ├── update_upbit_cache.py   # 코인(업비트,빗썸) 캐시 봇 (5분 무한 루프)
+│       │       ├── update_upbit_cache.py   # 코인 캐시 봇 + 60초 독립 단타 성적 추적 스레드
 │       │       ├── update_kospi_cache.py   # 코스피(ETF) 캐시 봇 (평일 낮 1시간 주기)
 │       │       └── generate_daily_picks.py # [핵심] 일일 단타 추천 봇 (K값 최적화 및 BTC 시장 필터 적용)
 │       └── views/
@@ -46,6 +46,8 @@ coin-screener/
 
 1. **데이터 수집 (Background Bots):**
    * `update_upbit_cache`와 `update_kospi_cache`가 각각 자신의 주기에 맞춰 거래소 API 및 네이버 증권을 호출합니다.
+   * 전체 코인 캐시 수집은 종목 수와 API 응답 시간에 따라 5분을 초과할 수 있습니다.
+   * 단타 추천 성적 추적은 전체 수집 루프와 분리된 스레드에서 60초마다 실행되어 진입 후 최고가를 기록합니다.
    * 가져온 OHLCV(시가,고가,저가,종가,거래량) 데이터는 `OHLCVCache`라는 SQLite 테이블에 영구 저장됩니다.
 
 2. **종목 검색 엔진 (`engine.py` & `scan_views.py`):**

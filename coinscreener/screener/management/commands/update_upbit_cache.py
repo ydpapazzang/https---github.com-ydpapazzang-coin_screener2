@@ -1,4 +1,5 @@
 import math
+import threading
 import time
 import datetime
 import pyupbit
@@ -10,26 +11,63 @@ from django.core.cache import cache
 from coinscreener.screener.models import Condition
 
 class Command(BaseCommand):
-    help = '5분마다 조건식에 사용된 타임프레임의 업비트, 빗썸, KOSPI(ETF) 데이터를 수집하여 캐시에 저장합니다.'
+    help = '코인 OHLCV 캐시를 반복 수집하고 단타 추천 성적은 독립적으로 60초마다 추적합니다.'
+
+    MONITOR_INTERVAL_SECONDS = 60
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS("Starting 24/7 Crypto & ETF Cache Bot..."))
-        
-        while True:
-            start_time = time.time()
-            self._run_crawler()
-            elapsed = time.time() - start_time
-            
-            # 300초(5분) 주기 (수집에 걸린 시간을 빼고 휴식)
-            sleep_time = max(0, 300 - elapsed)
-            self.stdout.write(f"Cycle finished in {elapsed:.1f}s. Sleeping for {sleep_time:.1f}s...")
-            time.sleep(sleep_time)
+
+        # 전체 마켓 수집은 20분 이상 걸릴 수 있으므로 단타 추적은 독립 스레드로 실행한다.
+        monitor_stop = threading.Event()
+        monitor_thread = threading.Thread(
+            target=self._monitor_loop,
+            args=(monitor_stop,),
+            name='daily-picks-monitor',
+            daemon=True,
+        )
+        monitor_thread.start()
+        self.stdout.write(self.style.SUCCESS(
+            f"Daily picks monitor started ({self.MONITOR_INTERVAL_SECONDS}s interval)."
+        ))
+
+        try:
+            while True:
+                start_time = time.monotonic()
+                self._run_crawler()
+                elapsed = time.monotonic() - start_time
+
+                # 300초(5분) 주기 (수집에 걸린 시간을 빼고 휴식)
+                sleep_time = max(0, 300 - elapsed)
+                self.stdout.write(
+                    f"Cycle finished in {elapsed:.1f}s. Sleeping for {sleep_time:.1f}s..."
+                )
+                monitor_stop.wait(sleep_time)
+        finally:
+            monitor_stop.set()
+            monitor_thread.join(timeout=5)
+
+    def _monitor_loop(self, stop_event):
+        from django.db import close_old_connections
+
+        while not stop_event.is_set():
+            started_at = time.monotonic()
+            close_old_connections()
+            try:
+                self._monitor_recommendations()
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(
+                    f"Daily picks monitor error: {exc}"
+                ))
+            finally:
+                close_old_connections()
+
+            elapsed = time.monotonic() - started_at
+            wait_seconds = max(0, self.MONITOR_INTERVAL_SECONDS - elapsed)
+            stop_event.wait(wait_seconds)
 
     def _run_crawler(self):
         try:
-            # 전략 조건 유무와 관계없이 단타 성적은 매 주기 추적한다.
-            self._monitor_recommendations()
-
             active_timeframes = set(Condition.objects.values_list('timeframe', flat=True).distinct())
             if not active_timeframes:
                 self.stdout.write("활성화된 조건식이 없어 시세 캐시 수집만 생략합니다.")
