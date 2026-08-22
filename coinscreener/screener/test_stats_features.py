@@ -86,6 +86,35 @@ class StatsListViewTestCase(TestCase):
         self.assertEqual(response.context['selected_status'], '')
         self.assertEqual(response.context['date_from'], '')
 
+    def test_trade_type_filter_distinguishes_danta_and_swing(self):
+        self._recommendation(
+            trade_type='swing',
+            status='pending',
+            result_pct=None,
+            highest_price=None,
+        )
+
+        response = self.client.get(reverse('stats_list'), {
+            'trade_type': 'swing',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total'], 1)
+        recommendation = response.context['recommendations'][0]
+        self.assertEqual(recommendation.trade_type, 'swing')
+        self.assertContains(response, '스윙')
+
+    def test_existing_records_default_to_danta(self):
+        recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
+        self.assertEqual(recommendation.trade_type, 'danta')
+
+    def test_swing_page_is_available_before_strategy_is_implemented(self):
+        response = self.client.get(reverse('swing_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '스윙 전략 준비 중')
+        self.assertContains(response, '실제 추천을 생성하지 않습니다')
+
     def test_max_profit_property_uses_highest_observed_price(self):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
         self.assertAlmostEqual(recommendation.max_profit_pct, 10.0)
@@ -141,6 +170,20 @@ class RecommendationMonitorTestCase(TestCase):
         self.assertEqual(recommendation.status, 'success')
         self.assertEqual(recommendation.highest_price, 108.0)
         self.assertAlmostEqual(recommendation.max_profit_pct, 8.0)
+
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price'
+    )
+    def test_danta_monitor_ignores_swing_records(self, mock_current):
+        self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+        )
+
+        Command()._monitor_recommendations()
+
+        mock_current.assert_not_called()
 
     @patch.object(Command, '_monitor_recommendations')
     def test_independent_monitor_loop_runs_and_stops_cleanly(self, mock_monitor):
