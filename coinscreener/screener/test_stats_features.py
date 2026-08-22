@@ -78,12 +78,14 @@ class StatsListViewTestCase(TestCase):
     def test_invalid_filters_are_ignored_safely(self):
         response = self.client.get(reverse('stats_list'), {
             'status': 'not-a-status',
+            'trade_type': 'not-a-type',
             'date_from': 'invalid-date',
         })
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['total'], 3)
         self.assertEqual(response.context['selected_status'], '')
+        self.assertEqual(response.context['selected_trade_type'], '')
         self.assertEqual(response.context['date_from'], '')
 
     def test_trade_type_filter_distinguishes_danta_and_swing(self):
@@ -103,6 +105,27 @@ class StatsListViewTestCase(TestCase):
         recommendation = response.context['recommendations'][0]
         self.assertEqual(recommendation.trade_type, 'swing')
         self.assertContains(response, '스윙')
+
+    @patch(
+        'coinscreener.screener.views.danta_views._display_date',
+        return_value=timezone.localdate(),
+    )
+    def test_danta_page_excludes_swing_records(self, _mock_display_date):
+        self._recommendation(
+            trade_type='swing',
+            status='pending',
+            result_pct=None,
+            highest_price=None,
+        )
+
+        response = self.client.get(reverse('danta_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['recommendations'])
+        self.assertTrue(all(
+            rec.trade_type == 'danta'
+            for rec in response.context['recommendations']
+        ))
 
     def test_existing_records_default_to_danta(self):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
