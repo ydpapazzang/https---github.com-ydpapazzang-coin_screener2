@@ -9,10 +9,10 @@ from ..models import DailyRecommendation
 
 
 def _display_date():
-    """KST 오전 9시 이전에는 직전 추천일을 표시한다."""
+    """KST 오전 9시 10분 이전에는 직전 추천일을 표시한다."""
     now_kst = timezone.localtime()
     display_date = now_kst.date()
-    if now_kst.hour < 9:
+    if (now_kst.hour, now_kst.minute) < (9, 10):
         display_date = display_date - timezone.timedelta(days=1)
     return display_date
 
