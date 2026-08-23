@@ -363,6 +363,17 @@ class DailyRecommendation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @property
+    def exit_reason_display(self):
+        labels = {
+            'entry_expired': '진입 만료',
+            'stop_loss': '초기 손절',
+            'trailing_stop': '추적 손절',
+            'ema20_exit': 'EMA20 이탈',
+            'time_exit': '20일 기간 종료',
+        }
+        return labels.get(self.exit_reason, self.exit_reason or '-')
+
+    @property
     def max_profit_pct(self):
         """진입 후 관측된 최고가 기준 최대 수익률."""
         if (
