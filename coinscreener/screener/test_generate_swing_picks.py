@@ -44,10 +44,6 @@ class GenerateSwingPicksTestCase(TestCase):
         )
 
     @patch(
-        'coinscreener.screener.management.commands.generate_swing_picks.send_message',
-        create=True,
-    )
-    @patch(
         'coinscreener.screener.telegram.send_message',
         return_value={'ok': True},
     )
@@ -75,8 +71,7 @@ class GenerateSwingPicksTestCase(TestCase):
         _mock_tickers,
         mock_regime,
         mock_build,
-        _mock_telegram,
-        _unused_local_send,
+        _mock_telegram
     ):
         today = timezone.localdate()
         mock_ohlcv.return_value = pd.DataFrame({
