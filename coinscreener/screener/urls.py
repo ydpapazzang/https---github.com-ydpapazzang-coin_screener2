@@ -35,6 +35,7 @@ urlpatterns = [
     path('cron/scan-debug/',                         views.cron_scan,      name='cron_scan_debug'),
     path('cron/prefetch/',                           views.cron_prefetch,  name='cron_prefetch'),
     path('cron/daily-picks/',                        views.cron_daily_picks, name='cron_daily_picks'),
+    path('cron/swing-picks/',                        views.cron_swing_picks, name='cron_swing_picks'),
     
     # 단타·스윙 추천 및 통계 탭
     path('danta/', views.danta_list, name='danta_list'),
