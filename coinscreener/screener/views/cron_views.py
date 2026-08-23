@@ -380,6 +380,7 @@ def cron_daily_picks(request):
         return JsonResponse({'ok': False, 'error': str(e)})
 
 @csrf_exempt
+@require_GET
 def cron_swing_picks(request):
     """인증된 외부 스케줄러에서 일일 스윙 추천 생성을 시작한다."""
     try:
