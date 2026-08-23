@@ -321,9 +321,10 @@ class DailyRecommendation(models.Model):
         ('pending', '진입대기'),
         ('active', '매수완료'),
         ('success', '목표달성'),
+        ('partial', '부분익절'),
         ('failed', '손절이탈'),
         ('closed', '마감'),
-        ('skipped', '단타휴식'),
+        ('skipped', '추천휴식'),
     ]
     status = models.CharField(max_length=20, choices=status_choices, default='pending', verbose_name="상태")
     result_pct = models.FloatField(null=True, blank=True, verbose_name="최종 수익률(%)")
@@ -331,6 +332,32 @@ class DailyRecommendation(models.Model):
     # 성적 추적용
     highest_price = models.FloatField(null=True, blank=True, verbose_name="진입 후 최고가")
     lowest_price = models.FloatField(null=True, blank=True, verbose_name="진입 후 최저가")
+
+    # 스윙 진입·부분익절·최종청산 기록
+    entry_expires_on = models.DateField(
+        null=True, blank=True, verbose_name="진입 신호 만료일"
+    )
+    entered_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="실제 진입 시각"
+    )
+    initial_stop_loss = models.FloatField(
+        null=True, blank=True, verbose_name="초기 손절가"
+    )
+    partial_exit_price = models.FloatField(
+        null=True, blank=True, verbose_name="부분 익절가"
+    )
+    partial_exit_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="부분 익절 시각"
+    )
+    exit_price = models.FloatField(
+        null=True, blank=True, verbose_name="최종 청산가"
+    )
+    exit_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="최종 청산 시각"
+    )
+    exit_reason = models.CharField(
+        max_length=30, blank=True, verbose_name="청산 사유"
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
