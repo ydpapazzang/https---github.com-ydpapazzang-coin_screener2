@@ -173,7 +173,7 @@
                     {% if rec.status == 'pending' and rec.entry_expires_on %}
                         · 진입 유효 {{ rec.entry_expires_on|date:"m.d" }}까지
                     {% endif %}
-                    {% if rec.exit_reason %} · 종료 {{ rec.exit_reason }}{% endif %}
+                    {% if rec.exit_reason %} · 종료 {{ rec.exit_reason_display }}{% endif %}
                 </div>
                 <details>
                     <summary class="meta">추천 근거 보기</summary>
