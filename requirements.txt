@@ -9,3 +9,4 @@ dj-database-url
 psycopg2-binary
 finance-datareader
 pybithumb
+requests>=2.31,<3
