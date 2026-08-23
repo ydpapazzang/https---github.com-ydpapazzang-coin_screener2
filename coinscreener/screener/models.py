@@ -294,8 +294,21 @@ class VisitLog(models.Model):
 
 
 class DailyRecommendation(models.Model):
-    """오늘의 단타 추천 코인 (매일 오전 9시 생성)"""
+    """단타·스윙 추천과 성적을 함께 저장하는 모델."""
+
+    trade_type_choices = [
+        ('danta', '단타'),
+        ('swing', '스윙'),
+    ]
+
     date = models.DateField(verbose_name="추천일")
+    trade_type = models.CharField(
+        max_length=10,
+        choices=trade_type_choices,
+        default='danta',
+        db_index=True,
+        verbose_name="매매 유형",
+    )
     coin_ticker = models.CharField(max_length=50, verbose_name="티커")
     coin_name = models.CharField(max_length=100, verbose_name="종목명")
     entry_price = models.FloatField(verbose_name="진입 추천가")
@@ -308,9 +321,10 @@ class DailyRecommendation(models.Model):
         ('pending', '진입대기'),
         ('active', '매수완료'),
         ('success', '목표달성'),
+        ('partial', '부분익절'),
         ('failed', '손절이탈'),
         ('closed', '마감'),
-        ('skipped', '단타휴식'),
+        ('skipped', '추천휴식'),
     ]
     status = models.CharField(max_length=20, choices=status_choices, default='pending', verbose_name="상태")
     result_pct = models.FloatField(null=True, blank=True, verbose_name="최종 수익률(%)")
@@ -318,9 +332,46 @@ class DailyRecommendation(models.Model):
     # 성적 추적용
     highest_price = models.FloatField(null=True, blank=True, verbose_name="진입 후 최고가")
     lowest_price = models.FloatField(null=True, blank=True, verbose_name="진입 후 최저가")
+
+    # 스윙 진입·부분익절·최종청산 기록
+    entry_expires_on = models.DateField(
+        null=True, blank=True, verbose_name="진입 신호 만료일"
+    )
+    entered_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="실제 진입 시각"
+    )
+    initial_stop_loss = models.FloatField(
+        null=True, blank=True, verbose_name="초기 손절가"
+    )
+    partial_exit_price = models.FloatField(
+        null=True, blank=True, verbose_name="부분 익절가"
+    )
+    partial_exit_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="부분 익절 시각"
+    )
+    exit_price = models.FloatField(
+        null=True, blank=True, verbose_name="최종 청산가"
+    )
+    exit_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="최종 청산 시각"
+    )
+    exit_reason = models.CharField(
+        max_length=30, blank=True, verbose_name="청산 사유"
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    @property
+    def exit_reason_display(self):
+        labels = {
+            'entry_expired': '진입 만료',
+            'stop_loss': '초기 손절',
+            'trailing_stop': '추적 손절',
+            'ema20_exit': 'EMA20 이탈',
+            'time_exit': '20일 기간 종료',
+        }
+        return labels.get(self.exit_reason, self.exit_reason or '-')
 
     @property
     def max_profit_pct(self):
@@ -334,8 +385,11 @@ class DailyRecommendation(models.Model):
         return ((self.highest_price - self.entry_price) / self.entry_price) * 100
 
     class Meta:
-        ordering = ['-date', 'coin_ticker']
-        unique_together = ('date', 'coin_ticker')
+        ordering = ['-date', 'trade_type', 'coin_ticker']
+        unique_together = ('date', 'coin_ticker', 'trade_type')
 
     def __str__(self):
-        return f"[{self.date}] {self.coin_name} - {self.get_status_display()}"
+        return (
+            f"[{self.date}] [{self.get_trade_type_display()}] "
+            f"{self.coin_name} - {self.get_status_display()}"
+        )

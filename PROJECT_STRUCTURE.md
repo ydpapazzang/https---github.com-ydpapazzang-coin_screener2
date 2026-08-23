@@ -9,9 +9,9 @@
 * **데이터베이스:** SQLite (`db.sqlite3`) - 단일 소스 캐시 DB로 활용
 * **백그라운드 서비스 (Systemd):**
   1. `coinscreener.service`: Gunicorn으로 Django 웹 애플리케이션 구동 (`127.0.0.1:8000`, worker 1개 / thread 2개)
-  2. `upbit-crawler.service`: 업비트 & 빗썸 24시간 크롤러 + 전체 수집과 독립된 60초 단타 성적 추적 스레드
+  2. `upbit-crawler.service`: 업비트 & 빗썸 24시간 크롤러 + 전체 수집과 독립된 60초 단타·스윙 성적 추적 스레드
   3. `kospi-crawler.service`: 코스피/ETF 전용 1시간 주기 크롤러 (평일 09:00~15:30 전용)
-  4. **`Crontab` 스케줄러**: 매일 아침 09:00 정각 `generate_daily_picks.py` 실행 (오늘의 단타 AI 추천) 및 자동 배포(`git pull`)
+  4. **스케줄러**: 서버 Crontab과 Authorization 헤더를 사용하는 cron-job.org에서 단타 생성을 호출합니다. 스윙은 `/cron/swing-picks/`를 KST 09:20에 별도 등록하도록 준비되어 있습니다.
 
 ---
 
@@ -27,11 +27,14 @@ coin-screener/
 │       ├── telegram.py       # 텔레그램 알림 발송 유틸리티 (메시지 렌더링, 딥링크 처리, 에러 핸들링)
 │       ├── engine.py         # [핵심] 차트 지표(EMA, 일목균형표 등) 계산 및 실시간 돌파(Cross) 연산 엔진
 │       ├── backtest.py       # [핵심] 과거 데이터를 활용한 시뮬레이션 및 백테스트 전용 평가 엔진
+│       ├── daily_picks.py     # 단타 추천 계산과 진입가 안전 기준
+│       ├── swing_strategy.py  # 스윙 일봉 추세·BTC 국면·ATR 위험관리
 │       ├── management/
 │       │   └── commands/     # 백그라운드 크롤링 봇 스크립트
-│       │       ├── update_upbit_cache.py   # 코인 캐시 봇 + 60초 독립 단타 성적 추적 스레드
+│       │       ├── update_upbit_cache.py   # 코인 캐시 봇 + 60초 단타·스윙 성적 추적 스레드
 │       │       ├── update_kospi_cache.py   # 코스피(ETF) 캐시 봇 (평일 낮 1시간 주기)
-│       │       └── generate_daily_picks.py # [핵심] 일일 단타 추천 봇 (K값 최적화 및 BTC 시장 필터 적용)
+│       │       ├── generate_daily_picks.py # 일일 단타 추천 봇
+│       │       └── generate_swing_picks.py # 일일 스윙 추천 봇
 │       └── views/
 │           ├── scan_views.py       # 실시간 스크리너 엔진 (DB 캐시 기반 종목 필터링 로직)
 │           ├── cron_views.py       # 스케줄된 알림 발송 로직 (매일 아침 9시 알림 등)
@@ -47,7 +50,7 @@ coin-screener/
 1. **데이터 수집 (Background Bots):**
    * `update_upbit_cache`와 `update_kospi_cache`가 각각 자신의 주기에 맞춰 거래소 API 및 네이버 증권을 호출합니다.
    * 전체 코인 캐시 수집은 종목 수와 API 응답 시간에 따라 5분을 초과할 수 있습니다.
-   * 단타 추천 성적 추적은 전체 수집 루프와 분리된 스레드에서 60초마다 실행되어 진입 후 최고가를 기록합니다.
+   * 단타·스윙 성적 추적은 전체 수집 루프와 분리된 스레드에서 60초마다 실행됩니다. 스윙은 진입 만료, 부분익절, 추적손절과 기간 종료도 기록합니다.
    * 가져온 OHLCV(시가,고가,저가,종가,거래량) 데이터는 `OHLCVCache`라는 SQLite 테이블에 영구 저장됩니다.
 
 2. **종목 검색 엔진 (`engine.py` & `scan_views.py`):**
@@ -63,7 +66,13 @@ coin-screener/
    * 래리 윌리엄스 변동성 돌파 전략을 기반으로 최근 14일 백테스트를 수행해 최적의 K값을 찾아 3종목을 추천합니다.
    * **[BTC 방어 필터]** 비트코인의 1시간봉 EMA(20>60), 1시간 급락 여부(-1.5% 초과), 15분봉 RSI(>50)를 먼저 점검하여, 하락장에서는 단타 추천을 쉬는 로직이 탑재되어 있습니다.
 
-5. **텔레그램 알림 발송 (`telegram.py`):**
+5. **일일 스윙 추천 봇 (`generate_swing_picks.py`):**
+   * BTC 일봉이 상승 국면일 때만 유동성 상위 KRW 종목을 평가합니다.
+   * 종가 > EMA20 > EMA60, 20일 모멘텀, 20일 최고가 돌파와 ATR 안전 기준을 사용합니다.
+   * 진입가 괴리는 최대 +2%, 추격 진입은 최대 +1%로 제한하며 신호는 2일 후 만료됩니다.
+   * 최대 3종목을 추적하고, 2R에서 50% 부분익절한 뒤 EMA20·3ATR 추적손절 또는 20일 기간 종료를 적용합니다.
+
+6. **텔레그램 알림 발송 (`telegram.py`):**
    * 봇이 텔레그램 메시지를 보낼 때는 에러 핸들링과 함께 `.env`에서 토큰을 안전하게 불러와 발송합니다.
    * 알림 하단에는 `🔗 웹사이트로이동하기` 형식의 깔끔한 딥링크가 삽입됩니다.
 
@@ -73,6 +82,9 @@ coin-screener/
 ```bash
 # 최신 코드 깃허브에서 가져오기
 git pull origin main
+
+# 모델 변경 반영
+./venv/bin/python manage.py migrate
 
 # 일반 코드/.env 변경 후 웹서버 재시작
 sudo systemctl restart coinscreener

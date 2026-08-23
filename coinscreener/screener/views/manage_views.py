@@ -38,8 +38,8 @@ def manage_dashboard(request):
     alerts_total = AlertHistory.objects.count()
 
     # ── 단타 ──
-    danta_all = _danta_stats(DailyRecommendation.objects.all())
-    danta_today_qs = DailyRecommendation.objects.filter(date=today)
+    danta_all = _danta_stats(DailyRecommendation.objects.filter(trade_type='danta'))
+    danta_today_qs = DailyRecommendation.objects.filter(date=today, trade_type='danta')
     danta_today = danta_today_qs.count()
 
     # ── 방문 ──
@@ -62,7 +62,7 @@ def manage_dashboard(request):
     cache_count = OHLCVCache.objects.count()
     cache_tickers = OHLCVCache.objects.values('ticker').distinct().count()
 
-    last_pick = DailyRecommendation.objects.order_by('-date').values_list('date', flat=True).first()
+    last_pick = DailyRecommendation.objects.filter(trade_type='danta').order_by('-date').values_list('date', flat=True).first()
 
     # ─────────── 차트 데이터 (Chart.js, 브라우저 렌더링) ───────────
     chart_days = 14
@@ -90,7 +90,7 @@ def manage_dashboard(request):
 
     # 단타 누적 수익률 곡선 (확정 손익만, 날짜순 누적)
     decided = (
-        DailyRecommendation.objects.filter(result_pct__isnull=False)
+        DailyRecommendation.objects.filter(trade_type='danta', result_pct__isnull=False)
         .order_by('date').values('date', 'result_pct')
     )
     day_sum = {}
@@ -105,7 +105,7 @@ def manage_dashboard(request):
     # 단타 승/패 도넛 + 상태 분포 도넛
     winloss_series = [danta_all['wins'], danta_all['losses']]
     smap = dict(
-        DailyRecommendation.objects.values('status')
+        DailyRecommendation.objects.filter(trade_type='danta').values('status')
         .annotate(c=Count('id')).values_list('status', 'c')
     )
     status_labels = [lbl for val, lbl in DailyRecommendation.status_choices]
@@ -168,7 +168,7 @@ def manage_alerts(request):
 
 @staff_member_required
 def manage_danta(request):
-    qs = DailyRecommendation.objects.all()
+    qs = DailyRecommendation.objects.filter(trade_type='danta')
 
     status = request.GET.get('status')
     if status:

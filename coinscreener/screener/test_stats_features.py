@@ -78,13 +78,65 @@ class StatsListViewTestCase(TestCase):
     def test_invalid_filters_are_ignored_safely(self):
         response = self.client.get(reverse('stats_list'), {
             'status': 'not-a-status',
+            'trade_type': 'not-a-type',
             'date_from': 'invalid-date',
         })
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['total'], 3)
         self.assertEqual(response.context['selected_status'], '')
+        self.assertEqual(response.context['selected_trade_type'], '')
         self.assertEqual(response.context['date_from'], '')
+
+    def test_trade_type_filter_distinguishes_danta_and_swing(self):
+        self._recommendation(
+            trade_type='swing',
+            status='pending',
+            result_pct=None,
+            highest_price=None,
+        )
+
+        response = self.client.get(reverse('stats_list'), {
+            'trade_type': 'swing',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['total'], 1)
+        recommendation = response.context['recommendations'][0]
+        self.assertEqual(recommendation.trade_type, 'swing')
+        self.assertContains(response, '스윙')
+
+    @patch(
+        'coinscreener.screener.views.danta_views._display_date',
+        return_value=timezone.localdate(),
+    )
+    def test_danta_page_excludes_swing_records(self, _mock_display_date):
+        self._recommendation(
+            trade_type='swing',
+            status='pending',
+            result_pct=None,
+            highest_price=None,
+        )
+
+        response = self.client.get(reverse('danta_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['recommendations'])
+        self.assertTrue(all(
+            rec.trade_type == 'danta'
+            for rec in response.context['recommendations']
+        ))
+
+    def test_existing_records_default_to_danta(self):
+        recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
+        self.assertEqual(recommendation.trade_type, 'danta')
+
+    def test_swing_page_describes_live_strategy(self):
+        response = self.client.get(reverse('swing_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '일봉 추세 돌파')
+        self.assertContains(response, '현재 스윙 추천이 없습니다')
 
     def test_max_profit_property_uses_highest_observed_price(self):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
@@ -141,6 +193,109 @@ class RecommendationMonitorTestCase(TestCase):
         self.assertEqual(recommendation.status, 'success')
         self.assertEqual(recommendation.highest_price, 108.0)
         self.assertAlmostEqual(recommendation.max_profit_pct, 8.0)
+
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price'
+    )
+    def test_danta_monitor_ignores_swing_records(self, mock_current):
+        self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+        )
+
+        Command()._monitor_danta_recommendations()
+
+        mock_current.assert_not_called()
+
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price'
+    )
+    def test_expired_swing_signal_closes_without_price_request(self, mock_current):
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='pending',
+            result_pct=None,
+            entry_expires_on=timezone.localdate() - timedelta(days=1),
+        )
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'closed')
+        self.assertEqual(recommendation.exit_reason, 'entry_expired')
+        mock_current.assert_not_called()
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price',
+        return_value=101.0,
+    )
+    def test_swing_target_records_half_exit(
+        self, _mock_current, mock_ohlcv, _mock_sleep
+    ):
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+            highest_price=None,
+            lowest_price=None,
+            initial_stop_loss=98.5,
+        )
+        mock_ohlcv.side_effect = [
+            pd.DataFrame([{
+                'open': 101.0,
+                'high': 103.0,
+                'low': 100.0,
+                'close': 102.0,
+            }]),
+            None,
+        ]
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'partial')
+        self.assertEqual(
+            recommendation.partial_exit_price,
+            recommendation.target_price,
+        )
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price',
+        return_value=101.0,
+    )
+    def test_swing_same_candle_uses_conservative_stop_first(
+        self, _mock_current, mock_ohlcv, _mock_sleep
+    ):
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+            highest_price=None,
+            lowest_price=None,
+            initial_stop_loss=98.5,
+        )
+        mock_ohlcv.return_value = pd.DataFrame([{
+            'open': 101.0,
+            'high': 103.0,
+            'low': 98.0,
+            'close': 101.0,
+        }])
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'failed')
+        self.assertIsNone(recommendation.partial_exit_price)
+        self.assertEqual(recommendation.exit_reason, 'stop_loss')
 
     @patch.object(Command, '_monitor_recommendations')
     def test_independent_monitor_loop_runs_and_stops_cleanly(self, mock_monitor):

@@ -378,3 +378,28 @@ def cron_daily_picks(request):
     except Exception as e:
         from django.http import JsonResponse
         return JsonResponse({'ok': False, 'error': str(e)})
+
+@csrf_exempt
+@require_GET
+def cron_swing_picks(request):
+    """인증된 외부 스케줄러에서 일일 스윙 추천 생성을 시작한다."""
+    try:
+        if not is_cron_request_authorized(request):
+            return HttpResponseForbidden('권한이 없습니다.')
+
+        from django.core.management import call_command
+        import threading
+
+        thread = threading.Thread(
+            target=lambda: call_command('generate_swing_picks'),
+            name='generate-swing-picks',
+        )
+        thread.start()
+        return JsonResponse({
+            'ok': True,
+            'message': 'Swing picks generation started.',
+        })
+    except Exception as exc:
+        logger.exception("Failed to start Swing picks generation")
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=500)
+

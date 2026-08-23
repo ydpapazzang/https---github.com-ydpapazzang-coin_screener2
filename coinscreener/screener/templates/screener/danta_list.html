@@ -148,7 +148,7 @@
 {% block content %}
 <div class="danta-header">
     <div class="danta-title">🔥 오늘의 단타 AI 추천</div>
-    <div class="danta-subtitle">{{ date|date:"Y년 m월 d일" }} (KST 09:00 갱신)</div>
+    <div class="danta-subtitle">{{ date|date:"Y년 m월 d일" }} (KST 09:10 갱신)</div>
 </div>
 
 <div class="disclaimer">
@@ -162,7 +162,7 @@
 <div class="card-list">
     {% if not recommendations %}
         <div style="text-align: center; color: var(--text-secondary); margin-top: 40px;">
-            아직 추천된 코인이 없습니다.<br>오전 9시를 기다려주세요!
+            아직 추천된 코인이 없습니다.<br>오전 9시 10분 이후 확인해주세요!
         </div>
     {% elif recommendations.0.status == 'skipped' %}
         <div style="text-align: center; color: var(--text-secondary); margin-top: 40px; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 12px;">

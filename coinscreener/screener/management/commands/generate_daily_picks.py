@@ -33,7 +33,7 @@ class Command(BaseCommand):
             return
 
         # 이미 오늘 자 추천이 있으면 스킵 (중복 방지)
-        if DailyRecommendation.objects.filter(date=today_date).exists():
+        if DailyRecommendation.objects.filter(date=today_date, trade_type='danta').exists():
             self.stdout.write(self.style.WARNING(f"[{today_date}] 이미 오늘의 추천 코인이 생성되어 있습니다. 스킵합니다."))
             return
 
@@ -49,7 +49,7 @@ class Command(BaseCommand):
                 if ema20 <= ema60:
                     reason_msg = f"BTC 1시간봉 역배열 상태 (EMA20 < EMA60)"
                     self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
-                    DailyRecommendation.objects.create(date=today_date, coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
+                    DailyRecommendation.objects.create(date=today_date, trade_type='danta', coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
                     return
 
                 # 최근 1시간 하락폭 체크 (직전 종가 대비 현재가 등락률)
@@ -57,7 +57,7 @@ class Command(BaseCommand):
                 if btc_change <= -1.5:
                     reason_msg = f"BTC 최근 1시간 급락 (하락폭 {btc_change:.2f}%)"
                     self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
-                    DailyRecommendation.objects.create(date=today_date, coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
+                    DailyRecommendation.objects.create(date=today_date, trade_type='danta', coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
                     return
             else:
                 self.stdout.write(self.style.ERROR("BTC 1시간봉 데이터를 가져오지 못했습니다."))
@@ -75,7 +75,7 @@ class Command(BaseCommand):
                 if current_rsi <= 50:
                     reason_msg = f"BTC 15분봉 매수심리 악화 (RSI {current_rsi:.1f} <= 50)"
                     self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
-                    DailyRecommendation.objects.create(date=today_date, coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
+                    DailyRecommendation.objects.create(date=today_date, trade_type='danta', coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
                     return
             else:
                 self.stdout.write(self.style.ERROR("BTC 15분봉 데이터를 가져오지 못했습니다."))
@@ -157,6 +157,7 @@ class Command(BaseCommand):
             reason_msg = "현재가 괴리·변동폭·백테스트 안전 기준을 통과한 종목이 없습니다."
             DailyRecommendation.objects.create(
                 date=today_date,
+                trade_type='danta',
                 coin_ticker='SKIP',
                 coin_name='단타휴식',
                 entry_price=0,
@@ -175,6 +176,7 @@ class Command(BaseCommand):
         for rec in recommendations:
             DailyRecommendation.objects.create(
                 date=today_date,
+                trade_type='danta',
                 coin_ticker=rec['ticker'],
                 coin_name=rec['name'],
                 entry_price=rec['entry_price'],
