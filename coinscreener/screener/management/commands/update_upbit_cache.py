@@ -268,7 +268,7 @@ class Command(BaseCommand):
                 # 한 캔들에서 손절과 목표가가 함께 관측되면 보수적으로 손절 우선.
                 if observed_low <= rec.stop_loss:
                     self._close_swing(
-                        rec, rec.stop_loss, 'stop_loss', now_kst
+                        rec, min(rec.stop_loss, current_price), 'stop_loss', now_kst
                     )
                     continue
 
