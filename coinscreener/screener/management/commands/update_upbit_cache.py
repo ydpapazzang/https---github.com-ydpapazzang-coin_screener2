@@ -281,6 +281,11 @@ class Command(BaseCommand):
                         f"[{rec.coin_ticker}] 2R 도달, 50% 부분익절"
                     ))
 
+                entered_date = (
+                    timezone.localtime(rec.entered_at).date()
+                    if rec.entered_at
+                    else rec.date
+                )
                 daily = pyupbit.get_ohlcv(
                     rec.coin_ticker, interval='day', count=61
                 )
@@ -302,7 +307,18 @@ class Command(BaseCommand):
                         axis=1,
                     ).max(axis=1)
                     atr14 = float(true_range.rolling(14).mean().iloc[-1])
-                    trailing_stop = float(close.max()) - 3 * atr14
+                    since_entry = completed.loc[
+                        [
+                            pd.Timestamp(index).date() >= entered_date
+                            for index in completed.index
+                        ]
+                    ]
+                    highest_close = float(
+                        since_entry['close'].max()
+                        if not since_entry.empty
+                        else close.iloc[-1]
+                    )
+                    trailing_stop = highest_close - 3 * atr14
 
                     if (
                         math.isfinite(trailing_stop)
@@ -320,11 +336,6 @@ class Command(BaseCommand):
                         )
                         continue
 
-                entered_date = (
-                    timezone.localtime(rec.entered_at).date()
-                    if rec.entered_at
-                    else rec.date
-                )
                 if today_date >= entered_date + datetime.timedelta(
                     days=MAX_HOLD_DAYS
                 ):
