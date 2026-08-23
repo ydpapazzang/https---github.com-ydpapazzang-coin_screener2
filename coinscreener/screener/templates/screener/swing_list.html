@@ -6,63 +6,99 @@
 {% block extra_head %}
 <style>
     .swing-header {
-        padding: 28px 20px;
+        padding: 26px 20px;
         background: linear-gradient(135deg, #654ea3 0%, #3f2b73 100%);
         border-radius: 0 0 20px 20px;
         text-align: center;
     }
-    .swing-title {
-        margin-bottom: 8px;
-        font-size: 22px;
-        font-weight: 700;
-    }
-    .swing-subtitle {
-        color: rgba(255,255,255,0.78);
-        font-size: 13px;
-    }
-    .swing-empty {
-        margin: 28px 20px;
-        padding: 28px 20px;
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 16px;
-        background: var(--surface-color);
-        text-align: center;
-    }
-    .swing-empty-icon { font-size: 34px; }
-    .swing-empty-title {
-        margin-top: 12px;
-        font-size: 17px;
-        font-weight: 700;
-    }
-    .swing-empty-copy {
-        margin-top: 10px;
-        color: var(--text-secondary);
-        font-size: 13px;
+    .swing-title { margin-bottom: 8px; font-size: 22px; font-weight: 700; }
+    .swing-subtitle { color: rgba(255,255,255,.78); font-size: 13px; }
+    .strategy-note {
+        margin: 14px 20px;
+        padding: 12px 14px;
+        border: 1px solid rgba(185,164,255,.22);
+        border-radius: 10px;
+        color: #cfc6ed;
+        background: rgba(101,78,163,.12);
+        font-size: 11.5px;
         line-height: 1.6;
     }
     .swing-list {
         display: flex;
         flex-direction: column;
         gap: 12px;
-        padding: 20px;
+        padding: 4px 20px 24px;
     }
     .swing-card {
         padding: 18px;
-        border: 1px solid rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,.08);
         border-radius: 14px;
         background: var(--surface-color);
     }
-    .swing-card-title { font-size: 17px; font-weight: 700; }
-    .swing-card-type {
-        margin-left: 6px;
-        color: #b9a4ff;
-        font-size: 11px;
+    .swing-card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 13px;
     }
-    .swing-card-copy {
+    .coin-name { font-size: 18px; font-weight: 700; }
+    .coin-ticker { margin-left: 5px; color: var(--text-secondary); font-size: 11px; }
+    .status {
+        padding: 4px 8px;
+        border-radius: 999px;
+        color: #fff;
+        background: #4b4b4b;
+        font-size: 10px;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    .status-active { background: #2d7bfe; }
+    .status-partial { background: #8a5cf6; }
+    .status-success { background: #e74351; }
+    .status-failed { background: #2962ff; }
+    .price-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 7px;
+        font-size: 13px;
+    }
+    .price-label { color: var(--text-secondary); }
+    .price-value { font-weight: 700; }
+    .target { color: var(--up-color); }
+    .stop { color: #5b84ff; }
+    .meta {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(255,255,255,.06);
+        color: var(--text-secondary);
+        font-size: 11px;
+        line-height: 1.55;
+    }
+    .reason {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        color: #c8c8c8;
+        background: rgba(0,0,0,.18);
+        font-size: 11px;
+        line-height: 1.55;
+    }
+    .swing-empty {
+        margin: 28px 20px;
+        padding: 28px 20px;
+        border: 1px solid rgba(255,255,255,.08);
+        border-radius: 16px;
+        background: var(--surface-color);
+        text-align: center;
+    }
+    .swing-empty-title { font-size: 17px; font-weight: 700; }
+    .swing-empty-copy {
         margin-top: 10px;
         color: var(--text-secondary);
-        font-size: 12px;
-        line-height: 1.55;
+        font-size: 13px;
+        line-height: 1.6;
     }
 </style>
 {% endblock %}
@@ -72,38 +108,80 @@
 {% block content %}
 <div class="swing-header">
     <div class="swing-title">📈 스윙 AI 추천</div>
-    <div class="swing-subtitle">며칠 이상 보유하는 전략을 준비하고 있습니다.</div>
+    <div class="swing-subtitle">일봉 추세 돌파 · 예상 보유 3~20일 · KST 09:20 갱신</div>
+</div>
+
+<div class="strategy-note">
+    BTC 상승 추세에서만 신규 추천하며 최대 3종목을 동시에 추적합니다.
+    진입 신호는 2일 후 만료되고, 2R에서 50% 부분익절 후 추적손절을 적용합니다.
 </div>
 
 <div class="disclaimer">
-    ⚠️ 스윙 추천 로직은 아직 확정되지 않았습니다. 전략 검증이 끝나기 전에는
-    실제 추천을 생성하지 않습니다.
+    ⚠️ 아래 추천은 과거 데이터 기반 <b>참고 정보</b>이며 투자 권유나 수익 보장이 아닙니다.
+    실제 매매 전 가격과 시장 상황을 다시 확인하세요.
 </div>
 
-{% if recommendations %}
 <div class="swing-list">
-    {% for rec in recommendations %}
-    <div class="swing-card">
-        <div class="swing-card-title">
-            {{ rec.coin_name }}
-            <span class="swing-card-type">{{ rec.coin_ticker }} · 스윙</span>
+    {% if not recommendations %}
+        <div class="swing-empty">
+            <div class="swing-empty-title">현재 스윙 추천이 없습니다</div>
+            <div class="swing-empty-copy">
+                BTC 시장 필터 또는 종목 안전 기준을 통과한 후보가 없을 수 있습니다.
+            </div>
         </div>
-        <div class="swing-card-copy">
-            진입 추천가 {{ rec.entry_price|floatformat:-2|intcomma }}원 ·
-            목표가 {{ rec.target_price|floatformat:-2|intcomma }}원 ·
-            손절가 {{ rec.stop_loss|floatformat:-2|intcomma }}원
-        </div>
-    </div>
-    {% endfor %}
+    {% else %}
+        {% for rec in recommendations %}
+            {% if rec.coin_ticker == 'SKIP' %}
+            <div class="swing-card">
+                <div class="swing-card-head">
+                    <div class="coin-name">스윙 휴식</div>
+                    <span class="status">{{ rec.date|date:"m.d" }}</span>
+                </div>
+                <div class="reason">{{ rec.reason }}</div>
+            </div>
+            {% else %}
+            <div class="swing-card">
+                <div class="swing-card-head">
+                    <div>
+                        <span class="coin-name">{{ rec.coin_name }}</span>
+                        <span class="coin-ticker">{{ rec.coin_ticker }}</span>
+                    </div>
+                    <span class="status status-{{ rec.status }}">{{ rec.get_status_display }}</span>
+                </div>
+                <div class="price-row">
+                    <span class="price-label">진입 추천가</span>
+                    <span class="price-value">{{ rec.entry_price|floatformat:-2|intcomma }}원</span>
+                </div>
+                <div class="price-row">
+                    <span class="price-label">2R 부분익절가</span>
+                    <span class="price-value target">{{ rec.target_price|floatformat:-2|intcomma }}원</span>
+                </div>
+                <div class="price-row">
+                    <span class="price-label">{% if rec.status == 'partial' %}현재 추적손절가{% else %}손절가{% endif %}</span>
+                    <span class="price-value stop">{{ rec.stop_loss|floatformat:-2|intcomma }}원</span>
+                </div>
+                {% if rec.result_pct != None %}
+                <div class="price-row">
+                    <span class="price-label">최종 수익률</span>
+                    <span class="price-value {% if rec.result_pct > 0 %}target{% else %}stop{% endif %}">
+                        {% if rec.result_pct > 0 %}+{% endif %}{{ rec.result_pct|floatformat:2 }}%
+                    </span>
+                </div>
+                {% endif %}
+                <div class="meta">
+                    추천 {{ rec.date|date:"Y.m.d" }}
+                    {% if rec.status == 'pending' and rec.entry_expires_on %}
+                        · 진입 유효 {{ rec.entry_expires_on|date:"m.d" }}까지
+                    {% endif %}
+                    {% if rec.exit_reason %} · 종료 {{ rec.exit_reason }}{% endif %}
+                </div>
+                <details>
+                    <summary class="meta">추천 근거 보기</summary>
+                    <div class="reason">{{ rec.reason }}</div>
+                </details>
+            </div>
+            {% endif %}
+        {% endfor %}
+    {% endif %}
 </div>
-{% else %}
-<div class="swing-empty">
-    <div class="swing-empty-icon">🧭</div>
-    <div class="swing-empty-title">스윙 전략 준비 중</div>
-    <div class="swing-empty-copy">
-        투자 기간, 진입 조건, 목표가와 손절 기준을 검증한 뒤 공개할 예정입니다.<br>
-        현재는 메뉴와 성적 기록 구조만 준비되어 있습니다.
-    </div>
-</div>
-{% endif %}
 {% endblock %}
