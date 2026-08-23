@@ -34,10 +34,12 @@ def danta_list(request):
 def swing_list(request):
     """스윙 전략 확정을 위한 빈 화면과 향후 저장 데이터의 표시 기반."""
     display_date = _display_date()
+    recent_cutoff = display_date - timezone.timedelta(days=30)
     recommendations = DailyRecommendation.objects.filter(
-        date=display_date,
+        Q(status__in=['pending', 'active', 'partial'])
+        | Q(date__gte=recent_cutoff),
         trade_type='swing',
-    )
+    ).order_by('-date', 'coin_ticker')
 
     return render(request, 'screener/swing_list.html', {
         'recommendations': recommendations,
