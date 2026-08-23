@@ -204,9 +204,98 @@ class RecommendationMonitorTestCase(TestCase):
             result_pct=None,
         )
 
-        Command()._monitor_recommendations()
+        Command()._monitor_danta_recommendations()
 
         mock_current.assert_not_called()
+
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price'
+    )
+    def test_expired_swing_signal_closes_without_price_request(self, mock_current):
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='pending',
+            result_pct=None,
+            entry_expires_on=timezone.localdate() - timedelta(days=1),
+        )
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'closed')
+        self.assertEqual(recommendation.exit_reason, 'entry_expired')
+        mock_current.assert_not_called()
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price',
+        return_value=101.0,
+    )
+    def test_swing_target_records_half_exit(
+        self, _mock_current, mock_ohlcv, _mock_sleep
+    ):
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+            highest_price=None,
+            lowest_price=None,
+            initial_stop_loss=98.5,
+        )
+        mock_ohlcv.side_effect = [
+            pd.DataFrame([{
+                'open': 101.0,
+                'high': 103.0,
+                'low': 100.0,
+                'close': 102.0,
+            }]),
+            None,
+        ]
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'partial')
+        self.assertEqual(
+            recommendation.partial_exit_price,
+            recommendation.target_price,
+        )
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price',
+        return_value=101.0,
+    )
+    def test_swing_same_candle_uses_conservative_stop_first(
+        self, _mock_current, mock_ohlcv, _mock_sleep
+    ):
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+            highest_price=None,
+            lowest_price=None,
+            initial_stop_loss=98.5,
+        )
+        mock_ohlcv.return_value = pd.DataFrame([{
+            'open': 101.0,
+            'high': 103.0,
+            'low': 98.0,
+            'close': 101.0,
+        }])
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'failed')
+        self.assertIsNone(recommendation.partial_exit_price)
+        self.assertEqual(recommendation.exit_reason, 'stop_loss')
 
     @patch.object(Command, '_monitor_recommendations')
     def test_independent_monitor_loop_runs_and_stops_cleanly(self, mock_monitor):
