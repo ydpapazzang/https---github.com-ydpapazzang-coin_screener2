@@ -361,8 +361,13 @@
                             <span class="detail-value pct-down">{{ rec.stop_loss|floatformat:-2|intcomma }}원</span>
                         </div>
                         <div class="detail-item">
+                            {% if rec.trade_type == 'swing' %}
+                            <span class="detail-label">부분익절 기준</span>
+                            <span class="detail-value">위험 대비 2R</span>
+                            {% else %}
                             <span class="detail-label">적용 K값</span>
                             <span class="detail-value">{{ rec.k_value|floatformat:2 }}</span>
+                            {% endif %}
                         </div>
                         <div class="detail-item">
                             <span class="detail-label">진입 후 관측 최고가</span>
