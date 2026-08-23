@@ -3,6 +3,7 @@ import time
 
 import pyupbit
 import requests
+from django.core.cache import cache
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
@@ -65,6 +66,18 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        lock_key = f"swing-picks-generation:{timezone.localdate().isoformat()}"
+        if not cache.add(lock_key, True, timeout=30 * 60):
+            self.stdout.write(self.style.WARNING(
+                "스윙 추천 생성이 이미 실행 중입니다."
+            ))
+            return
+        try:
+            return self._generate(*args, **options)
+        finally:
+            cache.delete(lock_key)
+
+    def _generate(self, *args, **options):
         now_kst = timezone.localtime(timezone.now())
         today_date = now_kst.date()
 
