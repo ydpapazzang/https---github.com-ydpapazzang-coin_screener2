@@ -131,12 +131,12 @@ class StatsListViewTestCase(TestCase):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
         self.assertEqual(recommendation.trade_type, 'danta')
 
-    def test_swing_page_is_available_before_strategy_is_implemented(self):
+    def test_swing_page_describes_live_strategy(self):
         response = self.client.get(reverse('swing_list'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '스윙 전략 준비 중')
-        self.assertContains(response, '실제 추천을 생성하지 않습니다')
+        self.assertContains(response, '일봉 추세 돌파')
+        self.assertContains(response, '현재 스윙 추천이 없습니다')
 
     def test_max_profit_property_uses_highest_observed_price(self):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
