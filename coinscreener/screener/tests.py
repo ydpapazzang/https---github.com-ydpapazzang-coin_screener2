@@ -963,7 +963,12 @@ class StrategyTradingViewsTestCase(TestCase):
 class CronBearerAuthorizationTestCase(TestCase):
     @patch.dict('os.environ', {'CRON_SECRET': 'header-only-secret'})
     def test_query_string_secret_is_rejected_for_all_cron_endpoints(self):
-        for path in ('/cron/scan/', '/cron/prefetch/', '/cron/daily-picks/'):
+        for path in (
+            '/cron/scan/',
+            '/cron/prefetch/',
+            '/cron/daily-picks/',
+            '/cron/swing-picks/',
+        ):
             with self.subTest(path=path):
                 response = self.client.get(f'{path}?secret=header-only-secret')
                 self.assertEqual(response.status_code, 403)
@@ -991,6 +996,17 @@ class CronBearerAuthorizationTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()['ok'])
         mock_call_command.assert_called_once_with('generate_daily_picks')
+
+    @patch.dict('os.environ', {'CRON_SECRET': 'header-only-secret'})
+    @patch('django.core.management.call_command')
+    def test_swing_picks_accepts_bearer_token(self, mock_call_command):
+        response = self.client.get(
+            '/cron/swing-picks/',
+            HTTP_AUTHORIZATION='Bearer header-only-secret',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        mock_call_command.assert_called_once_with('generate_swing_picks')
 
 
 class RemovedOperationalEndpointsTestCase(TestCase):
