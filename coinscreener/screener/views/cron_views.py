@@ -392,7 +392,6 @@ def cron_swing_picks(request):
         thread = threading.Thread(
             target=lambda: call_command('generate_swing_picks'),
             name='generate-swing-picks',
-            daemon=True,
         )
         thread.start()
         return JsonResponse({
