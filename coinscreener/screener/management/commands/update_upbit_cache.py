@@ -98,6 +98,11 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Error during crawl cycle: {e}"))
 
     def _monitor_recommendations(self):
+        """단타와 스윙 추천을 각각의 규칙으로 추적한다."""
+        self._monitor_danta_recommendations()
+        self._monitor_swing_recommendations()
+
+    def _monitor_danta_recommendations(self):
         from django.utils import timezone
         from coinscreener.screener.models import DailyRecommendation
 
@@ -126,7 +131,6 @@ class Command(BaseCommand):
                     ))
 
                 if rec.status in ('active', 'success'):
-                    # 단순 현재가 샘플보다 정확하게 직전 1분봉의 장중 고가도 반영한다.
                     observed_high = current_price
                     minute_candle = pyupbit.get_ohlcv(
                         rec.coin_ticker, interval='minute1', count=1
@@ -141,7 +145,6 @@ class Command(BaseCommand):
                     if rec.lowest_price is None or current_price < rec.lowest_price:
                         rec.lowest_price = current_price
 
-                # 체결 상태 판정은 기존처럼 현재가 기준으로 유지한다.
                 if rec.status == 'active':
                     if current_price >= rec.target_price:
                         rec.status = 'success'
@@ -167,8 +170,180 @@ class Command(BaseCommand):
                         ))
 
                 rec.save()
-            except Exception:
-                pass
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(
+                    f"[{rec.coin_ticker}] 단타 추적 오류: {exc}"
+                ))
+            time.sleep(0.1)
+
+    @staticmethod
+    def _swing_result_pct(rec, exit_price):
+        final_return = (exit_price - rec.entry_price) / rec.entry_price * 100
+        if rec.partial_exit_price is None:
+            return final_return
+
+        partial_return = (
+            (rec.partial_exit_price - rec.entry_price)
+            / rec.entry_price
+            * 100
+        )
+        return partial_return * 0.5 + final_return * 0.5
+
+    def _close_swing(self, rec, exit_price, reason, now_kst):
+        rec.exit_price = exit_price
+        rec.exit_at = now_kst
+        rec.exit_reason = reason
+        rec.result_pct = self._swing_result_pct(rec, exit_price)
+        rec.status = 'success' if rec.result_pct > 0 else 'failed'
+        rec.save()
+        self.stdout.write(self.style.SUCCESS(
+            f"[{rec.coin_ticker}] 스윙 종료({reason}), "
+            f"최종 {rec.result_pct:.2f}%"
+        ))
+
+    def _monitor_swing_recommendations(self):
+        from django.utils import timezone
+        from coinscreener.screener.models import DailyRecommendation
+        from coinscreener.screener.swing_strategy import MAX_HOLD_DAYS
+
+        tracked_recs = DailyRecommendation.objects.filter(
+            trade_type='swing',
+            status__in=['pending', 'active', 'partial'],
+        )
+        if not tracked_recs.exists():
+            return
+
+        now_kst = timezone.localtime()
+        today_date = now_kst.date()
+        self.stdout.write("스윙 추천 종목 성적 추적 중...")
+
+        for rec in tracked_recs:
+            try:
+                if (
+                    rec.status == 'pending'
+                    and rec.entry_expires_on
+                    and today_date > rec.entry_expires_on
+                ):
+                    rec.status = 'closed'
+                    rec.exit_reason = 'entry_expired'
+                    rec.exit_at = now_kst
+                    rec.save()
+                    continue
+
+                current_price = float(pyupbit.get_current_price(rec.coin_ticker))
+                if not math.isfinite(current_price) or current_price <= 0:
+                    continue
+
+                observed_high = current_price
+                observed_low = current_price
+                minute_candle = pyupbit.get_ohlcv(
+                    rec.coin_ticker, interval='minute1', count=1
+                )
+                if minute_candle is not None and not minute_candle.empty:
+                    candle = minute_candle.iloc[-1]
+                    candle_high = float(candle['high'])
+                    candle_low = float(candle['low'])
+                    if math.isfinite(candle_high) and candle_high > 0:
+                        observed_high = max(observed_high, candle_high)
+                    if math.isfinite(candle_low) and candle_low > 0:
+                        observed_low = min(observed_low, candle_low)
+
+                if rec.status == 'pending':
+                    if observed_high < rec.entry_price:
+                        continue
+                    rec.status = 'active'
+                    rec.entered_at = now_kst
+                    rec.highest_price = max(rec.entry_price, observed_high)
+                    rec.lowest_price = min(rec.entry_price, observed_low)
+                    rec.save()
+                    self.stdout.write(self.style.SUCCESS(
+                        f"[{rec.coin_ticker}] 스윙 진입가 도달"
+                    ))
+
+                if rec.highest_price is None or observed_high > rec.highest_price:
+                    rec.highest_price = observed_high
+                if rec.lowest_price is None or observed_low < rec.lowest_price:
+                    rec.lowest_price = observed_low
+
+                # 한 캔들에서 손절과 목표가가 함께 관측되면 보수적으로 손절 우선.
+                if observed_low <= rec.stop_loss:
+                    self._close_swing(
+                        rec, rec.stop_loss, 'stop_loss', now_kst
+                    )
+                    continue
+
+                if rec.status == 'active' and observed_high >= rec.target_price:
+                    rec.status = 'partial'
+                    rec.partial_exit_price = rec.target_price
+                    rec.partial_exit_at = now_kst
+                    rec.save()
+                    self.stdout.write(self.style.SUCCESS(
+                        f"[{rec.coin_ticker}] 2R 도달, 50% 부분익절"
+                    ))
+
+                daily = pyupbit.get_ohlcv(
+                    rec.coin_ticker, interval='day', count=61
+                )
+                if daily is not None and len(daily) >= 21:
+                    completed = daily.iloc[:-1]
+                    close = completed['close'].astype(float)
+                    high = completed['high'].astype(float)
+                    low = completed['low'].astype(float)
+                    ema20 = float(
+                        close.ewm(span=20, adjust=False).mean().iloc[-1]
+                    )
+                    previous_close = close.shift(1)
+                    true_range = pd.concat(
+                        [
+                            high - low,
+                            (high - previous_close).abs(),
+                            (low - previous_close).abs(),
+                        ],
+                        axis=1,
+                    ).max(axis=1)
+                    atr14 = float(true_range.rolling(14).mean().iloc[-1])
+                    trailing_stop = float(close.max()) - 3 * atr14
+
+                    if (
+                        math.isfinite(trailing_stop)
+                        and math.isfinite(ema20)
+                    ):
+                        rec.stop_loss = max(
+                            rec.stop_loss,
+                            ema20,
+                            trailing_stop,
+                        )
+
+                    if float(close.iloc[-1]) < ema20:
+                        self._close_swing(
+                            rec, current_price, 'ema20_exit', now_kst
+                        )
+                        continue
+
+                entered_date = (
+                    timezone.localtime(rec.entered_at).date()
+                    if rec.entered_at
+                    else rec.date
+                )
+                if today_date >= entered_date + datetime.timedelta(
+                    days=MAX_HOLD_DAYS
+                ):
+                    self._close_swing(
+                        rec, current_price, 'time_exit', now_kst
+                    )
+                    continue
+
+                if current_price <= rec.stop_loss:
+                    self._close_swing(
+                        rec, current_price, 'trailing_stop', now_kst
+                    )
+                    continue
+
+                rec.save()
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(
+                    f"[{rec.coin_ticker}] 스윙 추적 오류: {exc}"
+                ))
             time.sleep(0.1)
 
     def _fetch_and_cache(self, ticker, timeframe, exchange='upbit', specs=None):
