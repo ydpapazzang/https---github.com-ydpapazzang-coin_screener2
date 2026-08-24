@@ -4,7 +4,6 @@ Description=Run Coin Screener Danta recommendations at 09:00 KST with retries
 [Timer]
 OnCalendar=*-*-* 09:00:00 Asia/Seoul
 OnCalendar=*-*-* 09:10:00 Asia/Seoul
-OnCalendar=*-*-* 09:20:00 Asia/Seoul
 AccuracySec=1min
 Persistent=true
 Unit=coinscreener-daily-picks.service
