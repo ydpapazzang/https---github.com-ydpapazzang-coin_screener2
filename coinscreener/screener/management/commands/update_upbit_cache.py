@@ -159,61 +159,63 @@ class Command(BaseCommand):
         }
         error_log_limit = 20
 
+        completed = 0
+        batch_size = workers * 4
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=workers,
             thread_name_prefix=f'{exchange}-ohlcv',
         ) as executor:
-            futures = [
-                executor.submit(
-                    self._fetch_only,
-                    ticker,
-                    timeframe,
-                    exchange,
-                    specs_by_tf.get(timeframe),
-                )
-                for ticker, timeframe in tasks
-            ]
-            for completed, future in enumerate(
-                concurrent.futures.as_completed(futures),
-                1,
-            ):
-                result = future.result()
-                stats['retried'] += max(0, result['attempts'] - 1)
-                if result['df'] is None:
-                    stats['failed'] += 1
-                    if stats['failed'] <= error_log_limit:
-                        self.stdout.write(self.style.ERROR(
-                            "[CRAWLER_ITEM_ERROR] "
-                            f"exchange={exchange} "
-                            f"ticker={result['ticker']} "
-                            f"timeframe={result['timeframe']} "
-                            f"attempts={result['attempts']} "
-                            f"error={result['error']}"
-                        ))
-                    continue
-
-                try:
-                    self._store_fetch_result(result)
-                    stats['success'] += 1
-                except Exception as exc:
-                    stats['failed'] += 1
-                    if stats['failed'] <= error_log_limit:
-                        self.stdout.write(self.style.ERROR(
-                            "[CRAWLER_ITEM_ERROR] "
-                            f"exchange={exchange} "
-                            f"ticker={result['ticker']} "
-                            f"timeframe={result['timeframe']} "
-                            "stage=save "
-                            f"error={type(exc).__name__}: {exc}"
-                        ))
-
-                if completed % 250 == 0:
-                    self.stdout.write(
-                        f"[CRAWLER_PROGRESS] exchange={exchange} "
-                        f"completed={completed}/{len(tasks)} "
-                        f"success={stats['success']} "
-                        f"failed={stats['failed']}"
+            for batch_start in range(0, len(tasks), batch_size):
+                batch = tasks[batch_start:batch_start + batch_size]
+                futures = [
+                    executor.submit(
+                        self._fetch_only,
+                        ticker,
+                        timeframe,
+                        exchange,
+                        specs_by_tf.get(timeframe),
                     )
+                    for ticker, timeframe in batch
+                ]
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    completed += 1
+                    stats['retried'] += max(0, result['attempts'] - 1)
+                    if result['df'] is None:
+                        stats['failed'] += 1
+                        if stats['failed'] <= error_log_limit:
+                            self.stdout.write(self.style.ERROR(
+                                "[CRAWLER_ITEM_ERROR] "
+                                f"exchange={exchange} "
+                                f"ticker={result['ticker']} "
+                                f"timeframe={result['timeframe']} "
+                                f"attempts={result['attempts']} "
+                                f"error={result['error']}"
+                            ))
+                        continue
+
+                    try:
+                        self._store_fetch_result(result)
+                        stats['success'] += 1
+                    except Exception as exc:
+                        stats['failed'] += 1
+                        if stats['failed'] <= error_log_limit:
+                            self.stdout.write(self.style.ERROR(
+                                "[CRAWLER_ITEM_ERROR] "
+                                f"exchange={exchange} "
+                                f"ticker={result['ticker']} "
+                                f"timeframe={result['timeframe']} "
+                                "stage=save "
+                                f"error={type(exc).__name__}: {exc}"
+                            ))
+
+                    if completed % 250 == 0:
+                        self.stdout.write(
+                            f"[CRAWLER_PROGRESS] exchange={exchange} "
+                            f"completed={completed}/{len(tasks)} "
+                            f"success={stats['success']} "
+                            f"failed={stats['failed']}"
+                        )
 
         suppressed = max(0, stats['failed'] - error_log_limit)
         elapsed = time.monotonic() - started_at
