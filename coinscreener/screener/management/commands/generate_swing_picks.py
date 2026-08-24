@@ -162,10 +162,14 @@ class Command(BaseCommand):
             regime = validate_btc_regime(btc_daily, today_date)
         except RecommendationRejected as exc:
             reason = str(exc)
-            self._record_rest_day(today_date, reason)
-            self.stdout.write(self.style.WARNING(
-                f"[{today_date}] 스윙 휴식: {reason}"
-            ))
+            if self._record_rest_day(today_date, reason):
+                self.stdout.write(self.style.WARNING(
+                    f"[{today_date}] 스윙 휴식: {reason}"
+                ))
+            else:
+                self.stdout.write(self.style.WARNING(
+                    f"[{today_date}] 다른 스윙 결과가 먼저 저장되어 종료합니다."
+                ))
             return
         except Exception as exc:
             raise CommandError(f"BTC 시장 국면 확인 실패: {exc}") from exc
