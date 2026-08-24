@@ -103,6 +103,31 @@ class SQLiteMaintenanceTestCase(SimpleTestCase):
                         backup_dir=str(root / 'backups'),
                     )
 
+    def test_restore_rejects_corrupt_backup_without_replacing_database(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            database = root / 'db.sqlite3'
+            corrupt = root / 'corrupt.sqlite3'
+            self._create_database(database, 'current')
+            corrupt.write_bytes(b'not a sqlite database')
+
+            with patch.object(
+                settings,
+                'DATABASES',
+                self._database_settings(database),
+            ):
+                with self.assertRaisesRegex(
+                    CommandError,
+                    '열거나 검사할 수 없습니다',
+                ):
+                    RestoreCommand(stdout=io.StringIO()).handle(
+                        backup_path=str(corrupt),
+                        confirm_services_stopped=True,
+                        backup_dir=str(root / 'backups'),
+                    )
+
+            self.assertEqual(self._read_value(database), 'current')
+
     def test_restore_replaces_database_and_keeps_safety_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
