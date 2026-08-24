@@ -16,6 +16,7 @@ from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
 from ..ownership import get_owned_strategy, get_viewable_strategy
 from ..cron_auth import is_cron_request_authorized
+from ..kospi_filters import filter_kospi_products, is_kospi_cash_management_product
 from .. import telegram as tg
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ def _get_tickers(exchange, vol_limit):
     try:
         fresh = cache.get(fresh_key)
         if fresh:
-            return fresh
+            return filter_kospi_products(fresh) if exchange == 'kospi' else fresh
     except Exception:
         pass
 
@@ -98,6 +99,8 @@ def _get_tickers(exchange, vol_limit):
     # 재시도해도 비어있으면 마지막 정상 목록으로 폴백
     fallback = cache.get(last_good_key)
     if fallback:
+        if exchange == 'kospi':
+            fallback = filter_kospi_products(fallback)
         logger.warning(f"_get_tickers fallback to cached list for {exchange} ({len(fallback)} tickers)")
         return fallback
     return result
@@ -113,9 +116,11 @@ def _get_tickers_raw(exchange, vol_limit):
         db_count = MarketData.objects.filter(exchange=exchange).count()
         if db_count > 0:
             qs = MarketData.objects.filter(exchange=exchange).order_by('-amount')
-            if vol_limit:
-                qs = qs[:vol_limit]
             result_list = list(qs.values('ticker', 'name', 'market_cap', 'amount'))
+            if exchange == 'kospi':
+                result_list = filter_kospi_products(result_list)
+            if vol_limit:
+                result_list = result_list[:vol_limit]
             
             # 업비트인 경우, 실시간 가격과 등락률을 단 1~2번의 API 호출(0.1초)로 일괄 갱신합니다.
             if exchange == 'upbit':
@@ -180,11 +185,15 @@ def _get_tickers_raw(exchange, vol_limit):
             
             result = []
             etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
-            for _, row in etf_df.head(limit).iterrows():
+            for _, row in etf_df.iterrows():
                 ticker = str(row.get(etf_code_col, ''))
                 name = str(row.get('Name', ''))
+                if is_kospi_cash_management_product(name):
+                    continue
                 cache.set(f"kospi_name_{ticker}", name, 3600*24)
                 result.append({'ticker': ticker, 'name': name, 'market_cap': 0, 'amount': 0})
+                if len(result) >= limit:
+                    break
             
             return result
         except Exception as e:
