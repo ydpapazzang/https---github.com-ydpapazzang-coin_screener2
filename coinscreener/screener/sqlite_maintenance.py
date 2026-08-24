@@ -21,11 +21,17 @@ def ensure_sqlite_database(database_config):
 def verify_sqlite_database(database_path):
     database_path = Path(database_path).resolve()
     uri = database_path.as_uri() + '?mode=ro'
-    connection = sqlite3.connect(uri, uri=True, timeout=30)
+    connection = None
     try:
+        connection = sqlite3.connect(uri, uri=True, timeout=30)
         result = connection.execute('PRAGMA integrity_check').fetchone()
+    except sqlite3.Error as exc:
+        raise RuntimeError(
+            f'SQLite 파일을 열거나 검사할 수 없습니다: {exc}'
+        ) from exc
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
 
     if not result or result[0] != 'ok':
         detail = result[0] if result else 'no result'
@@ -41,13 +47,20 @@ def create_sqlite_snapshot(source_path, destination_dir, label=BACKUP_PREFIX):
     final_path = destination_dir / f'{label}-{timestamp}.sqlite3'
     temporary_path = destination_dir / f'.{final_path.name}.tmp'
 
-    source = sqlite3.connect(str(source_path), timeout=30)
-    destination = sqlite3.connect(str(temporary_path), timeout=30)
+    source = None
+    destination = None
     try:
+        source = sqlite3.connect(str(source_path), timeout=30)
+        destination = sqlite3.connect(str(temporary_path), timeout=30)
         source.backup(destination)
+    except sqlite3.Error as exc:
+        temporary_path.unlink(missing_ok=True)
+        raise RuntimeError(f'SQLite 백업 생성 실패: {exc}') from exc
     finally:
-        destination.close()
-        source.close()
+        if destination is not None:
+            destination.close()
+        if source is not None:
+            source.close()
 
     try:
         verify_sqlite_database(temporary_path)
