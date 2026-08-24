@@ -5,7 +5,7 @@ Production uses one scheduler per responsibility.
 | Job | Scheduler | Schedule |
 |---|---|---|
 | Strategy alert scan | cron-job.org | Every 30 minutes, `/cron/scan/` with Bearer authentication |
-| Danta recommendations | systemd | 09:00, 09:10, 09:20 KST |
+| Danta recommendations | systemd | 09:00, 09:10 KST |
 | Swing recommendations | systemd | 09:20, 09:35, 09:50 KST |
 | SQLite backup | systemd | 03:30 KST |
 | Visit-log pruning | user crontab | Daily at 04:00 |
