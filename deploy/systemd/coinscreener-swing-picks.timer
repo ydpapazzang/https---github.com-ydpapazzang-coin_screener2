@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Coin Screener Swing recommendations at 09:20 KST with retries
+
+[Timer]
+OnCalendar=*-*-* 09:20:00 Asia/Seoul
+OnCalendar=*-*-* 09:35:00 Asia/Seoul
+OnCalendar=*-*-* 09:50:00 Asia/Seoul
+AccuracySec=1min
+Unit=coinscreener-swing-picks.service
+
+[Install]
+WantedBy=timers.target
