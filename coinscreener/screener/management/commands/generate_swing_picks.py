@@ -244,10 +244,14 @@ class Command(BaseCommand):
         )
         if not recommendations:
             reason = "유동성·추세·진입 괴리·변동성 기준을 통과한 종목이 없습니다."
-            self._record_rest_day(today_date, reason)
-            self.stdout.write(self.style.WARNING(
-                f"[{today_date}] 스윙 휴식: {reason}"
-            ))
+            if self._record_rest_day(today_date, reason):
+                self.stdout.write(self.style.WARNING(
+                    f"[{today_date}] 스윙 휴식: {reason}"
+                ))
+            else:
+                self.stdout.write(self.style.WARNING(
+                    f"[{today_date}] 다른 스윙 결과가 먼저 저장되어 종료합니다."
+                ))
             return
 
         if not self._persist_recommendations(today_date, recommendations):
