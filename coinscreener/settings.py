@@ -109,6 +109,11 @@ else:
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
+            # 웹·크롤러·추천 모니터가 동시에 쓰기를 시도할 때 즉시
+            # "database is locked"로 실패하지 않고 잠금 해제를 기다린다.
+            'OPTIONS': {
+                'timeout': 30,
+            },
         }
     }
 
