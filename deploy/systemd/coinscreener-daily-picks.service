@@ -1,0 +1,15 @@
+[Unit]
+Description=Coin Screener daily Danta recommendation generator
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/home/i_am_psw86/myapp/manage.py
+
+[Service]
+Type=oneshot
+User=i_am_psw86
+Group=i_am_psw86
+WorkingDirectory=/home/i_am_psw86/myapp
+EnvironmentFile=-/home/i_am_psw86/myapp/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/i_am_psw86/myapp/venv/bin/python manage.py generate_daily_picks
+TimeoutStartSec=30min
