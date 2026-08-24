@@ -147,3 +147,5 @@ STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
+# 기존 테이블의 PK 타입을 유지하면서 Django의 암시적 PK 경고를 제거한다.
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
