@@ -3,6 +3,7 @@ import FinanceDataReader as fdr
 import requests
 import math
 from coinscreener.screener.models import MarketData
+from coinscreener.screener.kospi_filters import is_kospi_cash_management_product
 
 class Command(BaseCommand):
     help = 'Fetches and updates market data (price, volume, amount, market cap) into the database.'
@@ -47,7 +48,10 @@ class Command(BaseCommand):
             for index, row in df.iterrows():
                 ticker = str(row.get('Code', ''))
                 name = str(row.get('Name', ''))
-                if not ticker: continue
+                if not ticker:
+                    continue
+                if exchange_name == 'kospi' and is_kospi_cash_management_product(name):
+                    continue
                 
                 # Handle NaN values
                 def _clean_val(v):
