@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Coin Screener SQLite backup daily at 03:30 KST
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=5min
+AccuracySec=1min
+Unit=coinscreener-backup.service
+
+[Install]
+WantedBy=timers.target
