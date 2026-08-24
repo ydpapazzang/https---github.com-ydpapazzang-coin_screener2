@@ -49,18 +49,24 @@ def create_sqlite_snapshot(source_path, destination_dir, label=BACKUP_PREFIX):
 
     source = None
     destination = None
+    backup_error = None
     try:
         source = sqlite3.connect(str(source_path), timeout=30)
         destination = sqlite3.connect(str(temporary_path), timeout=30)
         source.backup(destination)
     except sqlite3.Error as exc:
-        temporary_path.unlink(missing_ok=True)
-        raise RuntimeError(f'SQLite 백업 생성 실패: {exc}') from exc
+        backup_error = exc
     finally:
         if destination is not None:
             destination.close()
         if source is not None:
             source.close()
+
+    if backup_error is not None:
+        temporary_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f'SQLite 백업 생성 실패: {backup_error}'
+        ) from backup_error
 
     try:
         verify_sqlite_database(temporary_path)
