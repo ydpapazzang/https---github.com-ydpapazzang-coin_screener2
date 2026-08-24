@@ -5,7 +5,9 @@ import pandas as pd
 from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
+from filelock import FileLock
 
+from .management.commands.generate_swing_picks import Command
 from .models import DailyRecommendation
 
 
@@ -25,6 +27,17 @@ class GenerateSwingPicksTestCase(TestCase):
             status='active',
         )
 
+    def _candidate(self, ticker='KRW-BTC'):
+        return {
+            'ticker': ticker,
+            'name': ticker.replace('KRW-', ''),
+            'entry_price': 100.0,
+            'target_price': 110.0,
+            'stop_loss': 95.0,
+            'entry_expires_on': timezone.localdate() + timedelta(days=2),
+            'reason': '테스트 스윙 추천',
+        }
+
     @patch(
         'coinscreener.screener.management.commands.generate_swing_picks.pyupbit.get_ohlcv'
     )
@@ -41,6 +54,111 @@ class GenerateSwingPicksTestCase(TestCase):
                 status='active',
             ).count(),
             3,
+        )
+
+    @patch(
+        'coinscreener.screener.management.commands.generate_swing_picks.pyupbit.get_ohlcv'
+    )
+    def test_process_lock_blocks_second_generator(self, mock_ohlcv):
+        command = Command()
+        outer_lock = FileLock(str(command._generation_lock_path()), timeout=0)
+
+        with outer_lock:
+            call_command('generate_swing_picks', '--force')
+
+        mock_ohlcv.assert_not_called()
+        self.assertFalse(
+            DailyRecommendation.objects.filter(trade_type='swing').exists()
+        )
+
+    def test_persist_recommendations_saves_complete_batch(self):
+        today = timezone.localdate()
+        recommendations = [
+            self._candidate('KRW-BTC'),
+            self._candidate('KRW-ETH'),
+        ]
+
+        created = Command()._persist_recommendations(today, recommendations)
+
+        self.assertTrue(created)
+        self.assertEqual(
+            list(
+                DailyRecommendation.objects.filter(
+                    date=today,
+                    trade_type='swing',
+                ).order_by('coin_ticker').values_list('coin_ticker', flat=True)
+            ),
+            ['KRW-BTC', 'KRW-ETH'],
+        )
+
+    def test_persist_recommendations_rolls_back_partial_failure(self):
+        today = timezone.localdate()
+        recommendations = [
+            self._candidate('KRW-BTC'),
+            self._candidate('KRW-ETH'),
+        ]
+
+        def partial_then_fail(objects):
+            first = objects[0]
+            DailyRecommendation.objects.create(
+                date=first.date,
+                trade_type=first.trade_type,
+                coin_ticker=first.coin_ticker,
+                coin_name=first.coin_name,
+                entry_price=first.entry_price,
+                target_price=first.target_price,
+                stop_loss=first.stop_loss,
+                initial_stop_loss=first.initial_stop_loss,
+                entry_expires_on=first.entry_expires_on,
+                k_value=first.k_value,
+                reason=first.reason,
+                status=first.status,
+            )
+            raise RuntimeError('write failed')
+
+        with patch.object(
+            DailyRecommendation.objects,
+            'bulk_create',
+            side_effect=partial_then_fail,
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'write failed'):
+                Command()._persist_recommendations(today, recommendations)
+
+        self.assertFalse(
+            DailyRecommendation.objects.filter(
+                date=today,
+                trade_type='swing',
+            ).exists()
+        )
+
+    def test_persist_recommendations_rechecks_existing_result(self):
+        today = timezone.localdate()
+        DailyRecommendation.objects.create(
+            date=today,
+            trade_type='swing',
+            coin_ticker='SKIP',
+            coin_name='스윙휴식',
+            entry_price=0,
+            target_price=0,
+            stop_loss=0,
+            initial_stop_loss=0,
+            k_value=0,
+            reason='이미 저장됨',
+            status='skipped',
+        )
+
+        created = Command()._persist_recommendations(
+            today,
+            [self._candidate('KRW-BTC')],
+        )
+
+        self.assertFalse(created)
+        self.assertEqual(
+            DailyRecommendation.objects.filter(
+                date=today,
+                trade_type='swing',
+            ).count(),
+            1,
         )
 
     @patch(
