@@ -245,7 +245,10 @@ class Command(BaseCommand):
 
         start_minute = start_at.replace(second=0, microsecond=0)
         rows = []
-        for index, candle in candles.sort_index().iterrows():
+        candles = candles[
+            ~candles.index.duplicated(keep='last')
+        ].sort_index()
+        for index, candle in candles.iterrows():
             candle_at = self._swing_candle_time(index)
             if candle_at < start_minute or candle_at > now_kst:
                 continue
