@@ -3,9 +3,11 @@ import time
 
 import pyupbit
 import requests
-from django.core.cache import cache
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 from django.utils import timezone
+from filelock import FileLock, Timeout
 
 from coinscreener.screener.daily_picks import (
     RecommendationRejected,
@@ -50,32 +52,76 @@ class Command(BaseCommand):
             and not is_stablecoin_ticker(market['market'])
         ]
 
+    @staticmethod
+    def _generation_lock_path():
+        runtime_dir = settings.BASE_DIR / '.runtime'
+        runtime_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        return runtime_dir / 'generate_swing_picks.lock'
+
     def _record_rest_day(self, today_date, reason):
-        DailyRecommendation.objects.create(
+        with transaction.atomic():
+            if DailyRecommendation.objects.filter(
+                date=today_date,
+                trade_type='swing',
+            ).exists():
+                return False
+            DailyRecommendation.objects.create(
+                date=today_date,
+                trade_type='swing',
+                coin_ticker='SKIP',
+                coin_name='스윙휴식',
+                entry_price=0,
+                target_price=0,
+                stop_loss=0,
+                initial_stop_loss=0,
+                k_value=0,
+                reason=reason,
+                status='skipped',
+            )
+        return True
+
+    @staticmethod
+    def _recommendation_model(today_date, recommendation):
+        return DailyRecommendation(
             date=today_date,
             trade_type='swing',
-            coin_ticker='SKIP',
-            coin_name='스윙휴식',
-            entry_price=0,
-            target_price=0,
-            stop_loss=0,
-            initial_stop_loss=0,
+            coin_ticker=recommendation['ticker'],
+            coin_name=recommendation['name'],
+            entry_price=recommendation['entry_price'],
+            target_price=recommendation['target_price'],
+            stop_loss=recommendation['stop_loss'],
+            initial_stop_loss=recommendation['stop_loss'],
+            entry_expires_on=recommendation['entry_expires_on'],
             k_value=0,
-            reason=reason,
-            status='skipped',
+            reason=recommendation['reason'],
+            status='pending',
         )
 
+    def _persist_recommendations(self, today_date, recommendations):
+        objects = [
+            self._recommendation_model(today_date, recommendation)
+            for recommendation in recommendations
+        ]
+        with transaction.atomic():
+            # 긴 API 분석 중 다른 경로에서 결과가 생겼더라도 덮어쓰지 않는다.
+            if DailyRecommendation.objects.filter(
+                date=today_date,
+                trade_type='swing',
+            ).exists():
+                return False
+            DailyRecommendation.objects.bulk_create(objects)
+        return True
+
     def handle(self, *args, **options):
-        lock_key = f"swing-picks-generation:{timezone.localdate().isoformat()}"
-        if not cache.add(lock_key, True, timeout=30 * 60):
+        lock = FileLock(str(self._generation_lock_path()), timeout=0)
+        try:
+            with lock:
+                return self._generate(*args, **options)
+        except Timeout:
             self.stdout.write(self.style.WARNING(
-                "스윙 추천 생성이 이미 실행 중입니다."
+                "다른 프로세스에서 스윙 추천을 생성 중입니다."
             ))
             return
-        try:
-            return self._generate(*args, **options)
-        finally:
-            cache.delete(lock_key)
 
     def _generate(self, *args, **options):
         now_kst = timezone.localtime(timezone.now())
@@ -116,10 +162,14 @@ class Command(BaseCommand):
             regime = validate_btc_regime(btc_daily, today_date)
         except RecommendationRejected as exc:
             reason = str(exc)
-            self._record_rest_day(today_date, reason)
-            self.stdout.write(self.style.WARNING(
-                f"[{today_date}] 스윙 휴식: {reason}"
-            ))
+            if self._record_rest_day(today_date, reason):
+                self.stdout.write(self.style.WARNING(
+                    f"[{today_date}] 스윙 휴식: {reason}"
+                ))
+            else:
+                self.stdout.write(self.style.WARNING(
+                    f"[{today_date}] 다른 스윙 결과가 먼저 저장되어 종료합니다."
+                ))
             return
         except Exception as exc:
             raise CommandError(f"BTC 시장 국면 확인 실패: {exc}") from exc
@@ -194,27 +244,23 @@ class Command(BaseCommand):
         )
         if not recommendations:
             reason = "유동성·추세·진입 괴리·변동성 기준을 통과한 종목이 없습니다."
-            self._record_rest_day(today_date, reason)
+            if self._record_rest_day(today_date, reason):
+                self.stdout.write(self.style.WARNING(
+                    f"[{today_date}] 스윙 휴식: {reason}"
+                ))
+            else:
+                self.stdout.write(self.style.WARNING(
+                    f"[{today_date}] 다른 스윙 결과가 먼저 저장되어 종료합니다."
+                ))
+            return
+
+        if not self._persist_recommendations(today_date, recommendations):
             self.stdout.write(self.style.WARNING(
-                f"[{today_date}] 스윙 휴식: {reason}"
+                f"[{today_date}] 생성 중 다른 스윙 결과가 먼저 저장되어 종료합니다."
             ))
             return
 
         for recommendation in recommendations:
-            DailyRecommendation.objects.create(
-                date=today_date,
-                trade_type='swing',
-                coin_ticker=recommendation['ticker'],
-                coin_name=recommendation['name'],
-                entry_price=recommendation['entry_price'],
-                target_price=recommendation['target_price'],
-                stop_loss=recommendation['stop_loss'],
-                initial_stop_loss=recommendation['stop_loss'],
-                entry_expires_on=recommendation['entry_expires_on'],
-                k_value=0,
-                reason=recommendation['reason'],
-                status='pending',
-            )
             self.stdout.write(self.style.SUCCESS(
                 f"스윙 추천 등록: {recommendation['ticker']} "
                 f"(진입 {recommendation['entry_price']}, "
