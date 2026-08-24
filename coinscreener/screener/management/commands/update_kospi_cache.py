@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 from django.core.cache import cache
 from django.utils import timezone
 from coinscreener.screener.models import Condition
+from coinscreener.screener.kospi_filters import is_kospi_cash_management_product
 
 class Command(BaseCommand):
     help = 'KOSPI(ETF) 데이터를 수집하여 캐시에 저장합니다. 평일 09:00~15:30 동안 1시간마다 작동합니다.'
@@ -55,7 +56,11 @@ class Command(BaseCommand):
             try:
                 etf_df = fdr.StockListing('ETF/KR')
                 etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
-                kospi_tickers = etf_df[etf_code_col].astype(str).tolist()
+                kospi_tickers = [
+                    str(row.get(etf_code_col, ''))
+                    for _, row in etf_df.iterrows()
+                    if not is_kospi_cash_management_product(row.get('Name', ''))
+                ]
             except Exception as e:
                 self.stdout.write(f"ETF 목록 가져오기 실패: {e}")
                 kospi_tickers = []

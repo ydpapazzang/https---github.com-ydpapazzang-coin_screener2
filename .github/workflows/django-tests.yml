@@ -44,6 +44,7 @@ jobs:
       - name: Run recommendation regression tests
         run: |
           python manage.py test \
+            coinscreener.screener.test_kospi_filters \
             coinscreener.screener.test_swing_strategy \
             coinscreener.screener.test_generate_swing_picks \
             coinscreener.screener.test_stats_features \
