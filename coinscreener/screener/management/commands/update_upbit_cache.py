@@ -201,6 +201,130 @@ class Command(BaseCommand):
             f"최종 {rec.result_pct:.2f}%"
         ))
 
+    @staticmethod
+    def _swing_candle_time(index):
+        """Upbit의 KST naive 인덱스를 Django aware datetime으로 변환한다."""
+        from django.utils import timezone
+
+        value = pd.Timestamp(index).to_pydatetime()
+        if timezone.is_naive(value):
+            value = timezone.make_aware(
+                value,
+                timezone.get_current_timezone(),
+            )
+        return timezone.localtime(value)
+
+    def _get_missed_swing_candles(self, rec, now_kst):
+        """마지막 확인 봉부터 현재 봉까지 가져온다.
+
+        마지막 봉은 의도적으로 다시 포함한다. 직전 조회가 진행 중인 1분봉의
+        초반에 이뤄졌더라도 이후 갱신된 고가·저가를 다음 주기에 확인하기 위함이다.
+        """
+        from django.utils import timezone
+        from coinscreener.screener.swing_strategy import MAX_HOLD_DAYS
+
+        start_at = rec.last_checked_at or rec.entered_at or rec.created_at
+        start_at = timezone.localtime(start_at)
+        oldest_allowed = now_kst - datetime.timedelta(days=MAX_HOLD_DAYS)
+        if start_at < oldest_allowed:
+            start_at = oldest_allowed
+
+        elapsed_minutes = max(
+            1,
+            math.ceil((now_kst - start_at).total_seconds() / 60),
+        )
+        requested_count = elapsed_minutes + 2
+        candles = pyupbit.get_ohlcv(
+            rec.coin_ticker,
+            interval='minute1',
+            count=requested_count,
+            period=0.12,
+        )
+        if candles is None or candles.empty:
+            raise RuntimeError("누락 1분봉 조회 결과가 없습니다.")
+
+        start_minute = start_at.replace(second=0, microsecond=0)
+        rows = []
+        candles = candles[
+            ~candles.index.duplicated(keep='last')
+        ].sort_index()
+        for index, candle in candles.iterrows():
+            candle_at = self._swing_candle_time(index)
+            if candle_at < start_minute or candle_at > now_kst:
+                continue
+            rows.append((candle_at, candle))
+
+        if not rows:
+            raise RuntimeError("마지막 확인 시각 이후의 1분봉이 없습니다.")
+        return rows
+
+    @staticmethod
+    def _swing_stop_reason(rec):
+        if (
+            rec.initial_stop_loss is not None
+            and rec.stop_loss > rec.initial_stop_loss
+        ):
+            return 'trailing_stop'
+        return 'stop_loss'
+
+    def _apply_swing_candle(self, rec, candle_at, candle):
+        """한 개의 1분봉을 기존 보수적 체결 규칙으로 재생한다."""
+        values = {}
+        for field in ('open', 'high', 'low', 'close'):
+            value = float(candle[field])
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"유효하지 않은 1분봉 {field}: {value}")
+            values[field] = value
+
+        candle_open = values['open']
+        observed_high = values['high']
+        observed_low = values['low']
+        was_pending = rec.status == 'pending'
+        rec.last_checked_at = candle_at
+
+        if was_pending:
+            if observed_high < rec.entry_price:
+                return False
+            rec.status = 'active'
+            rec.entered_at = candle_at
+            rec.highest_price = max(rec.entry_price, observed_high)
+            rec.lowest_price = min(rec.entry_price, observed_low)
+            self.stdout.write(self.style.SUCCESS(
+                f"[{rec.coin_ticker}] 스윙 진입가 도달"
+            ))
+
+        if rec.highest_price is None or observed_high > rec.highest_price:
+            rec.highest_price = observed_high
+        if rec.lowest_price is None or observed_low < rec.lowest_price:
+            rec.lowest_price = observed_low
+
+        # 한 봉에서 진입/목표/손절 순서를 알 수 없으면 손절을 우선한다.
+        if observed_low <= rec.stop_loss:
+            # 봉 시작부터 보유 중이었다면 갭 하락을 시가로 보수적으로 반영한다.
+            # 같은 봉에서 처음 진입했다면 진입 전 저가일 수 있어 손절가를 쓴다.
+            exit_price = (
+                rec.stop_loss
+                if was_pending
+                else min(rec.stop_loss, candle_open)
+            )
+            self._close_swing(
+                rec,
+                exit_price,
+                self._swing_stop_reason(rec),
+                candle_at,
+            )
+            return True
+
+        if rec.status == 'active' and observed_high >= rec.target_price:
+            rec.status = 'partial'
+            rec.partial_exit_price = rec.target_price
+            rec.partial_exit_at = candle_at
+            self.stdout.write(self.style.SUCCESS(
+                f"[{rec.coin_ticker}] 2R 도달, 50% 부분익절"
+            ))
+
+        return False
+
     def _monitor_swing_recommendations(self):
         from django.utils import timezone
         from coinscreener.screener.models import DailyRecommendation
@@ -230,56 +354,24 @@ class Command(BaseCommand):
                     rec.save()
                     continue
 
-                current_price = float(pyupbit.get_current_price(rec.coin_ticker))
-                if not math.isfinite(current_price) or current_price <= 0:
+                minute_rows = self._get_missed_swing_candles(rec, now_kst)
+                current_price = None
+                closed = False
+                for candle_at, candle in minute_rows:
+                    current_price = float(candle['close'])
+                    if self._apply_swing_candle(rec, candle_at, candle):
+                        closed = True
+                        break
+
+                if closed:
+                    continue
+                if current_price is None:
                     continue
 
-                observed_high = current_price
-                observed_low = current_price
-                minute_candle = pyupbit.get_ohlcv(
-                    rec.coin_ticker, interval='minute1', count=1
-                )
-                if minute_candle is not None and not minute_candle.empty:
-                    candle = minute_candle.iloc[-1]
-                    candle_high = float(candle['high'])
-                    candle_low = float(candle['low'])
-                    if math.isfinite(candle_high) and candle_high > 0:
-                        observed_high = max(observed_high, candle_high)
-                    if math.isfinite(candle_low) and candle_low > 0:
-                        observed_low = min(observed_low, candle_low)
-
+                # 아직 진입되지 않은 신호도 last_checked_at을 저장해 다음 조회량을 제한한다.
                 if rec.status == 'pending':
-                    if observed_high < rec.entry_price:
-                        continue
-                    rec.status = 'active'
-                    rec.entered_at = now_kst
-                    rec.highest_price = max(rec.entry_price, observed_high)
-                    rec.lowest_price = min(rec.entry_price, observed_low)
                     rec.save()
-                    self.stdout.write(self.style.SUCCESS(
-                        f"[{rec.coin_ticker}] 스윙 진입가 도달"
-                    ))
-
-                if rec.highest_price is None or observed_high > rec.highest_price:
-                    rec.highest_price = observed_high
-                if rec.lowest_price is None or observed_low < rec.lowest_price:
-                    rec.lowest_price = observed_low
-
-                # 한 캔들에서 손절과 목표가가 함께 관측되면 보수적으로 손절 우선.
-                if observed_low <= rec.stop_loss:
-                    self._close_swing(
-                        rec, min(rec.stop_loss, current_price), 'stop_loss', now_kst
-                    )
                     continue
-
-                if rec.status == 'active' and observed_high >= rec.target_price:
-                    rec.status = 'partial'
-                    rec.partial_exit_price = rec.target_price
-                    rec.partial_exit_at = now_kst
-                    rec.save()
-                    self.stdout.write(self.style.SUCCESS(
-                        f"[{rec.coin_ticker}] 2R 도달, 50% 부분익절"
-                    ))
 
                 entered_date = (
                     timezone.localtime(rec.entered_at).date()
@@ -346,12 +438,16 @@ class Command(BaseCommand):
 
                 if current_price <= rec.stop_loss:
                     self._close_swing(
-                        rec, current_price, 'trailing_stop', now_kst
+                        rec,
+                        current_price,
+                        self._swing_stop_reason(rec),
+                        now_kst,
                     )
                     continue
 
                 rec.save()
             except Exception as exc:
+                # API 실패 시 last_checked_at을 저장하지 않아 다음 주기에 같은 구간을 재시도한다.
                 self.stdout.write(self.style.ERROR(
                     f"[{rec.coin_ticker}] 스윙 추적 오류: {exc}"
                 ))

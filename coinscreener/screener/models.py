@@ -340,6 +340,9 @@ class DailyRecommendation(models.Model):
     entered_at = models.DateTimeField(
         null=True, blank=True, verbose_name="실제 진입 시각"
     )
+    last_checked_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="마지막 시세 확인 시각"
+    )
     initial_stop_loss = models.FloatField(
         null=True, blank=True, verbose_name="초기 손절가"
     )

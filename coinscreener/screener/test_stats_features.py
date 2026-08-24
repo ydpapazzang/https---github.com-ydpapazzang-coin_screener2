@@ -151,6 +151,15 @@ class StatsListViewTestCase(TestCase):
 
 
 class RecommendationMonitorTestCase(TestCase):
+    def _minute_frame(self, rows, end=None):
+        end = end or timezone.localtime().replace(
+            second=0,
+            microsecond=0,
+            tzinfo=None,
+        )
+        index = pd.date_range(end=end, periods=len(rows), freq='min')
+        return pd.DataFrame(rows, index=index)
+
     def _recommendation(self, **overrides):
         values = {
             'date': timezone.localdate(),
@@ -180,7 +189,7 @@ class RecommendationMonitorTestCase(TestCase):
         self, _mock_current, mock_ohlcv, _mock_sleep
     ):
         recommendation = self._recommendation()
-        mock_ohlcv.return_value = pd.DataFrame([{
+        mock_ohlcv.return_value = self._minute_frame([{
             'open': 103.0,
             'high': 108.0,
             'low': 102.5,
@@ -246,7 +255,7 @@ class RecommendationMonitorTestCase(TestCase):
             initial_stop_loss=98.5,
         )
         mock_ohlcv.side_effect = [
-            pd.DataFrame([{
+            self._minute_frame([{
                 'open': 101.0,
                 'high': 103.0,
                 'low': 100.0,
@@ -283,7 +292,7 @@ class RecommendationMonitorTestCase(TestCase):
             lowest_price=None,
             initial_stop_loss=98.5,
         )
-        mock_ohlcv.return_value = pd.DataFrame([{
+        mock_ohlcv.return_value = self._minute_frame([{
             'open': 101.0,
             'high': 103.0,
             'low': 98.0,
@@ -296,6 +305,154 @@ class RecommendationMonitorTestCase(TestCase):
         self.assertEqual(recommendation.status, 'failed')
         self.assertIsNone(recommendation.partial_exit_price)
         self.assertEqual(recommendation.exit_reason, 'stop_loss')
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    def test_swing_replays_target_reached_during_monitor_gap(
+        self, mock_ohlcv, _mock_sleep
+    ):
+        now = timezone.localtime().replace(second=0, microsecond=0)
+        checkpoint = now - timedelta(minutes=3)
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+            highest_price=101.0,
+            lowest_price=99.0,
+            initial_stop_loss=98.5,
+            entered_at=now - timedelta(days=1),
+            last_checked_at=checkpoint,
+        )
+        minute_end = now.replace(tzinfo=None)
+        minute_rows = self._minute_frame([
+            {'open': 100.0, 'high': 101.0, 'low': 99.5, 'close': 100.5},
+            {'open': 100.5, 'high': 103.0, 'low': 100.0, 'close': 102.5},
+            {'open': 102.5, 'high': 102.7, 'low': 100.5, 'close': 101.0},
+        ], end=minute_end)
+        mock_ohlcv.side_effect = [minute_rows, None]
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'partial')
+        self.assertEqual(
+            recommendation.partial_exit_price,
+            recommendation.target_price,
+        )
+        self.assertEqual(
+            timezone.localtime(recommendation.last_checked_at).replace(
+                tzinfo=None
+            ),
+            minute_rows.index[-1].to_pydatetime(),
+        )
+        minute_call = mock_ohlcv.call_args_list[0]
+        self.assertGreaterEqual(minute_call.kwargs['count'], 5)
+        self.assertEqual(minute_call.kwargs['period'], 0.12)
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    def test_swing_rechecks_in_progress_checkpoint_candle(
+        self, mock_ohlcv, _mock_sleep
+    ):
+        now = timezone.localtime().replace(second=0, microsecond=0)
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='pending',
+            result_pct=None,
+            entry_price=100.0,
+            target_price=104.0,
+            stop_loss=98.0,
+            initial_stop_loss=98.0,
+            last_checked_at=now,
+        )
+        first_version = self._minute_frame([{
+            'open': 99.0,
+            'high': 99.5,
+            'low': 98.8,
+            'close': 99.2,
+        }], end=now.replace(tzinfo=None))
+        completed_version = self._minute_frame([{
+            'open': 99.0,
+            'high': 101.0,
+            'low': 98.8,
+            'close': 100.5,
+        }], end=now.replace(tzinfo=None))
+        mock_ohlcv.side_effect = [
+            first_version,
+            completed_version,
+            None,
+        ]
+
+        Command()._monitor_swing_recommendations()
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'pending')
+
+        Command()._monitor_swing_recommendations()
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'active')
+        self.assertEqual(
+            timezone.localtime(recommendation.entered_at).replace(tzinfo=None),
+            now.replace(tzinfo=None),
+        )
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv',
+        return_value=None,
+    )
+    def test_swing_api_failure_does_not_advance_checkpoint(
+        self, _mock_ohlcv, _mock_sleep
+    ):
+        checkpoint = timezone.localtime() - timedelta(minutes=5)
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+            entered_at=timezone.localtime() - timedelta(days=1),
+            last_checked_at=checkpoint,
+        )
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.last_checked_at, checkpoint)
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    def test_replayed_raised_stop_is_recorded_as_trailing_stop(
+        self, mock_ohlcv, _mock_sleep
+    ):
+        now = timezone.localtime().replace(second=0, microsecond=0)
+        recommendation = self._recommendation(
+            trade_type='swing',
+            status='active',
+            result_pct=None,
+            entry_price=100.0,
+            target_price=110.0,
+            stop_loss=99.0,
+            initial_stop_loss=95.0,
+            entered_at=now - timedelta(days=2),
+            last_checked_at=now - timedelta(minutes=2),
+        )
+        mock_ohlcv.return_value = self._minute_frame([{
+            'open': 100.0,
+            'high': 100.5,
+            'low': 98.5,
+            'close': 99.5,
+        }], end=now.replace(tzinfo=None))
+
+        Command()._monitor_swing_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'failed')
+        self.assertEqual(recommendation.exit_reason, 'trailing_stop')
+        self.assertEqual(recommendation.exit_price, 99.0)
 
     @patch.object(Command, '_monitor_recommendations')
     def test_independent_monitor_loop_runs_and_stops_cleanly(self, mock_monitor):
