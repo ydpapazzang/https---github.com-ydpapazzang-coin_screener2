@@ -1,3 +1,4 @@
+import concurrent.futures
 import math
 import threading
 import time
@@ -67,35 +68,277 @@ class Command(BaseCommand):
             stop_event.wait(wait_seconds)
 
     def _run_crawler(self):
-        try:
-            active_timeframes = set(Condition.objects.values_list('timeframe', flat=True).distinct())
-            if not active_timeframes:
-                self.stdout.write("활성화된 조건식이 없어 시세 캐시 수집만 생략합니다.")
-                return
+        active_timeframes = sorted(set(
+            Condition.objects.values_list('timeframe', flat=True).distinct()
+        ))
+        if not active_timeframes:
+            self.stdout.write(
+                "활성화된 조건식이 없어 시세 캐시 수집만 생략합니다."
+            )
+            return
 
-            # (D) 저장 시점에 지표를 미리 계산해 넣기 위한 타임프레임별 지표 명세 수집
-            from coinscreener.screener.engine import indicator_specs_by_timeframe
-            specs_by_tf = indicator_specs_by_timeframe(list(Condition.objects.all()))
+        from coinscreener.screener.engine import indicator_specs_by_timeframe
 
-            # 거래소 코인 및 ETF 목록 가져오기
-            upbit_tickers = pyupbit.get_tickers(fiat="KRW")
-            bithumb_tickers = pybithumb.get_tickers()
+        specs_by_tf = indicator_specs_by_timeframe(
+            list(Condition.objects.all())
+        )
+        sources = (
+            ('upbit', lambda: pyupbit.get_tickers(fiat='KRW')),
+            ('bithumb', pybithumb.get_tickers),
+        )
+        cycle_stats = {
+            'requested': 0,
+            'success': 0,
+            'failed': 0,
+            'retried': 0,
+        }
 
-            self.stdout.write(f"업비트 {len(upbit_tickers)}개, 빗썸 {len(bithumb_tickers)}개, {len(active_timeframes)}개 타임프레임 수집 시작...")
+        for exchange, load_tickers in sources:
+            try:
+                tickers = load_tickers()
+                if not tickers:
+                    raise RuntimeError('종목 목록이 비어 있습니다.')
+                tickers = list(tickers)
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(
+                    f"[CRAWLER_EXCHANGE_ERROR] exchange={exchange} "
+                    f"stage=ticker_list error={type(exc).__name__}: {exc}"
+                ))
+                continue
 
-            # 업비트 수집
-            for ticker in upbit_tickers:
-                for tf in active_timeframes:
-                    self._fetch_and_cache(ticker, tf, exchange='upbit', specs=specs_by_tf.get(tf))
+            self.stdout.write(
+                f"[CRAWLER_START] exchange={exchange} "
+                f"tickers={len(tickers)} "
+                f"timeframes={len(active_timeframes)} "
+                f"tasks={len(tickers) * len(active_timeframes)}"
+            )
+            try:
+                stats = self._crawl_exchange(
+                    exchange,
+                    tickers,
+                    active_timeframes,
+                    specs_by_tf,
+                )
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(
+                    f"[CRAWLER_EXCHANGE_ERROR] exchange={exchange} "
+                    f"stage=crawl error={type(exc).__name__}: {exc}"
+                ))
+                continue
 
-            # 빗썸 수집
-            for ticker in bithumb_tickers:
-                for tf in active_timeframes:
-                    self._fetch_and_cache(ticker, tf, exchange='bithumb', specs=specs_by_tf.get(tf))
+            for key in cycle_stats:
+                cycle_stats[key] += stats[key]
 
+        self.stdout.write(
+            "[CRAWLER_CYCLE_SUMMARY] "
+            f"requested={cycle_stats['requested']} "
+            f"success={cycle_stats['success']} "
+            f"failed={cycle_stats['failed']} "
+            f"retried={cycle_stats['retried']}"
+        )
 
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error during crawl cycle: {e}"))
+    def _crawl_exchange(
+        self,
+        exchange,
+        tickers,
+        timeframes,
+        specs_by_tf,
+    ):
+        workers = 6 if exchange == 'upbit' else 12
+        tasks = [
+            (ticker, timeframe)
+            for ticker in tickers
+            for timeframe in timeframes
+        ]
+        started_at = time.monotonic()
+        stats = {
+            'requested': len(tasks),
+            'success': 0,
+            'failed': 0,
+            'retried': 0,
+        }
+        error_log_limit = 20
+
+        completed = 0
+        batch_size = workers * 4
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=workers,
+            thread_name_prefix=f'{exchange}-ohlcv',
+        ) as executor:
+            for batch_start in range(0, len(tasks), batch_size):
+                batch = tasks[batch_start:batch_start + batch_size]
+                futures = [
+                    executor.submit(
+                        self._fetch_only,
+                        ticker,
+                        timeframe,
+                        exchange,
+                        specs_by_tf.get(timeframe),
+                    )
+                    for ticker, timeframe in batch
+                ]
+                for future in concurrent.futures.as_completed(futures):
+                    result = future.result()
+                    completed += 1
+                    stats['retried'] += max(0, result['attempts'] - 1)
+                    if result['df'] is None:
+                        stats['failed'] += 1
+                        if stats['failed'] <= error_log_limit:
+                            self.stdout.write(self.style.ERROR(
+                                "[CRAWLER_ITEM_ERROR] "
+                                f"exchange={exchange} "
+                                f"ticker={result['ticker']} "
+                                f"timeframe={result['timeframe']} "
+                                f"attempts={result['attempts']} "
+                                f"error={result['error']}"
+                            ))
+                        continue
+
+                    try:
+                        self._store_fetch_result(result)
+                        stats['success'] += 1
+                    except Exception as exc:
+                        stats['failed'] += 1
+                        if stats['failed'] <= error_log_limit:
+                            self.stdout.write(self.style.ERROR(
+                                "[CRAWLER_ITEM_ERROR] "
+                                f"exchange={exchange} "
+                                f"ticker={result['ticker']} "
+                                f"timeframe={result['timeframe']} "
+                                "stage=save "
+                                f"error={type(exc).__name__}: {exc}"
+                            ))
+
+                    if completed % 250 == 0:
+                        self.stdout.write(
+                            f"[CRAWLER_PROGRESS] exchange={exchange} "
+                            f"completed={completed}/{len(tasks)} "
+                            f"success={stats['success']} "
+                            f"failed={stats['failed']}"
+                        )
+
+        suppressed = max(0, stats['failed'] - error_log_limit)
+        elapsed = time.monotonic() - started_at
+        self.stdout.write(
+            f"[CRAWLER_EXCHANGE_SUMMARY] exchange={exchange} "
+            f"requested={stats['requested']} "
+            f"success={stats['success']} "
+            f"failed={stats['failed']} "
+            f"retried={stats['retried']} "
+            f"suppressed_errors={suppressed} "
+            f"elapsed={elapsed:.1f}s"
+        )
+        return stats
+
+    def _fetch_only(
+        self,
+        ticker,
+        timeframe,
+        exchange,
+        specs,
+        retries=3,
+    ):
+        last_error = 'unknown error'
+        for attempt in range(1, retries + 1):
+            try:
+                df = self._fetch_dataframe(ticker, timeframe, exchange)
+                if df is None or df.empty:
+                    raise RuntimeError('empty OHLCV response')
+
+                df.index.name = None
+                from coinscreener.screener.engine import prewarm_indicators
+
+                prewarm_indicators(df, specs)
+                return {
+                    'ticker': ticker,
+                    'timeframe': timeframe,
+                    'exchange': exchange,
+                    'df': df,
+                    'attempts': attempt,
+                    'error': None,
+                }
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+                if attempt < retries:
+                    time.sleep(0.5 * (2 ** (attempt - 1)))
+
+        return {
+            'ticker': ticker,
+            'timeframe': timeframe,
+            'exchange': exchange,
+            'df': None,
+            'attempts': retries,
+            'error': last_error,
+        }
+
+    @staticmethod
+    def _fetch_dataframe(ticker, timeframe, exchange):
+        from coinscreener.screener.engine import _throttle
+
+        _throttle(exchange)
+        if exchange == 'upbit':
+            return pyupbit.get_ohlcv(
+                ticker,
+                interval=timeframe,
+                count=200,
+            )
+
+        if exchange != 'bithumb':
+            raise ValueError(f'unsupported exchange: {exchange}')
+
+        bithumb_tf_map = {
+            'minute15': 'minute5',
+            'minute30': 'minute30',
+            'minute60': 'hour',
+            'minute240': 'hour',
+            'day': 'day',
+            'week': 'day',
+            'month': 'day',
+        }
+        df = pybithumb.get_ohlcv(
+            ticker,
+            interval=bithumb_tf_map.get(timeframe, 'day'),
+        )
+        if df is None or df.empty:
+            return df
+
+        aggregations = {
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum',
+        }
+        if timeframe == 'minute15':
+            df = df.resample('15min').agg(aggregations).dropna()
+        elif timeframe == 'minute240':
+            df = df.resample('4h').agg(aggregations).dropna()
+        elif timeframe == 'week':
+            df = df.resample('W-MON').agg(aggregations).dropna()
+        elif timeframe == 'month':
+            df = df.resample('ME').agg(aggregations).dropna()
+        return df.tail(200)
+
+    @staticmethod
+    def _store_fetch_result(result):
+        from coinscreener.screener.engine import (
+            max_cache_age,
+            save_ohlcv_cache,
+        )
+
+        save_ohlcv_cache(
+            result['ticker'],
+            result['timeframe'],
+            result['df'],
+        )
+        cache_key = (
+            f"ohlcv_{result['ticker']}_{result['timeframe']}_200"
+        )
+        cache.set(
+            cache_key,
+            result['df'],
+            min(180, max_cache_age(result['timeframe'])),
+        )
 
     def _monitor_recommendations(self):
         """단타와 스윙 추천을 각각의 규칙으로 추적한다."""
@@ -453,47 +696,3 @@ class Command(BaseCommand):
                 ))
             time.sleep(0.1)
 
-    def _fetch_and_cache(self, ticker, timeframe, exchange='upbit', specs=None):
-        # API Rate Limit 준수 (거래소별 조절)
-        if exchange == 'kospi':
-            time.sleep(0.10)
-        else:
-            time.sleep(0.12)
-        
-        try:
-            df = None
-            if exchange == 'upbit':
-                df = pyupbit.get_ohlcv(ticker, interval=timeframe, count=200)
-            elif exchange == 'bithumb':
-                bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
-                btf = bithumb_tf_map.get(timeframe, 'day')
-                df = pybithumb.get_ohlcv(ticker, interval=btf)
-                if df is not None and not df.empty:
-                    if timeframe == 'minute15': df = df.resample('15min').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    elif timeframe == 'minute240': df = df.resample('4h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    elif timeframe == 'week': df = df.resample('W-MON').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    elif timeframe == 'month': df = df.resample('ME').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    df = df.tail(200)
-            elif exchange == 'kospi':
-                df = fdr.DataReader(ticker)
-                if df is not None and not df.empty:
-                    df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
-                    if timeframe == 'week': df = df.resample('W-MON').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    elif timeframe == 'month': df = df.resample('ME').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    df = df.tail(200)
-
-            if df is not None and not df.empty:
-                df.index.name = None
-
-                # (D) 저장 직전 지표 컬럼 사전계산 → 웹 검색은 계산을 건너뛰고 값만 읽음
-                from coinscreener.screener.engine import prewarm_indicators, save_ohlcv_cache
-                prewarm_indicators(df, specs)
-
-                save_ohlcv_cache(ticker, timeframe, df)
-
-                cache_key = f"ohlcv_{ticker}_{timeframe}_200"
-                from coinscreener.screener.engine import max_cache_age
-                cache.set(cache_key, df, min(180, max_cache_age(timeframe)))
-                
-        except Exception as e:
-            pass
