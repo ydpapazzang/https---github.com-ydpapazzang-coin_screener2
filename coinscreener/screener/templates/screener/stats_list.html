@@ -353,17 +353,17 @@
                             <span class="detail-value">{{ rec.entry_price|floatformat:-2|intcomma }}원</span>
                         </div>
                         <div class="detail-item">
-                            <span class="detail-label">목표가</span>
+                            <span class="detail-label">{% if rec.trade_type == 'swing' %}1차 목표가 (2R·50%){% else %}목표가{% endif %}</span>
                             <span class="detail-value pct-up">{{ rec.target_price|floatformat:-2|intcomma }}원</span>
                         </div>
                         <div class="detail-item">
-                            <span class="detail-label">손절가</span>
-                            <span class="detail-value pct-down">{{ rec.stop_loss|floatformat:-2|intcomma }}원</span>
+                            <span class="detail-label">{% if rec.trade_type == 'swing' %}초기 손절가{% else %}손절가{% endif %}</span>
+                            <span class="detail-value pct-down">{% if rec.trade_type == 'swing' and rec.initial_stop_loss != None %}{{ rec.initial_stop_loss|floatformat:-2|intcomma }}{% else %}{{ rec.stop_loss|floatformat:-2|intcomma }}{% endif %}원</span>
                         </div>
                         <div class="detail-item">
                             {% if rec.trade_type == 'swing' %}
-                            <span class="detail-label">부분익절 기준</span>
-                            <span class="detail-value">위험 대비 2R</span>
+                            <span class="detail-label">2차 청산 규칙</span>
+                            <span class="detail-value">EMA20·3ATR 추적 · 최장 20일</span>
                             {% else %}
                             <span class="detail-label">적용 K값</span>
                             <span class="detail-value">{{ rec.k_value|floatformat:2 }}</span>
@@ -378,6 +378,10 @@
                             <span class="detail-value rec-max">{% if rec.max_profit_pct != None %}{% if rec.max_profit_pct > 0 %}+{% endif %}{{ rec.max_profit_pct|floatformat:2 }}%{% else %}-{% endif %}</span>
                         </div>
                         {% if rec.trade_type == 'swing' %}
+                        <div class="detail-item">
+                            <span class="detail-label">현재 추적손절가</span>
+                            <span class="detail-value pct-down">{% if rec.entered_at %}{{ rec.stop_loss|floatformat:-2|intcomma }}원{% else %}-{% endif %}</span>
+                        </div>
                         <div class="detail-item">
                             <span class="detail-label">진입 신호 만료일</span>
                             <span class="detail-value">{{ rec.entry_expires_on|date:"Y.m.d"|default:"-" }}</span>
@@ -420,3 +424,4 @@
 </nav>
 {% endif %}
 {% endblock %}
+
