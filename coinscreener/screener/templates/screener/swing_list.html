@@ -68,6 +68,7 @@
     .price-value { font-weight: 700; }
     .target { color: var(--up-color); }
     .stop { color: #5b84ff; }
+    .exit-rule { color: #cfc6ed; text-align: right; }
     .meta {
         margin-top: 12px;
         padding-top: 10px;
@@ -113,7 +114,8 @@
 
 <div class="strategy-note">
     BTC 상승 추세에서만 신규 추천하며 최대 3종목을 동시에 추적합니다.
-    진입 신호는 2일 후 만료되고, 2R에서 50% 부분익절 후 추적손절을 적용합니다.
+    진입 신호는 2일 후 만료됩니다. 1차 목표가(2R)에서 50%를 부분익절하고,
+    나머지 50%는 고정 2차 목표가 없이 EMA20·3ATR 추적손절 또는 최대 20일 규칙으로 청산합니다.
 </div>
 
 <div class="disclaimer">
@@ -149,17 +151,27 @@
                     <span class="status status-{{ rec.status }}">{{ rec.get_status_display }}</span>
                 </div>
                 <div class="price-row">
-                    <span class="price-label">진입 추천가</span>
+                    <span class="price-label">진입가 (20일 돌파)</span>
                     <span class="price-value">{{ rec.entry_price|floatformat:-2|intcomma }}원</span>
                 </div>
                 <div class="price-row">
-                    <span class="price-label">2R 부분익절가</span>
+                    <span class="price-label">1차 목표가 (2R·50%)</span>
                     <span class="price-value target">{{ rec.target_price|floatformat:-2|intcomma }}원</span>
                 </div>
                 <div class="price-row">
-                    <span class="price-label">{% if rec.status == 'partial' %}현재 추적손절가{% else %}손절가{% endif %}</span>
+                    <span class="price-label">2차 청산</span>
+                    <span class="price-value exit-rule">EMA20·3ATR 추적<br>최장 20일</span>
+                </div>
+                <div class="price-row">
+                    <span class="price-label">초기 손절가</span>
+                    <span class="price-value stop">{% if rec.initial_stop_loss != None %}{{ rec.initial_stop_loss|floatformat:-2|intcomma }}{% else %}{{ rec.stop_loss|floatformat:-2|intcomma }}{% endif %}원</span>
+                </div>
+                {% if rec.initial_stop_loss != None and rec.stop_loss != rec.initial_stop_loss %}
+                <div class="price-row">
+                    <span class="price-label">현재 추적손절가</span>
                     <span class="price-value stop">{{ rec.stop_loss|floatformat:-2|intcomma }}원</span>
                 </div>
+                {% endif %}
                 {% if rec.result_pct != None %}
                 <div class="price-row">
                     <span class="price-label">최종 수익률</span>
@@ -174,6 +186,7 @@
                         · 진입 유효 {{ rec.entry_expires_on|date:"m.d" }}까지
                     {% endif %}
                     {% if rec.exit_reason %} · 종료 {{ rec.exit_reason_display }}{% endif %}
+                    · 1회 위험 한도 자산의 0.5%
                 </div>
                 <details>
                     <summary class="meta">추천 근거 보기</summary>
@@ -185,3 +198,4 @@
     {% endif %}
 </div>
 {% endblock %}
+
