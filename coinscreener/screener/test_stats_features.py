@@ -132,11 +132,28 @@ class StatsListViewTestCase(TestCase):
         self.assertEqual(recommendation.trade_type, 'danta')
 
     def test_swing_page_describes_live_strategy(self):
+        DailyRecommendation.objects.create(
+            date=timezone.localdate(),
+            trade_type='swing',
+            coin_ticker='KRW-XRP',
+            coin_name='XRP',
+            entry_price=100.0,
+            target_price=110.0,
+            stop_loss=95.0,
+            initial_stop_loss=95.0,
+            k_value=0,
+            reason='스윙 표시 테스트',
+            status='pending',
+        )
         response = self.client.get(reverse('swing_list'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '일봉 추세 돌파')
-        self.assertContains(response, '현재 스윙 추천이 없습니다')
+        self.assertContains(response, '진입가 (20일 돌파)')
+        self.assertContains(response, '1차 목표가 (2R·50%)')
+        self.assertContains(response, 'EMA20·3ATR 추적')
+        self.assertContains(response, '초기 손절가')
+        self.assertContains(response, '1회 위험 한도 자산의 0.5%')
 
     def test_max_profit_property_uses_highest_observed_price(self):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
@@ -462,3 +479,4 @@ class RecommendationMonitorTestCase(TestCase):
         Command()._monitor_loop(stop_event)
 
         mock_monitor.assert_called_once_with()
+
