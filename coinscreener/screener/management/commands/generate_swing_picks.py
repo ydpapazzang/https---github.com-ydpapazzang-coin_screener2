@@ -26,6 +26,13 @@ from coinscreener.screener.swing_strategy import (
 UPBIT_MARKETS_URL = 'https://api.upbit.com/v1/market/all'
 
 
+def _format_krw_price(price):
+    value = float(price)
+    if value < 100:
+        return f"{value:,.2f}".rstrip('0').rstrip('.')
+    return f"{value:,.0f}"
+
+
 class Command(BaseCommand):
     help = 'BTC 일봉 상승 국면에서 추세 돌파형 스윙 추천을 생성합니다.'
 
@@ -274,8 +281,16 @@ class Command(BaseCommand):
         for index, recommendation in enumerate(recommendations, 1):
             message_lines.append(
                 f"{index}. <b>{recommendation['name']}</b> "
-                f"({recommendation['ticker']})"
+                f"({recommendation['ticker']})\n"
+                f"   진입가 {_format_krw_price(recommendation['entry_price'])}원\n"
+                f"   1차 목표 {_format_krw_price(recommendation['target_price'])}원 "
+                "(2R·50% 익절)\n"
+                "   2차 청산 EMA20·3ATR 추적손절 (최장 20일)\n"
+                f"   초기 손절 {_format_krw_price(recommendation['stop_loss'])}원"
             )
+        message_lines.append(
+            "\n※ 진입 신호는 2일간 유효하며 1회 위험 한도는 자산의 0.5%입니다."
+        )
         message_lines.append(
             "\n👉 <a href='https://woniiscreener.duckdns.org/swing/'>"
             "웹사이트에서 스윙 전략 확인하기</a>"
@@ -292,3 +307,4 @@ class Command(BaseCommand):
             f"BTC 추세 강도 {regime['close'] / regime['ema60'] * 100 - 100:.1f}%. "
             "스윙 추천 생성이 완료되었습니다."
         ))
+
