@@ -49,6 +49,12 @@ ADSENSE_CLIENT = os.environ.get('ADSENSE_CLIENT', '')
 # 프로세스가 강제 종료되어도 이 시간이 지나면 자동으로 다시 검색할 수 있다.
 SCAN_LEASE_SECONDS = max(60, int(os.environ.get('SCAN_LEASE_SECONDS', '1800')))
 
+# 서버 측 일일 무료 조회 계측. Rewarded 광고 단위가 설정되기 전에는 사용량만
+# 기록하고 차단하지 않아 광고 준비 미완료로 기존 사용자가 잠기는 일을 막는다.
+SCAN_DAILY_FREE_LIMIT = max(0, int(os.environ.get('SCAN_DAILY_FREE_LIMIT', '2')))
+REWARDED_AD_UNIT_PATH = os.environ.get('REWARDED_AD_UNIT_PATH', '').strip()
+SCAN_DAILY_REWARD_LIMIT = max(1, int(os.environ.get('SCAN_DAILY_REWARD_LIMIT', '20')))
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
