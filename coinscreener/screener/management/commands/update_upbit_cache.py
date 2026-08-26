@@ -38,8 +38,9 @@ class Command(BaseCommand):
                 self._run_crawler()
                 elapsed = time.monotonic() - start_time
 
-                # 300초(5분) 주기 (수집에 걸린 시간을 빼고 휴식)
-                sleep_time = max(0, 300 - elapsed)
+                # 수집이 목표 주기보다 오래 걸려도 즉시 다음 전체 수집을 시작하지
+                # 않는다. SQLite·메모리·외부 API에 최소 60초 회복 시간을 준다.
+                sleep_time = max(60, 300 - elapsed)
                 self.stdout.write(
                     f"Cycle finished in {elapsed:.1f}s. Sleeping for {sleep_time:.1f}s..."
                 )
