@@ -14,7 +14,11 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         snapshot = collect_health(include_web=True)
         previous = load_monitor_state()
-        changed = previous.get('status') != snapshot['status']
+        previous_status = previous.get('status')
+        changed = (
+            (previous_status is None and snapshot['status'] != 'ok')
+            or (previous_status is not None and previous_status != snapshot['status'])
+        )
 
         if changed and tg.is_configured():
             if snapshot['status'] == 'ok':
