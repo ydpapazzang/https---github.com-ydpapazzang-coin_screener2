@@ -48,19 +48,31 @@ def backtest_run(request, strategy_id):
         sell_mode    = body.get('sell_mode', 'cond_exit')
         sell_param   = float(body.get('sell_param', 5))
         fee_pct      = float(body.get('fee', 0.05))
+        slippage_pct = float(body.get('slippage', 0.05))
     except Exception:
         return JsonResponse({'error': '잘못된 요청'}, status=400)
 
     # candle_count 범위 고정
     if candle_count not in (50, 100, 200, 500):
         candle_count = 200
+    if sell_mode not in ('exit_n', 'tp_sl', 'cond_exit'):
+        return JsonResponse({'error': '올바르지 않은 매도 조건'}, status=400)
+    if not 0 <= fee_pct <= 1 or not 0 <= slippage_pct <= 1:
+        return JsonResponse({'error': '수수료와 슬리피지는 0~1% 범위여야 합니다.'}, status=400)
+    if sell_mode == 'exit_n' and not 1 <= sell_param <= 100:
+        return JsonResponse({'error': '보유 봉 수는 1~100 범위여야 합니다.'}, status=400)
+    if sell_mode == 'tp_sl' and not 0.1 <= sell_param <= 100:
+        return JsonResponse({'error': '익절·손절률은 0.1~100% 범위여야 합니다.'}, status=400)
 
     # 티커 형식 기본 검증 (KRW-XXX 형태인지만 확인)
     import re as _re
     if not _re.match(r'^KRW-[A-Z0-9]{1,20}$', ticker):
         return JsonResponse({'error': '올바르지 않은 티커 형식'}, status=400)
 
-    result = run_backtest(ticker, conditions, candle_count, sell_mode, sell_param, fee_pct)
+    result = run_backtest(
+        ticker, conditions, candle_count, sell_mode, sell_param,
+        fee_pct, slippage_pct,
+    )
     if 'error' in result:
         return JsonResponse(result, status=400)
     return JsonResponse(result)
@@ -354,3 +366,4 @@ def strategy_scan_count(request, strategy_id):
             'conditions': [{'tf': c.timeframe, 'left': c.left_indicator, 'op': c.operator, 'right': c.right_indicator} for c in conditions],
         }
     return JsonResponse(resp)
+
