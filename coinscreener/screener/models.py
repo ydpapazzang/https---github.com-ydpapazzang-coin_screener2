@@ -408,3 +408,15 @@ class DailyRecommendation(models.Model):
             f"{self.coin_name} - {self.get_status_display()}"
         )
 
+
+class ScanLease(models.Model):
+    """브라우저 세션별 동시 스캔 방지용 만료 가능한 실행권."""
+
+    owner_key = models.CharField(max_length=64, primary_key=True)
+    token = models.CharField(max_length=32)
+    acquired_at = models.DateTimeField()
+    expires_at = models.DateTimeField(db_index=True)
+
+    def __str__(self):
+        return f"{self.owner_key[:8]}… until {self.expires_at}"
+

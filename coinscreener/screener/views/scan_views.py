@@ -14,7 +14,8 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
-from ..ownership import get_owned_strategy, get_viewable_strategy
+from ..ownership import get_owned_strategy, get_owner_key, get_viewable_strategy
+from ..scan_guard import acquire_scan_lease, release_scan_lease
 from ..cron_auth import is_cron_request_authorized
 from ..kospi_filters import filter_kospi_products, is_kospi_cash_management_product
 from .. import telegram as tg
@@ -543,6 +544,7 @@ def coin_search_stream(request, strategy_id):
     from django.http import StreamingHttpResponse
 
     strategy   = get_viewable_strategy(request, strategy_id)
+    owner_key  = get_owner_key(request)
     conditions = list(strategy.conditions.all())
     exchange   = request.GET.get('exchange', 'upbit')
     try:
@@ -562,7 +564,7 @@ def coin_search_stream(request, strategy_id):
         get_owned_strategy(request, strategy_id)
     full_scan = request.GET.get('full') == '1'
 
-    def event_stream():
+    def scan_work_stream():
         import time
         start_time = time.time()
 
@@ -751,6 +753,23 @@ def coin_search_stream(request, strategy_id):
             "redirect": f"/strategy/{strategy_id}/results/?exchange={exchange}&vol_limit={vol_limit}{f'&timeframe={tf_override}' if tf_override else ''}",
         }) + "\n\n"
 
+    def event_stream():
+        lease_token = acquire_scan_lease(owner_key)
+        if lease_token is None:
+            yield "data: " + json.dumps({
+                "type": "error",
+                "code": "scan_busy",
+                "msg": (
+                    "이 브라우저에서 이미 검색이 진행 중입니다. "
+                    "기존 검색이 끝난 뒤 다시 시도해주세요."
+                ),
+            }) + "\n\n"
+            return
+        try:
+            yield from scan_work_stream()
+        finally:
+            release_scan_lease(owner_key, lease_token)
+
     response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
     response['X-Accel-Buffering'] = 'no'
@@ -790,5 +809,4 @@ def coin_search_results(request, strategy_id):
         'elapsed_time':       cached_data.get('elapsed_time'),
         'data_freshness':     cached_data.get('data_freshness'),
     })
-
 
