@@ -351,6 +351,31 @@ class Command(BaseCommand):
 
         today_date = timezone.localtime().date()
 
+        # 전날 이전에 끝났어야 할 단타를 먼저 확정한다. 이전 구현은 오늘 추천만
+        # 조회해 과거 pending/active가 성적표에 영구적으로 남았다.
+        expired_recs = DailyRecommendation.objects.filter(
+            date__lt=today_date,
+            trade_type='danta',
+            status__in=['pending', 'active'],
+        ).order_by('date', 'id')
+        for rec in expired_recs:
+            try:
+                candle = self._get_danta_session_candle(rec)
+                if candle is None:
+                    raise RuntimeError('추천일의 일봉을 찾을 수 없습니다.')
+                self._apply_danta_candle(
+                    rec,
+                    self._danta_session_end(rec.date),
+                    candle,
+                    finalize=True,
+                )
+                rec.save()
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(
+                    f"[{rec.coin_ticker}] 지난 단타 마감 처리 오류: {exc}"
+                ))
+            time.sleep(0.1)
+
         # 목표 달성 종목도 당일 종료까지 추적해 실제 관측 최고가를 보존한다.
         tracked_recs = DailyRecommendation.objects.filter(
             date=today_date,
@@ -367,50 +392,23 @@ class Command(BaseCommand):
                 if not math.isfinite(current_price) or current_price <= 0:
                     continue
 
-                if rec.status == 'pending' and current_price >= rec.entry_price:
-                    rec.status = 'active'
-                    self.stdout.write(self.style.SUCCESS(
-                        f"[{rec.coin_ticker}] 진입가 도달! (상태: 매수완료)"
-                    ))
+                minute_frame = pyupbit.get_ohlcv(
+                    rec.coin_ticker, interval='minute1', count=1
+                )
+                if minute_frame is not None and not minute_frame.empty:
+                    candle = minute_frame.iloc[-1]
+                    candle_at = self._aware_candle_at(minute_frame.index[-1])
+                else:
+                    # 일시적으로 1분봉을 받지 못해도 현재가 관측은 보존한다.
+                    candle = {
+                        'open': current_price,
+                        'high': current_price,
+                        'low': current_price,
+                        'close': current_price,
+                    }
+                    candle_at = timezone.now()
 
-                if rec.status in ('active', 'success'):
-                    observed_high = current_price
-                    minute_candle = pyupbit.get_ohlcv(
-                        rec.coin_ticker, interval='minute1', count=1
-                    )
-                    if minute_candle is not None and not minute_candle.empty:
-                        candle_high = float(minute_candle.iloc[-1]['high'])
-                        if math.isfinite(candle_high) and candle_high > 0:
-                            observed_high = max(observed_high, candle_high)
-
-                    if rec.highest_price is None or observed_high > rec.highest_price:
-                        rec.highest_price = observed_high
-                    if rec.lowest_price is None or current_price < rec.lowest_price:
-                        rec.lowest_price = current_price
-
-                if rec.status == 'active':
-                    if current_price >= rec.target_price:
-                        rec.status = 'success'
-                        rec.result_pct = (
-                            (rec.target_price - rec.entry_price)
-                            / rec.entry_price
-                            * 100
-                        )
-                        self.stdout.write(self.style.SUCCESS(
-                            f"[{rec.coin_ticker}] 목표가 달성! "
-                            f"(상태: 목표달성, 수익: {rec.result_pct:.2f}%)"
-                        ))
-                    elif current_price <= rec.stop_loss:
-                        rec.status = 'failed'
-                        rec.result_pct = (
-                            (rec.stop_loss - rec.entry_price)
-                            / rec.entry_price
-                            * 100
-                        )
-                        self.stdout.write(self.style.WARNING(
-                            f"[{rec.coin_ticker}] 손절가 이탈... "
-                            f"(상태: 손절이탈, 손실: {rec.result_pct:.2f}%)"
-                        ))
+                self._apply_danta_candle(rec, candle_at, candle)
 
                 rec.save()
             except Exception as exc:
@@ -418,6 +416,117 @@ class Command(BaseCommand):
                     f"[{rec.coin_ticker}] 단타 추적 오류: {exc}"
                 ))
             time.sleep(0.1)
+
+    @staticmethod
+    def _danta_session_end(rec_date):
+        """업비트 일봉 경계인 다음 날 KST 09:00을 반환한다."""
+        from django.utils import timezone
+
+        naive = datetime.datetime.combine(
+            rec_date + datetime.timedelta(days=1),
+            datetime.time(hour=9),
+        )
+        return timezone.make_aware(naive, timezone.get_current_timezone())
+
+    @staticmethod
+    def _aware_candle_at(value):
+        from django.utils import timezone
+
+        candle_at = pd.Timestamp(value).to_pydatetime()
+        if timezone.is_naive(candle_at):
+            candle_at = timezone.make_aware(
+                candle_at, timezone.get_current_timezone()
+            )
+        return candle_at
+
+    def _get_danta_session_candle(self, rec):
+        """과거 단타 세션을 마감할 추천일 일봉을 가져온다."""
+        frame = pyupbit.get_ohlcv(rec.coin_ticker, interval='day', count=200)
+        if frame is None or frame.empty:
+            return None
+        for index, row in frame.iterrows():
+            if pd.Timestamp(index).date() == rec.date:
+                return row
+        return None
+
+    def _apply_danta_candle(self, rec, candle_at, candle, finalize=False):
+        """단타 1분봉/마감 일봉을 보수적인 체결 순서로 반영한다."""
+        values = {}
+        for field in ('open', 'high', 'low', 'close'):
+            value = float(candle[field])
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError(f"유효하지 않은 단타 봉 {field}: {value}")
+            values[field] = value
+
+        candle_open = values['open']
+        observed_high = values['high']
+        observed_low = values['low']
+        was_pending = rec.status == 'pending'
+        rec.last_checked_at = candle_at
+
+        if was_pending:
+            if observed_high < rec.entry_price:
+                if finalize:
+                    rec.status = 'closed'
+                    rec.exit_reason = 'entry_expired'
+                    rec.exit_at = candle_at
+                return
+            rec.status = 'active'
+            rec.entered_at = rec.entered_at or candle_at
+            rec.highest_price = max(rec.entry_price, observed_high)
+            rec.lowest_price = min(rec.entry_price, observed_low)
+            self.stdout.write(self.style.SUCCESS(
+                f"[{rec.coin_ticker}] 진입가 도달! (상태: 매수완료)"
+            ))
+
+        if rec.status in ('active', 'success'):
+            if rec.highest_price is None or observed_high > rec.highest_price:
+                rec.highest_price = observed_high
+            if rec.lowest_price is None or observed_low < rec.lowest_price:
+                rec.lowest_price = observed_low
+
+        if rec.status == 'active':
+            # 봉 내부 순서를 알 수 없으면 목표보다 손절을 먼저 적용한다.
+            if observed_low <= rec.stop_loss:
+                exit_price = (
+                    rec.stop_loss
+                    if was_pending
+                    else min(rec.stop_loss, candle_open)
+                )
+                rec.status = 'failed'
+                rec.exit_price = exit_price
+                rec.exit_at = candle_at
+                rec.exit_reason = 'stop_loss'
+                rec.result_pct = (
+                    (exit_price - rec.entry_price) / rec.entry_price * 100
+                )
+                self.stdout.write(self.style.WARNING(
+                    f"[{rec.coin_ticker}] 손절가 이탈... "
+                    f"(상태: 손절이탈, 손실: {rec.result_pct:.2f}%)"
+                ))
+            elif observed_high >= rec.target_price:
+                rec.status = 'success'
+                rec.exit_price = rec.target_price
+                rec.exit_at = candle_at
+                rec.exit_reason = 'target'
+                rec.result_pct = (
+                    (rec.target_price - rec.entry_price)
+                    / rec.entry_price
+                    * 100
+                )
+                self.stdout.write(self.style.SUCCESS(
+                    f"[{rec.coin_ticker}] 목표가 달성! "
+                    f"(상태: 목표달성, 수익: {rec.result_pct:.2f}%)"
+                ))
+
+        if finalize and rec.status == 'active':
+            rec.status = 'closed'
+            rec.exit_price = values['close']
+            rec.exit_at = candle_at
+            rec.exit_reason = 'session_close'
+            rec.result_pct = (
+                (rec.exit_price - rec.entry_price) / rec.entry_price * 100
+            )
 
     @staticmethod
     def _swing_result_pct(rec, exit_price):
