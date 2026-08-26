@@ -420,3 +420,27 @@ class ScanLease(models.Model):
     def __str__(self):
         return f"{self.owner_key[:8]}… until {self.expires_at}"
 
+
+class ScanUsage(models.Model):
+    """KST 날짜별 익명 세션 검색 횟수와 광고 보상 조회권."""
+
+    owner_key = models.CharField(max_length=64, db_index=True)
+    date = models.DateField(db_index=True)
+    scan_count = models.PositiveIntegerField(default=0)
+    reward_credits = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('owner_key', 'date'),
+                name='unique_daily_scan_usage',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.date} {self.owner_key[:8]}… "
+            f"scans={self.scan_count} rewards={self.reward_credits}"
+        )
+
