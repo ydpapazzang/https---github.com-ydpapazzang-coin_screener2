@@ -157,6 +157,28 @@ class P1HealthEndpointTestCase(TestCase):
                 call_command('monitor_health', stdout=StringIO())
         send_message.assert_called_once()
 
+    @patch('coinscreener.screener.management.commands.monitor_health.tg.send_message')
+    @patch('coinscreener.screener.management.commands.monitor_health.tg.is_configured', return_value=True)
+    @patch('coinscreener.screener.management.commands.monitor_health.collect_health')
+    def test_initial_healthy_check_is_silent(
+        self, collect, _configured, send_message
+    ):
+        collect.return_value = {
+            'status': 'ok',
+            'checked_at': '2026-08-26T10:00:00+09:00',
+            'database_ok': True,
+            'web_ok': True,
+            'cache_age_minutes': 1,
+            'memory': {'available_pct': 40},
+            'disk_free_pct': 50,
+            'problems': [],
+            'warnings': [],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            with override_settings(BASE_DIR=Path(temporary)):
+                call_command('monitor_health', stdout=StringIO())
+        send_message.assert_not_called()
+
 
 class P1AlertDefaultTimeTestCase(TestCase):
     def setUp(self):
