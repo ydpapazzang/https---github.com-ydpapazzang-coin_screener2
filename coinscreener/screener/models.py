@@ -296,6 +296,8 @@ class VisitLog(models.Model):
 class DailyRecommendation(models.Model):
     """단타·스윙 추천과 성적을 함께 저장하는 모델."""
 
+    ESTIMATED_ROUND_TRIP_COST_PCT = 0.20
+
     trade_type_choices = [
         ('danta', '단타'),
         ('swing', '스윙'),
@@ -369,6 +371,8 @@ class DailyRecommendation(models.Model):
     def exit_reason_display(self):
         labels = {
             'entry_expired': '진입 만료',
+            'target': '목표가 도달',
+            'session_close': '단타 세션 종가 청산',
             'stop_loss': '초기 손절',
             'trailing_stop': '추적 손절',
             'ema20_exit': 'EMA20 이탈',
@@ -387,6 +391,13 @@ class DailyRecommendation(models.Model):
             return None
         return ((self.highest_price - self.entry_price) / self.entry_price) * 100
 
+    @property
+    def estimated_net_result_pct(self):
+        """수수료·슬리피지 왕복 0.20%를 차감한 표시용 예상 순수익률."""
+        if self.result_pct is None:
+            return None
+        return self.result_pct - self.ESTIMATED_ROUND_TRIP_COST_PCT
+
     class Meta:
         ordering = ['-date', 'trade_type', 'coin_ticker']
         unique_together = ('date', 'coin_ticker', 'trade_type')
@@ -396,3 +407,4 @@ class DailyRecommendation(models.Model):
             f"[{self.date}] [{self.get_trade_type_display()}] "
             f"{self.coin_name} - {self.get_status_display()}"
         )
+
