@@ -1,7 +1,8 @@
-"""
-백테스팅 엔진
-- 매수: 해당 봉에서 전략 조건 충족 시 진입333333333
-- 매도: 3가지 모드 (N봉 후 / 익절·손절 % / 조건 이탈 시) asfsafdf33333
+"""사용자 조건식 전략용 보수적 백테스팅 엔진.
+
+- 신호는 봉 마감 시점에 확정하고 주문은 다음 기준봉 시가에 체결한다.
+- 서로 다른 시간봉은 배열 위치가 아닌 실제 봉 확정 시각으로 정렬한다.
+- 수수료와 슬리피지를 매수·매도 양쪽에 반영한다.
 """
 import pyupbit
 import pandas as pd
@@ -23,17 +24,46 @@ MAJOR_COINS = [
 ]
 
 
-def _check_conditions_at(df_map, conditions, idx: int) -> bool:
-    """df_map의 idx 시점에서 조건 충족 여부 확인 (cond.offset 반영)"""
+def _candle_available_at(dates, timeframe):
+    """각 봉이 완전히 확정되어 사용할 수 있는 시각을 계산한다."""
+    dates = pd.to_datetime(dates)
+    if timeframe.startswith('minute'):
+        try:
+            minutes = int(timeframe.replace('minute', ''))
+        except ValueError:
+            minutes = 1
+        return dates + pd.to_timedelta(minutes, unit='m')
+    if timeframe == 'week':
+        return dates + pd.to_timedelta(7, unit='D')
+    if timeframe == 'month':
+        return dates + pd.offsets.MonthBegin(1)
+    return dates + pd.to_timedelta(1, unit='D')
+
+
+def _prepare_frame(df, timeframe):
+    frame = df.reset_index().rename(columns={'index': 'date'}).copy()
+    frame['date'] = pd.to_datetime(frame['date'])
+    frame = frame.sort_values('date').drop_duplicates('date').reset_index(drop=True)
+    frame['_available_at'] = _candle_available_at(frame['date'], timeframe)
+    return frame
+
+
+def _condition_row_index(df, signal_time):
+    available = df['_available_at']
+    return int(available.searchsorted(pd.Timestamp(signal_time), side='right') - 1)
+
+
+def _check_conditions_at(df_map, conditions, signal_time) -> bool:
+    """signal_time까지 확정된 데이터만 사용해 모든 조건을 평가한다."""
     for cond in conditions:
         df = df_map.get(cond.timeframe)
-        if df is None or idx >= len(df):
+        if df is None:
             return False
 
-        # 백테스팅 시점 idx 기준으로 cond.offset(n봉 전)을 적용하여 offset을 구합니다.
-        # (len(df) - 1) - idx 는 현재 백테스팅 대상 봉(idx)의 최신 기준 오프셋이며,
-        # 여기에 cond.offset을 더해주면 idx 기준으로 지정된 과거 봉을 참조하게 됩니다.
-        offset = (len(df) - 1) - idx + cond.offset
+        row_idx = _condition_row_index(df, signal_time)
+        if row_idx < 0:
+            return False
+        offset = (len(df) - 1) - row_idx + cond.offset
 
         # ── 하이킨아시 패턴 조건 처리 ──
         ha_patterns = ('HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')
@@ -79,7 +109,8 @@ def _check_conditions_at(df_map, conditions, idx: int) -> bool:
 
 
 def run_backtest(ticker: str, conditions: list, candle_count: int,
-                 sell_mode: str, sell_param: float, fee_pct: float = 0.05) -> dict:
+                 sell_mode: str, sell_param: float, fee_pct: float = 0.05,
+                 slippage_pct: float = 0.05) -> dict:
     """
     Parameters
     ----------
@@ -91,6 +122,7 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
                    'cond_exit' → 조건 이탈 시 매도
     sell_param   : 각 모드에 맞는 숫자 파라미터
     fee_pct      : 편도 매매 수수료 (%)
+    slippage_pct : 편도 예상 슬리피지 (%)
 
     Returns
     -------
@@ -110,7 +142,7 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
         df = pyupbit.get_ohlcv(ticker, interval=tf, count=max(candle_count + 100, 300))
         if df is None:
             return {'error': f'{ticker} 데이터를 불러올 수 없습니다.'}
-        df_map[tf] = df.reset_index().rename(columns={'index': 'date'})
+        df_map[tf] = _prepare_frame(df, tf)
 
     primary_df = df_map[primary_tf]
     n = len(primary_df)
@@ -119,6 +151,8 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
     equity      = 100.0          # 초기 자산 100%
     equity_curve = []
     in_position  = False
+    pending_entry = False
+    pending_exit = False
     entry_price  = 0.0
     entry_idx    = 0
     entry_date   = None
@@ -137,59 +171,82 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
     if start_idx >= n:
         return {'error': f'데이터가 부족하여 백테스팅을 실행할 수 없습니다. (필요: {warmup}봉, 보유: {n}봉). 더 긴 기간을 선택하거나 지표 기간을 줄여주세요.'}
 
+    fee_ratio = fee_pct / 100.0
+    slippage_ratio = slippage_pct / 100.0
+
+    def close_trade(raw_exit_price, exit_date):
+        nonlocal equity, in_position, pending_exit
+        executed_exit = float(raw_exit_price) * (1 - slippage_ratio)
+        gross_ratio = executed_exit / entry_price
+        net_ratio = gross_ratio * ((1 - fee_ratio) ** 2)
+        ret = (net_ratio - 1) * 100
+        equity *= net_ratio
+        trades.append({
+            'entry_date': entry_date,
+            'exit_date': exit_date,
+            'entry_price': round(entry_price, 8),
+            'exit_price': round(executed_exit, 8),
+            'return_pct': round(ret, 2),
+        })
+        equity_curve.append({'date': exit_date, 'equity': round(equity, 4)})
+        in_position = False
+        pending_exit = False
+
     for i in range(start_idx, n):
+        open_price = float(primary_df['open'].iloc[i])
         price = float(primary_df['close'].iloc[i])
         high_price = float(primary_df['high'].iloc[i])
         low_price  = float(primary_df['low'].iloc[i])
         date  = str(primary_df['date'].iloc[i])[:10]
+        exited_this_bar = False
 
-        if not in_position:
-            # 매수 시그널 체크
-            if _check_conditions_at(df_map, conditions, i):
-                in_position = True
-                entry_price = price
-                entry_idx   = i
-                entry_date  = date
-        else:
+        # 전 봉 마감 때 확정된 주문만 현재 봉 시가에 체결한다.
+        if pending_exit and in_position:
+            close_trade(open_price, date)
+            exited_this_bar = True
+
+        if pending_entry and not in_position and not exited_this_bar:
+            in_position = True
+            entry_price = open_price * (1 + slippage_ratio)
+            entry_idx = i
+            entry_date = date
+            pending_entry = False
+
+        if in_position:
             # 매도 시그널 체크
             sell = False
-            exit_price = price  # 기본 매도가격은 종가
+            raw_exit_price = price
 
             if sell_mode == 'exit_n':
                 sell = (i - entry_idx) >= int(sell_param)
             elif sell_mode == 'tp_sl':
-                high_change = (high_price - entry_price) / entry_price * 100
-                low_change  = (low_price - entry_price) / entry_price * 100
+                stop_price = entry_price * (1 - sell_param / 100.0)
+                target_price = entry_price * (1 + sell_param / 100.0)
 
-                # 보수적 백테스팅을 위해 손절(SL)부터 평가
-                if low_change <= -sell_param:
+                # 같은 봉에서 목표·손절이 모두 닿으면 경로를 알 수 없으므로 손절 우선.
+                if low_price <= stop_price:
                     sell = True
-                    exit_price = entry_price * (1 - sell_param / 100.0)
-                elif high_change >= sell_param:
+                    raw_exit_price = min(open_price, stop_price)
+                elif high_price >= target_price:
                     sell = True
-                    exit_price = entry_price * (1 + sell_param / 100.0)
+                    raw_exit_price = target_price
             elif sell_mode == 'cond_exit':
-                sell = not _check_conditions_at(df_map, conditions, i)
+                signal_time = primary_df['_available_at'].iloc[i]
+                if not _check_conditions_at(df_map, conditions, signal_time):
+                    if i < n - 1:
+                        pending_exit = True
+                    else:
+                        sell = True
 
             if sell or i == n - 1:
-                # 수익률 계산 시 매매 수수료(fee_pct)를 양방향(매수, 매도)으로 적용
-                fee_ratio = fee_pct / 100.0
-                gross_ratio = exit_price / entry_price
-                # (1 - fee_ratio)가 두 번 곱해지는 것은 매수/매도 시 각각 수수료가 발생하기 때문
-                net_ratio = gross_ratio * ((1 - fee_ratio) ** 2)
-                ret = (net_ratio - 1) * 100
+                close_trade(raw_exit_price, date)
+                exited_this_bar = True
 
-                # 자산(equity)은 순수익률(net_ratio)을 곱하여 업데이트
-                equity = equity * net_ratio
-                trades.append({
-                    'entry_date':  entry_date,
-                    'exit_date':   date,
-                    'entry_price': entry_price,
-                    'exit_price':  exit_price,
-                    'return_pct':  round(ret, 2),
-                })
-                in_position = False
-                equity_curve.append({'date': date, 'equity': round(equity, 4)})
+        # 현재 봉이 완전히 끝난 뒤 신호를 평가하고, 마지막 봉 신호는 체결하지 않는다.
+        if not in_position and not pending_entry and not exited_this_bar and i < n - 1:
+            signal_time = primary_df['_available_at'].iloc[i]
+            if _check_conditions_at(df_map, conditions, signal_time):
+                pending_entry = True
 
     # 안전하게 시작 날짜 추출 (IndexError 방지용 방어 코드)
     if len(primary_df) > 0:
@@ -207,6 +264,9 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
             'mdd': 0.0,
             'sharpe': 0.0,
             'expectancy': 0.0,
+            'fee_pct': fee_pct,
+            'slippage_pct': slippage_pct,
+            'execution_rule': 'signal_close_next_open',
         }
 
     rets       = [t['return_pct'] for t in trades]
@@ -230,9 +290,13 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
             max_dd = dd
     mdd = round(max_dd, 2)
 
-    # 샤프 비율 (Sharpe Ratio) 계산
+    # 거래 수익률을 실제 테스트 기간의 연간 거래 빈도로 환산한 샤프 비율
     std_ret = np.std(rets, ddof=1) if len(rets) > 1 else 0.0
-    sharpe = round(np.mean(rets) / std_ret, 2) if std_ret > 0.0 else 0.0
+    first_entry = pd.Timestamp(trades[0]['entry_date'])
+    last_exit = pd.Timestamp(trades[-1]['exit_date'])
+    period_days = max((last_exit - first_entry).days, 1)
+    trades_per_year = len(trades) * 365.25 / period_days
+    sharpe = round(np.mean(rets) / std_ret * np.sqrt(trades_per_year), 2) if std_ret > 0.0 else 0.0
 
     # 기댓값 (Expectancy) 계산
     win_rate_dec = len(wins) / len(rets)
@@ -256,4 +320,8 @@ def run_backtest(ticker: str, conditions: list, candle_count: int,
         'mdd':          mdd,
         'sharpe':       sharpe,
         'expectancy':   expectancy,
+        'fee_pct':      fee_pct,
+        'slippage_pct': slippage_pct,
+        'execution_rule': 'signal_close_next_open',
     }
+
