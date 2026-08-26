@@ -1,0 +1,17 @@
+[Unit]
+Description=Coin Screener health monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=i_am_psw86
+Group=i_am_psw86
+WorkingDirectory=/home/i_am_psw86/myapp
+EnvironmentFile=-/home/i_am_psw86/myapp/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/i_am_psw86/myapp/venv/bin/python manage.py monitor_health
+TimeoutStartSec=60
+Nice=15
+OOMScoreAdjust=700
+
