@@ -74,6 +74,10 @@ class StatsListViewTestCase(TestCase):
         self.assertEqual(response.context['wins'], 1)
         self.assertEqual(response.context['losses'], 1)
         self.assertEqual(response.context['win_rate'], 50.0)
+        self.assertEqual(response.context['decided'], 2)
+        self.assertEqual(response.context['entered'], 2)
+        self.assertEqual(response.context['avg_net_return'], 0.05)
+        self.assertEqual(response.context['cumulative_net_return'], 0.1)
 
     def test_invalid_filters_are_ignored_safely(self):
         response = self.client.get(reverse('stats_list'), {
@@ -166,6 +170,20 @@ class StatsListViewTestCase(TestCase):
 
         self.assertIsNone(recommendation.max_profit_pct)
 
+    def test_pending_records_do_not_inflate_win_rate(self):
+        response = self.client.get(reverse('stats_list'))
+
+        self.assertEqual(response.context['total'], 3)
+        self.assertEqual(response.context['decided'], 2)
+        self.assertEqual(response.context['pending_count'], 1)
+        self.assertEqual(response.context['win_rate'], 50.0)
+        self.assertContains(response, '비용 후 예상')
+        self.assertContains(response, '+1.80%')
+
+    def test_estimated_net_result_deducts_round_trip_cost(self):
+        recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
+        self.assertAlmostEqual(recommendation.estimated_net_result_pct, 1.8)
+
 
 class RecommendationMonitorTestCase(TestCase):
     def _minute_frame(self, rows, end=None):
@@ -219,6 +237,113 @@ class RecommendationMonitorTestCase(TestCase):
         self.assertEqual(recommendation.status, 'success')
         self.assertEqual(recommendation.highest_price, 108.0)
         self.assertAlmostEqual(recommendation.max_profit_pct, 8.0)
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price',
+        return_value=101.0,
+    )
+    def test_danta_target_uses_intraminute_high(
+        self, _mock_current, mock_ohlcv, _mock_sleep
+    ):
+        recommendation = self._recommendation(
+            status='active', result_pct=None, highest_price=100.0
+        )
+        mock_ohlcv.return_value = self._minute_frame([{
+            'open': 101.0,
+            'high': 103.0,
+            'low': 100.5,
+            'close': 101.0,
+        }])
+
+        Command()._monitor_danta_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'success')
+        self.assertEqual(recommendation.exit_reason, 'target')
+        self.assertEqual(recommendation.exit_price, 102.0)
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price',
+        return_value=100.0,
+    )
+    def test_danta_same_candle_target_and_stop_prefers_stop(
+        self, _mock_current, mock_ohlcv, _mock_sleep
+    ):
+        recommendation = self._recommendation(
+            status='active', result_pct=None, highest_price=100.0
+        )
+        mock_ohlcv.return_value = self._minute_frame([{
+            'open': 100.0,
+            'high': 103.0,
+            'low': 98.0,
+            'close': 100.0,
+        }])
+
+        Command()._monitor_danta_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'failed')
+        self.assertEqual(recommendation.exit_reason, 'stop_loss')
+        self.assertEqual(recommendation.exit_price, 98.5)
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    def test_danta_pending_expires_at_session_end(self, mock_ohlcv, _mock_sleep):
+        recommendation = self._recommendation(
+            date=timezone.localdate() - timedelta(days=1),
+            status='pending',
+            result_pct=None,
+            highest_price=None,
+        )
+        mock_ohlcv.return_value = pd.DataFrame([{
+            'open': 98.0,
+            'high': 99.0,
+            'low': 97.0,
+            'close': 98.5,
+        }], index=[pd.Timestamp(recommendation.date)])
+
+        Command()._monitor_danta_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'closed')
+        self.assertEqual(recommendation.exit_reason, 'entry_expired')
+        self.assertIsNone(recommendation.result_pct)
+
+    @patch('coinscreener.screener.management.commands.update_upbit_cache.time.sleep')
+    @patch(
+        'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_ohlcv'
+    )
+    def test_danta_active_closes_at_session_close(self, mock_ohlcv, _mock_sleep):
+        recommendation = self._recommendation(
+            date=timezone.localdate() - timedelta(days=1),
+            status='active',
+            result_pct=None,
+            highest_price=100.5,
+        )
+        mock_ohlcv.return_value = pd.DataFrame([{
+            'open': 100.0,
+            'high': 101.5,
+            'low': 99.0,
+            'close': 101.0,
+        }], index=[pd.Timestamp(recommendation.date)])
+
+        Command()._monitor_danta_recommendations()
+
+        recommendation.refresh_from_db()
+        self.assertEqual(recommendation.status, 'closed')
+        self.assertEqual(recommendation.exit_reason, 'session_close')
+        self.assertEqual(recommendation.exit_price, 101.0)
+        self.assertAlmostEqual(recommendation.result_pct, 1.0)
 
     @patch(
         'coinscreener.screener.management.commands.update_upbit_cache.pyupbit.get_current_price'

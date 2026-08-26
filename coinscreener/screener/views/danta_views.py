@@ -93,12 +93,33 @@ def stats_list(request):
         '-date', 'trade_type', 'coin_ticker'
     )
 
-    # 상단 통계는 현재 필터 결과를 기준으로 계산한다.
+    # 추천 수와 실제 진입·확정 거래를 분리한다. 승률 분모는 결과가 있는 확정 거래뿐이다.
     total = recommendations.count()
-    wins = recommendations.filter(status='success').count()
-    losses = recommendations.filter(status='failed').count()
-    decided = wins + losses
+    entered = recommendations.filter(
+        Q(entered_at__isnull=False)
+        | Q(status__in=['active', 'partial', 'success', 'failed'])
+        | Q(status='closed', result_pct__isnull=False)
+    ).count()
+    decided_qs = recommendations.exclude(status='skipped').filter(
+        result_pct__isnull=False,
+    )
+    gross_results = list(decided_qs.values_list('result_pct', flat=True))
+    estimated_cost = DailyRecommendation.ESTIMATED_ROUND_TRIP_COST_PCT
+    net_results = [value - estimated_cost for value in gross_results]
+    epsilon = 1e-9
+    wins = sum(value > epsilon for value in net_results)
+    losses = sum(value < -epsilon for value in net_results)
+    breakeven = len(net_results) - wins - losses
+    decided = len(net_results)
     win_rate = (wins / decided * 100) if decided else 0
+    avg_net_return = sum(net_results) / decided if decided else 0
+    cumulative_net_return = sum(net_results) if decided else 0
+    open_count = recommendations.filter(status__in=['active', 'partial']).count()
+    pending_count = recommendations.filter(status='pending').count()
+    no_entry_count = recommendations.filter(
+        status='closed', result_pct__isnull=True,
+    ).count()
+    skipped_count = recommendations.filter(status='skipped').count()
 
     paginator = Paginator(recommendations, 20)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -112,7 +133,17 @@ def stats_list(request):
         'total': total,
         'wins': wins,
         'losses': losses,
+        'breakeven': breakeven,
+        'entered': entered,
+        'decided': decided,
         'win_rate': round(win_rate, 1),
+        'avg_net_return': round(avg_net_return, 2),
+        'cumulative_net_return': round(cumulative_net_return, 2),
+        'estimated_cost': estimated_cost,
+        'open_count': open_count,
+        'pending_count': pending_count,
+        'no_entry_count': no_entry_count,
+        'skipped_count': skipped_count,
         'query': query,
         'selected_status': status,
         'selected_trade_type': trade_type,
@@ -122,3 +153,4 @@ def stats_list(request):
         'trade_type_choices': DailyRecommendation.trade_type_choices,
         'filter_query': query_params.urlencode(),
     })
+

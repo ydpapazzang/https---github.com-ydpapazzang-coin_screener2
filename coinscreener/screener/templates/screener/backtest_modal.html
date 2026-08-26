@@ -165,6 +165,10 @@
                 <div class="bt-label">매매 수수료 (%)</div>
                 <input type="number" class="bt-sel" id="bt-fee" value="0.05" min="0" step="0.01" style="width:90px;">
             </div>
+            <div class="bt-field">
+                <div class="bt-label">예상 슬리피지 (%)</div>
+                <input type="number" class="bt-sel" id="bt-slippage" value="0.05" min="0" max="1" step="0.01" style="width:90px;">
+            </div>
             <div class="bt-field" id="bt-param-wrap" style="display:none;">
                 <div class="bt-label" id="bt-param-label">N봉</div>
                 <input type="number" class="bt-sel" id="bt-param" value="5" min="1" style="width:80px;">
@@ -188,9 +192,12 @@
                 <div class="bt-stat"><div class="bt-stat-label">누적 수익률</div><div class="bt-stat-val" id="bt-total-ret"></div></div>
                 <div class="bt-stat"><div class="bt-stat-label">최대 수익</div><div class="bt-stat-val pos" id="bt-max-p"></div></div>
                 <div class="bt-stat"><div class="bt-stat-label">최대 손실</div><div class="bt-stat-val neg" id="bt-max-l"></div></div>
-                <div class="bt-stat"><div class="bt-stat-label">MDD (최대 낙폭)</div><div class="bt-stat-val neg" id="bt-mdd"></div></div>
-                <div class="bt-stat"><div class="bt-stat-label">샤프 비율</div><div class="bt-stat-val" id="bt-sharpe"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">MDD (청산 자산 기준)</div><div class="bt-stat-val neg" id="bt-mdd"></div></div>
+                <div class="bt-stat"><div class="bt-stat-label">연환산 샤프 (거래 기준)</div><div class="bt-stat-val" id="bt-sharpe"></div></div>
                 <div class="bt-stat"><div class="bt-stat-label">기댓값 (1회 평균)</div><div class="bt-stat-val" id="bt-expectancy"></div></div>
+            </div>
+            <div class="bt-empty" style="padding:0 0 12px;">
+                신호 확정 다음 봉 시가 체결 · 매수/매도 양쪽에 입력한 수수료와 슬리피지 반영
             </div>
 
             <!-- equity chart -->
@@ -354,6 +361,7 @@ async function runBT() {
     const sellMode = document.getElementById('bt-sell-mode').value;
     const param    = parseFloat(document.getElementById('bt-param').value) || 5;
     const fee      = parseFloat(document.getElementById('bt-fee').value) || 0;
+    const slippage = parseFloat(document.getElementById('bt-slippage').value) || 0;
     const sub      = document.getElementById('bt-sub');
     
     const durationText = getDurationText(count, currentBTTimeframe);
@@ -364,7 +372,10 @@ async function runBT() {
         const res  = await secureFetch(`/strategy/${btStrategyId}/backtest/run/`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ticker, candle_count: count, sell_mode: sellMode, sell_param: param, fee: fee}),
+            body: JSON.stringify({
+                ticker, candle_count: count, sell_mode: sellMode,
+                sell_param: param, fee: fee, slippage: slippage,
+            }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -505,3 +516,4 @@ function drawEquityChart(curve) {
     }
 }
 </script>
+
