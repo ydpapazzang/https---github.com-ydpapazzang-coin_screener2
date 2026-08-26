@@ -221,6 +221,9 @@
         }
         if (data.type === 'error') {
             es.close();
+            if (data.code === 'scan_busy') {
+                subText.textContent = '이미 다른 검색이 진행 중입니다.';
+            }
             alert(data.msg);
             history.back();
         }
@@ -232,3 +235,4 @@
 </script>
 </body>
 </html>
+
