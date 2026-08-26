@@ -1,6 +1,6 @@
 # Woniiscreener 프로젝트 구조 및 운영 명세
 
-최종 갱신: 2026-08-24
+최종 갱신: 2026-08-26
 
 이 문서는 현재 GCP 운영 서버와 `main` 브랜치를 기준으로 합니다. Vercel은 사용하지 않습니다.
 
@@ -30,7 +30,7 @@
 
 | 서비스 | 역할 |
 |---|---|
-| `coinscreener.service` | Gunicorn Django 웹 서버 |
+| `coinscreener.service` | Gunicorn Django 웹 서버, OOM 보호 우선순위 적용 |
 | `upbit-crawler.service` | 업비트·빗썸 OHLCV 수집과 독립 60초 단타·스윙 성적 추적 |
 | `kospi-crawler.service` | KOSPI·ETF 데이터 수집 |
 
@@ -41,16 +41,14 @@
 | `coinscreener-backup.timer` | 03:30 | 검증된 SQLite 온라인 백업, 최근 14개 보관 |
 | `coinscreener-daily-picks.timer` | 09:00, 09:10 | 단타 추천 생성과 실패 재시도 |
 | `coinscreener-swing-picks.timer` | 09:20, 09:35, 09:50 | 스윙 추천 생성과 실패 재시도 |
+| `coinscreener-scheduled-scans.timer` | 매시 00분·30분 | 사용자 전략 알림 스캔을 Gunicorn 밖에서 실행 |
+| `coinscreener-health.timer` | 5분 간격 | DB·시세 지연·메모리·스왑·디스크·웹 상태 감시 및 상태 변화 텔레그램 알림 |
 
 단타와 스윙의 시작 시간을 분리해 e2-micro에서 두 분석 작업이 동시에 실행되지 않게 합니다.
 
 ### 외부 cron-job.org
 
-cron-job.org는 `/cron/scan/`만 30분마다 호출합니다. 인증 정보는 URL이 아닌 다음 헤더로 전달합니다.
-
-```text
-Authorization: Bearer <CRON_SECRET>
-```
+전략 스캔은 systemd timer로 이전했습니다. cron-job.org의 `/cron/scan/` 작업은 비활성화합니다. 호환성을 위해 URL은 남아 있지만 인증 후에도 실제 스캔을 실행하지 않습니다.
 
 다음 원격 생성 엔드포인트는 중복 실행을 막기 위해 제거되었습니다.
 
@@ -75,6 +73,9 @@ coin-screener/
 │       ├── backtest.py
 │       ├── daily_picks.py
 │       ├── swing_strategy.py
+│       ├── freshness.py
+│       ├── scheduled_scans.py
+│       ├── system_health.py
 │       ├── sqlite_maintenance.py
 │       ├── telegram.py
 │       ├── management/commands/
@@ -83,7 +84,9 @@ coin-screener/
 │       │   ├── generate_daily_picks.py
 │       │   ├── generate_swing_picks.py
 │       │   ├── backup_sqlite.py
-│       │   └── restore_sqlite.py
+│       │   ├── restore_sqlite.py
+│       │   ├── run_scheduled_scans.py
+│       │   └── monitor_health.py
 │       └── views/
 │           ├── scan_views.py
 │           ├── cron_views.py
@@ -114,6 +117,8 @@ coin-screener/
 
 `OHLCVCache.updated_at`이 시간봉별 허용 기간보다 오래되면 검색 경로는 해당 캐시를 신뢰하지 않고 라이브 갱신 대상으로 처리합니다.
 
+스캔 대상 데이터의 80% 이상이 허용 기간 안에 있지 않으면 사용자 검색과 예약 알림 스캔을 중단합니다. 오래된 시세로 추천을 만드는 것보다 명시적인 오류를 반환하도록 설계했습니다. 전체 수집 사이클 사이에는 최소 60초의 휴식 시간을 둡니다.
+
 ### 추천 성적 추적
 
 전체 시세 수집이 오래 걸려도 단타·스윙 성적 추적은 별도 스레드에서 60초마다 실행됩니다.
@@ -137,6 +142,10 @@ coin-screener/
 - 최대 3종목, 신호 2일 후 만료
 - 2R에서 50% 부분익절 후 추적손절
 - 프로세스 파일 잠금과 DB 트랜잭션으로 중복·부분 저장 방지
+
+### 상태 감시
+
+`monitor_health`는 DB 연결, 최신 시세 갱신 시각, RAM, 스왑, 디스크와 로컬 웹 포트를 확인합니다. 상태가 정상·주의·심각 사이에서 바뀔 때만 텔레그램으로 알려 반복 알림을 줄입니다. `/healthz/`는 심각 상태에서 HTTP 503을 반환합니다.
 
 ## 5. 표준 배포
 
@@ -164,7 +173,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now \
   coinscreener-backup.timer \
   coinscreener-daily-picks.timer \
-  coinscreener-swing-picks.timer
+  coinscreener-swing-picks.timer \
+  coinscreener-scheduled-scans.timer \
+  coinscreener-health.timer
 ```
 
 ## 6. SQLite 백업과 복구
@@ -213,6 +224,8 @@ systemctl list-timers \
   coinscreener-backup.timer \
   coinscreener-daily-picks.timer \
   coinscreener-swing-picks.timer \
+  coinscreener-scheduled-scans.timer \
+  coinscreener-health.timer \
   --all --no-pager
 
 # 크롤러 최근 사이클
@@ -222,6 +235,10 @@ sudo journalctl -u upbit-crawler --since "30 minutes ago" --no-pager \
 # 백업
 sudo journalctl -u coinscreener-backup.service -n 50 --no-pager
 ls -lh backups/
+
+# 상태 감시와 웹 헬스체크
+sudo journalctl -u coinscreener-health.service -n 50 --no-pager
+curl -fsS http://127.0.0.1:8000/healthz/
 
 # Django 설정 및 마이그레이션
 ./venv/bin/python manage.py check
@@ -236,3 +253,4 @@ ls -lh backups/
 - 크롤러 변경 후에는 `upbit-crawler`를 재시작합니다.
 - 백업 성공은 파일 존재만으로 판단하지 않고 무결성 검사와 systemd 로그로 확인합니다.
 - 복구 명령은 서비스 중지와 복구 전 스냅샷 없이 실행하지 않습니다.
+
