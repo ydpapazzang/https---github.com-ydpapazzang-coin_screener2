@@ -45,6 +45,10 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # 승인 전에는 빈 값 → 광고 미노출(개발환경에서만 자리 표시). 승인 후 .env에 설정.
 ADSENSE_CLIENT = os.environ.get('ADSENSE_CLIENT', '')
 
+# 한 브라우저 세션이 동시에 여러 무거운 검색을 실행하지 못하게 하는 DB lease.
+# 프로세스가 강제 종료되어도 이 시간이 지나면 자동으로 다시 검색할 수 있다.
+SCAN_LEASE_SECONDS = max(60, int(os.environ.get('SCAN_LEASE_SECONDS', '1800')))
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -149,3 +153,4 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # 기존 테이블의 PK 타입을 유지하면서 Django의 암시적 PK 경고를 제거한다.
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
