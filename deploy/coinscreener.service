@@ -22,9 +22,11 @@ ExecStart=/home/i_am_psw86/myapp/venv/bin/gunicorn \
     coinscreener.wsgi:application
 Restart=on-failure
 RestartSec=5
+OOMScoreAdjust=-500
 TimeoutStopSec=70
 KillSignal=SIGTERM
 PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
+
