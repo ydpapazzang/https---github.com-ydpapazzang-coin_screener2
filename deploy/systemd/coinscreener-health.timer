@@ -1,0 +1,13 @@
+[Unit]
+Description=Check Coin Screener health every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=coinscreener-health.service
+
+[Install]
+WantedBy=timers.target
+

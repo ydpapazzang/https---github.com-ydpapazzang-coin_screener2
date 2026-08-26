@@ -63,6 +63,13 @@
         <div class="value">{{ cache_tickers|intcomma }}<small> 종목</small></div>
         <div class="foot">총 {{ cache_count|intcomma }} 행 (종목×타임프레임)</div>
     </div>
+    <div class="card">
+        <div class="label">서버 상태</div>
+        <div class="value {% if system_health.status == 'ok' %}ok{% else %}warn{% endif %}">
+            {% if system_health.status == 'ok' %}● 정상{% else %}⚠ {{ system_health.status }}{% endif %}
+        </div>
+        <div class="foot">RAM 여유 {{ system_health.memory.available_pct|default:"-" }}% · 디스크 {{ system_health.disk_free_pct }}%</div>
+    </div>
 </div>
 
 <div class="chart-grid">
@@ -160,3 +167,4 @@
 })();
 </script>
 {% endblock %}
+

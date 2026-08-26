@@ -12,6 +12,7 @@ from django.db.models.functions import TruncDate
 from ..models import (
     AlertHistory, DailyRecommendation, VisitLog, OHLCVCache, Strategy,
 )
+from ..system_health import collect_health
 
 
 def _danta_stats(qs):
@@ -32,6 +33,7 @@ def _danta_stats(qs):
 def manage_dashboard(request):
     now = timezone.localtime()
     today = timezone.localdate()
+    system_health = collect_health(include_web=False)
 
     # ── 알람 ──
     alerts_today = AlertHistory.objects.filter(created_at__date=today).count()
@@ -125,6 +127,7 @@ def manage_dashboard(request):
         'cache_count': cache_count,
         'cache_tickers': cache_tickers,
         'last_pick': last_pick,
+        'system_health': system_health,
         'active': 'dashboard',
         # 차트
         'day_labels': day_labels,
@@ -236,3 +239,4 @@ def manage_visits(request):
         'active': 'visits',
     }
     return render(request, 'screener/manage/visits.html', ctx)
+

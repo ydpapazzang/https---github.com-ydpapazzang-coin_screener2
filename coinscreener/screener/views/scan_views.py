@@ -631,6 +631,21 @@ def coin_search_stream(request, strategy_id):
         _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=exchange)
         t_prefetch = time.perf_counter() - _t_prefetch0
 
+        # 프리페치가 외부 API/DB 장애로 충분한 최신 데이터를 만들지 못했다면
+        # 오래된 값으로 정상 검색처럼 보이게 하지 않는다.
+        from ..freshness import scan_freshness
+        freshness = scan_freshness(tickers_data, conditions)
+        if not freshness['ok']:
+            yield "data: " + json.dumps({
+                "type": "error",
+                "msg": (
+                    "시세 데이터가 지연되어 검색을 중단했습니다. "
+                    f"최신 데이터 {freshness['fresh_ratio']}% "
+                    f"({freshness['fresh']}/{freshness['expected']})."
+                ),
+            }) + "\n\n"
+            return
+
         # 프리페치 후 대부분 캐시 히트이고, 잔여 라이브 조회는 engine._throttle()로 전역
         # 속도 제한되므로 워커를 늘려도 안전하다. (병렬 처리로 스캔 지연 최소화)
         _t_scan0 = time.perf_counter()
@@ -688,6 +703,7 @@ def coin_search_stream(request, strategy_id):
                     'rate_limit_warning': error_occurred,
                     'last_updated': last_updated.isoformat(),
                     'elapsed_time': elapsed_seconds,
+                    'data_freshness': freshness['fresh_ratio'],
                 }
             )
         except Exception as e:
@@ -772,6 +788,7 @@ def coin_search_results(request, strategy_id):
         'is_cached':          False,
         'last_updated':       cached_data.get('last_updated'),
         'elapsed_time':       cached_data.get('elapsed_time'),
+        'data_freshness':     cached_data.get('data_freshness'),
     })
 
 

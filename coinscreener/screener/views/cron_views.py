@@ -80,139 +80,18 @@ def backtest_run(request, strategy_id):
 
 @csrf_exempt
 def cron_scan(request):
-    """크론: 30분 주기로 한국 표준시(KST)를 계산하여, 예약된 활성 알림 스캔 및 텔레그램 발송"""
-    from django.http import HttpResponseForbidden
-    import traceback
-
-    # URL과 액세스 로그에 자격 증명이 남지 않도록 Authorization: Bearer 헤더만 허용한다.
-    # CRON_SECRET 미설정 시 무조건 차단한다. force는 인증을 우회하지 못하며 시간 필터만 제어한다.
+    """기존 외부 cron 호환 경로. 실제 스캔은 systemd 작업이 담당한다."""
     if not is_cron_request_authorized(request):
         print("[CRON_SCAN] Security check failed: Forbidden access.")
         return HttpResponseForbidden("권한이 없습니다.")
 
-    is_force = request.GET.get('force') == 'true'
-    print(f"[CRON_SCAN] Triggered. is_force={is_force}")
-        
-    try:
-        from django.utils import timezone
-        import datetime
-        
-        # 한국 표준시(KST) 구하기 (settings.py의 TIME_ZONE='Asia/Seoul' 및 USE_TZ=True 연동)
-        now_kst = timezone.localtime(timezone.now())
-        print(f"[CRON_SCAN] Current KST time: {now_kst}")
-
-        # 크론이 30분 단위로 호출되므로 현재 30분 슬롯만 처리한다.
-        # 과거처럼 시간을 반올림하면 08:30과 09:00이 모두 09시 예약을 실행한다.
-        slot_minute = 0 if now_kst.minute < 30 else 30
-        slot_start = now_kst.replace(minute=slot_minute, second=0, microsecond=0)
-
-        # 기본적으로 현재 슬롯과 정확히 일치하는 설정만 처리한다.
-        # 단, 수동 강제 테스트(&force=true)는 시간 필터와 예약 실행 잠금을 우회한다.
-        if is_force:
-            active_settings = AlertSetting.objects.filter(enabled=True)
-            print(f"[CRON_SCAN] (FORCE) Scanning all {active_settings.count()} active settings ignoring time.")
-        else:
-            active_settings = AlertSetting.objects.filter(
-                enabled=True,
-                alert_hour=slot_start.hour,
-                alert_min=slot_start.minute,
-            )
-            print(
-                f"[CRON_SCAN] Scanning {active_settings.count()} active settings "
-                f"matching KST slot {slot_start:%H:%M}."
-            )
-            
-        processed_count = 0
-        sent_count = 0
-        results_summary = []
-        warnings = []
-        
-        if not active_settings.exists():
-            if is_force:
-                warnings.append("활성화된 알림 설정(AlertSetting)이 존재하지 않습니다. 웹 페이지에서 알림 설정을 켜지 않았을 수 있습니다.")
-            else:
-                warnings.append(f"현재 KST {slot_start:%H:%M} 슬롯에 예약 활성화된 알림 설정이 없습니다. (즉시 강제 테스트는 &force=true)")
-        
-        for setting in active_settings:
-            if not is_force:
-                # 같은 예약 슬롯이 재호출되더라도 최초 요청 하나만 원자적으로 선점한다.
-                # 실패 재시도는 force=true로 명시적으로 수행할 수 있다.
-                from django.db.models import Q
-                claimed = AlertSetting.objects.filter(pk=setting.pk).filter(
-                    Q(last_run_at__isnull=True) | Q(last_run_at__lt=slot_start)
-                ).update(last_run_at=now_kst)
-                if not claimed:
-                    print(f"[CRON_SCAN] Already processed this slot: setting={setting.pk}")
-                    continue
-
-            strategy = setting.strategy
-            print(f"[CRON_SCAN] Scanning strategy: {strategy.name} (ID: {strategy.id})")
-            conditions = list(strategy.conditions.all())
-            print(f"[CRON_SCAN] Strategy conditions count: {len(conditions)}")
-            if not conditions:
-                warn_msg = f"전략 '{strategy.name}'(ID: {strategy.id})에 조건이 존재하지 않아 스킵합니다."
-                print(f"[CRON_SCAN] {warn_msg}")
-                warnings.append(warn_msg)
-                continue
-                
-            processed_count += 1
-            
-            # 티커 수집 (설정된 vol_limit 사용, 0인 경우 전체 코인)
-            # 스캔은 OHLCVCache(사전 캐시) 기반이라 실시간 API 호출이 없어 전체 스캔도 빠름.
-            # 과거 30개 강제 제한은 온라인 검색(전체)과 결과가 달라지는 원인이었으므로 제거하고
-            # 사용자가 설정한 vol_limit을 그대로 사용해 온라인 결과와 일치시킴.
-            vol_limit = setting.vol_limit
-
-            tickers = _get_tickers(setting.exchange, vol_limit)
-            print(f"[CRON_SCAN] Tickers count for {setting.exchange} (limit {vol_limit}): {len(tickers)}")
-            
-            results, tg_results = process_scan_and_alert(strategy, tickers, conditions, exchange=setting.exchange)
-            print(f"[CRON_SCAN] Scan results: total matched = {len(results)}, notify list = {len(tg_results)}")
-            
-            # 텔레그램 발송 (중복 방지 처리된 tg_results 사용)
-            if tg.is_configured():
-                # 매칭은 있지만 모두 12시간 중복 억제 대상이면 '매칭 없음'이라는
-                # 잘못된 메시지를 보내지 않고 조용히 건너뛴다.
-                if results and not tg_results:
-                    res = {'ok': True, 'skipped': True, 'reason': 'duplicate_suppressed'}
-                else:
-                    res = tg.send_alert(strategy.name, tg_results, strategy_id=strategy.id, exchange=setting.exchange)
-                print(f"[CRON_SCAN] Telegram send result: {res}")
-                if res.get('ok') and not res.get('skipped'):
-                    sent_count += 1
-                else:
-                    warnings.append(f"텔레그램 발송 실패 ({strategy.name}): {res.get('error')}")
-                results_summary.append({
-                    'strategy': strategy.name,
-                    'matched_count': len(results),
-                    'sent_count': len(tg_results),
-                    'telegram_result': res
-                })
-            else:
-                warn_msg = f"전략 '{strategy.name}': 텔레그램 환경변수(TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)가 환경변수에 설정되지 않았습니다."
-                print(f"[CRON_SCAN] {warn_msg}")
-                warnings.append(warn_msg)
-                results_summary.append({
-                    'strategy': strategy.name,
-                    'matched_count': len(results),
-                    'sent_count': len(tg_results),
-                    'telegram_result': {'ok': False, 'error': '환경변수 미설정'}
-                })
-                
-        return JsonResponse({
-            'ok': True,
-            'time': now_kst.strftime('%Y-%m-%d %H:%M:%S KST'),
-            'processed': processed_count,
-            'sent_alerts': sent_count,
-            'warnings': warnings,
-            'details': results_summary,
-        })
-        
-    except Exception as e:
-        err_msg = traceback.format_exc()
-        print(f"[CRON_SCAN] Error occurred:\n{err_msg}")
-        return JsonResponse({'error': f'크론 수행 중 서버 오류: {str(e)}', 'traceback': err_msg}, status=500)
-
+    # 인증된 기존 cron-job.org 호출에는 성공을 반환하되 무거운 스캔은 하지
+    # 않는다. 이로써 전환 중 재시도 폭주를 막고 Gunicorn 메모리를 보호한다.
+    return JsonResponse({
+        'ok': True,
+        'disabled': True,
+        'message': '예약 스캔은 systemd 작업으로 이전되었습니다.',
+    })
 
 def strategy_trading(request, strategy_id=None):
     mine, samples = my_and_sample_strategies(request)
