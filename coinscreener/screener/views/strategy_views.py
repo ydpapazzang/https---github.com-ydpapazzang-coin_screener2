@@ -437,14 +437,16 @@ def alert_save(request, strategy_id):
         return JsonResponse({'ok': False, 'error': '잘못된 요청'}, status=400)
 
     try:
-        alert_hour = 9  # 일일 알림은 오전 9시 정각 고정
-        alert_min  = 0  # 30분 단위 제외, 정각만 사용
         vol_limit  = int(body.get('vol_limit', 0))
     except (ValueError, TypeError) as e:
         return JsonResponse({'ok': False, 'error': f'숫자 형식 오류: {e}'}, status=400)
 
     enabled   = bool(body.get('enabled', False))
     exchange  = body.get('exchange', 'upbit')
+    # KOSPI 전체 스캔은 단타·스윙 배치와 겹치지 않게 KST 10시
+    # (유럽 서머타임 기준 03시)로 분산한다.
+    alert_hour = 10 if exchange == 'kospi' else 9
+    alert_min = 0
     send_test = bool(body.get('send_test', False))
 
     AlertSetting.objects.update_or_create(
