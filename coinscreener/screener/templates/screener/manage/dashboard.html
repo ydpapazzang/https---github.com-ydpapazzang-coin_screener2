@@ -31,6 +31,11 @@
         <div class="foot">순방문 {{ visits_uniq_today }} · 누적 {{ visits_total|intcomma }}</div>
     </div>
     <div class="card">
+        <div class="label">오늘 공개 스캔</div>
+        <div class="value">{{ scan_usage_today.scans }}<small> 회</small></div>
+        <div class="foot">이용 세션 {{ scan_usage_today.sessions }}개 · 광고 보상 {{ scan_usage_today.rewards }}회</div>
+    </div>
+    <div class="card">
         <div class="label">오늘 단타 추천</div>
         <div class="value">{{ danta_today }}<small> 종목</small></div>
         <div class="foot">마지막 추천일 {{ last_pick|default:"-" }}</div>

@@ -3,6 +3,7 @@ import logging
 import traceback
 import concurrent.futures
 from datetime import datetime
+from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import JsonResponse, StreamingHttpResponse, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
@@ -14,8 +15,14 @@ import pyupbit
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
-from ..ownership import get_owned_strategy, get_owner_key, get_viewable_strategy
+from ..ownership import (
+    get_owned_strategy,
+    get_owner_key,
+    get_viewable_strategy,
+    is_staff as request_is_staff,
+)
 from ..scan_guard import acquire_scan_lease, release_scan_lease
+from ..scan_quota import consume_scan, get_scan_quota, grant_reward_credit
 from ..cron_auth import is_cron_request_authorized
 from ..kospi_filters import filter_kospi_products, is_kospi_cash_management_product
 from .. import telegram as tg
@@ -266,6 +273,7 @@ def _get_tickers_raw(exchange, vol_limit):
 
 def coin_search(request, strategy_id):
     strategy   = get_viewable_strategy(request, strategy_id)
+    owner_key  = get_owner_key(request)
     conditions = list(strategy.conditions.all())
 
     if not conditions:
@@ -299,7 +307,73 @@ def coin_search(request, strategy_id):
         'send_telegram': send_telegram,
         'timeframe': tf_override or '',
         'full': full_scan,
+        'scan_quota': get_scan_quota(
+            owner_key, bypass=request_is_staff(request),
+        ),
+        'rewarded_ad_unit_path': settings.REWARDED_AD_UNIT_PATH,
     })
+
+
+@require_POST
+def scan_reward_challenge(request):
+    """보상형 광고 1회 요청에 사용할 단일 세션 nonce를 발급한다."""
+    import secrets
+    import time
+
+    if not settings.REWARDED_AD_UNIT_PATH:
+        return JsonResponse({'error': '보상형 광고가 아직 설정되지 않았습니다.'}, status=503)
+
+    owner_key = get_owner_key(request)
+    quota = get_scan_quota(owner_key, bypass=request_is_staff(request))
+    if quota['allowed']:
+        return JsonResponse({
+            'error': '아직 사용할 수 있는 무료 조회가 남아 있습니다.',
+            'quota': quota,
+        }, status=409)
+
+    nonce = secrets.token_urlsafe(24)
+    request.session['scan_reward_challenge'] = {
+        'nonce': nonce,
+        'issued_at': time.time(),
+    }
+    return JsonResponse({
+        'nonce': nonce,
+        'ad_unit_path': settings.REWARDED_AD_UNIT_PATH,
+        'reward': '스캔 조회권 1회',
+    })
+
+
+@require_POST
+def scan_reward_grant(request):
+    """GPT rewardedSlotGranted 이후 일회성 nonce를 조회권으로 교환한다."""
+    import secrets
+    import time
+
+    if not settings.REWARDED_AD_UNIT_PATH:
+        return JsonResponse({'error': '보상형 광고가 아직 설정되지 않았습니다.'}, status=503)
+    try:
+        body = json.loads(request.body or b'{}')
+    except (TypeError, ValueError):
+        return JsonResponse({'error': '잘못된 요청입니다.'}, status=400)
+
+    challenge = request.session.get('scan_reward_challenge') or {}
+    nonce = str(body.get('nonce') or '')
+    expected = str(challenge.get('nonce') or '')
+    issued_at = float(challenge.get('issued_at') or 0)
+    valid = (
+        nonce
+        and expected
+        and secrets.compare_digest(nonce, expected)
+        and 0 <= time.time() - issued_at <= 10 * 60
+    )
+    if not valid:
+        return JsonResponse({'error': '만료되었거나 올바르지 않은 광고 보상 요청입니다.'}, status=403)
+
+    # 먼저 nonce를 폐기해 네트워크 재전송으로 중복 조회권이 생기지 않게 한다.
+    request.session.pop('scan_reward_challenge', None)
+    result = grant_reward_credit(get_owner_key(request))
+    status = 200 if result.get('granted') else 429
+    return JsonResponse({'quota': result}, status=status)
 
 
 @csrf_exempt
@@ -766,6 +840,27 @@ def coin_search_stream(request, strategy_id):
             }) + "\n\n"
             return
         try:
+            if not conditions:
+                yield "data: " + json.dumps({
+                    "type": "error", "msg": "조건이 없습니다."
+                }) + "\n\n"
+                return
+
+            quota = consume_scan(
+                owner_key,
+                bypass=request_is_staff(request),
+            )
+            if not quota.get('consumed'):
+                yield "data: " + json.dumps({
+                    "type": "error",
+                    "code": "quota_exhausted",
+                    "msg": (
+                        f"오늘 무료 조회 {quota['free_limit']}회를 모두 사용했습니다. "
+                        "짧은 광고를 완료하면 조회권 1회를 받을 수 있습니다."
+                    ),
+                    "quota": quota,
+                }) + "\n\n"
+                return
             yield from scan_work_stream()
         finally:
             release_scan_lease(owner_key, lease_token)

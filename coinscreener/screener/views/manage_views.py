@@ -10,7 +10,7 @@ from django.db.models import Count, Sum, Avg
 from django.db.models.functions import TruncDate
 
 from ..models import (
-    AlertHistory, DailyRecommendation, VisitLog, OHLCVCache, Strategy,
+    AlertHistory, DailyRecommendation, VisitLog, OHLCVCache, ScanUsage, Strategy,
 )
 from ..system_health import collect_health
 
@@ -51,6 +51,13 @@ def manage_dashboard(request):
         .values('ip').distinct().count()
     )
     visits_total = VisitLog.objects.count()
+
+    # ── 공개 스캔/광고 보상 ──
+    usage_today = ScanUsage.objects.filter(date=today).aggregate(
+        scans=Sum('scan_count'),
+        rewards=Sum('reward_credits'),
+        sessions=Count('owner_key', distinct=True),
+    )
 
     # ── 서버/크롤러 상태 ──
     latest_cache = OHLCVCache.objects.order_by('-updated_at').first()
@@ -122,6 +129,11 @@ def manage_dashboard(request):
         'visits_today': visits_today,
         'visits_uniq_today': visits_uniq_today,
         'visits_total': visits_total,
+        'scan_usage_today': {
+            'scans': usage_today['scans'] or 0,
+            'rewards': usage_today['rewards'] or 0,
+            'sessions': usage_today['sessions'] or 0,
+        },
         'crawler_mins': crawler_mins,
         'crawler_stale': crawler_stale,
         'cache_count': cache_count,
