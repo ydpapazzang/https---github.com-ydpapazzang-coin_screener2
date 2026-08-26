@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Coin Screener scheduled scans every KST half-hour
+
+[Timer]
+OnCalendar=*-*-* *:00:00 Asia/Seoul
+OnCalendar=*-*-* *:30:00 Asia/Seoul
+AccuracySec=30s
+Persistent=true
+Unit=coinscreener-scheduled-scans.service
+
+[Install]
+WantedBy=timers.target
+
