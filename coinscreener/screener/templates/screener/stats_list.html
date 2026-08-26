@@ -19,8 +19,9 @@
         text-shadow: 0 2px 4px rgba(0,0,0,0.3);
     }
     .stats-summary {
-        display: flex;
-        justify-content: space-around;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px 6px;
         background: rgba(0,0,0,0.2);
         padding: 16px 8px;
         border-radius: 12px;
@@ -40,6 +41,12 @@
         font-size: 12px;
         color: rgba(255,255,255,0.7);
         margin-top: 4px;
+    }
+    .summary-meta {
+        margin-top: 10px;
+        color: rgba(255,255,255,0.72);
+        font-size: 11px;
+        line-height: 1.55;
     }
 
     .stats-filter {
@@ -249,21 +256,37 @@
     <div class="stats-summary">
         <div class="summary-box">
             <div class="summary-val">{{ total }}건</div>
-            <div class="summary-label">조회 결과</div>
+            <div class="summary-label">추천 기록</div>
+        </div>
+        <div class="summary-box">
+            <div class="summary-val">{{ entered }}건</div>
+            <div class="summary-label">실제 진입</div>
+        </div>
+        <div class="summary-box">
+            <div class="summary-val">{{ decided }}건</div>
+            <div class="summary-label">확정 거래</div>
         </div>
         <div class="summary-box">
             <div class="summary-val">{{ win_rate }}%</div>
-            <div class="summary-label">확정 승률</div>
+            <div class="summary-label">비용 후 승률</div>
         </div>
         <div class="summary-box">
-            <div class="summary-val">{{ wins }}승 {{ losses }}패</div>
-            <div class="summary-label">확정 전적</div>
+            <div class="summary-val">{% if avg_net_return > 0 %}+{% endif %}{{ avg_net_return }}%</div>
+            <div class="summary-label">평균 순수익률</div>
         </div>
+        <div class="summary-box">
+            <div class="summary-val">{% if cumulative_net_return > 0 %}+{% endif %}{{ cumulative_net_return }}%</div>
+            <div class="summary-label">단순 누적 순수익</div>
+        </div>
+    </div>
+    <div class="summary-meta">
+        확정 {{ wins }}승 {{ losses }}패 {{ breakeven }}보합 · 진행 {{ open_count }} · 진입대기 {{ pending_count }} · 미진입 {{ no_entry_count }} · 휴식 {{ skipped_count }}<br>
+        승률은 결과가 확정된 {{ decided }}건 기준입니다.
     </div>
 </div>
 
 <div class="disclaimer">
-    ⚠️ 아래 성적은 과거 추천의 <b>가상 성과 기록</b>이며 미래 수익을 보장하지 않습니다.
+    ⚠️ 아래 성적은 과거 추천의 <b>가상 성과 기록</b>이며, 순성과는 왕복 예상비용 {{ estimated_cost|floatformat:2 }}%를 차감했습니다. 미래 수익을 보장하지 않습니다.
     투자 판단과 책임은 본인에게 있습니다. <a href="{% url 'terms' %}">이용약관</a>
 </div>
 
@@ -330,11 +353,12 @@
                     </div>
                 </div>
                 <div class="rec-right">
-                    <div class="rec-status">{{ rec.get_status_display }} · 상세보기</div>
-                    {% if rec.result_pct != None %}
-                        <div class="rec-pct {% if rec.result_pct > 0 %}pct-up{% elif rec.result_pct < 0 %}pct-down{% else %}pct-zero{% endif %}">
-                            {% if rec.result_pct > 0 %}+{% endif %}{{ rec.result_pct|floatformat:2 }}%
+                    <div class="rec-status">{% if rec.status == 'closed' %}{{ rec.exit_reason_display }}{% else %}{{ rec.get_status_display }}{% endif %} · 상세보기</div>
+                    {% if rec.estimated_net_result_pct != None %}
+                        <div class="rec-pct {% if rec.estimated_net_result_pct > 0 %}pct-up{% elif rec.estimated_net_result_pct < 0 %}pct-down{% else %}pct-zero{% endif %}">
+                            {% if rec.estimated_net_result_pct > 0 %}+{% endif %}{{ rec.estimated_net_result_pct|floatformat:2 }}%
                         </div>
+                        <div class="rec-date">비용 후 예상</div>
                     {% else %}
                         <div class="rec-pct pct-zero">-</div>
                     {% endif %}
@@ -390,6 +414,7 @@
                             <span class="detail-label">부분 익절가</span>
                             <span class="detail-value pct-up">{% if rec.partial_exit_price != None %}{{ rec.partial_exit_price|floatformat:-2|intcomma }}원{% else %}-{% endif %}</span>
                         </div>
+                        {% endif %}
                         <div class="detail-item">
                             <span class="detail-label">최종 청산가</span>
                             <span class="detail-value">{% if rec.exit_price != None %}{{ rec.exit_price|floatformat:-2|intcomma }}원{% else %}-{% endif %}</span>
@@ -398,11 +423,10 @@
                             <span class="detail-label">청산 사유</span>
                             <span class="detail-value">{{ rec.exit_reason_display }}</span>
                         </div>
-                        {% endif %}
                     </div>
                     <div class="detail-reason"><b>추천 근거</b><br>{{ rec.reason|default:"기록 없음" }}</div>
                     <div class="detail-hint">
-                        최대 수익률은 진입 후 시스템이 관측한 최고가 기준이며 실제 체결 수익률과 다를 수 있습니다.
+                        최대 수익률은 진입 후 시스템이 관측한 최고가 기준이며 실제 체결 수익률과 다를 수 있습니다. 카드 수익률은 비용 전 기록에서 왕복 예상비용 {{ estimated_cost|floatformat:2 }}%를 차감한 값입니다.
                         {% if rec.trade_type == 'swing' %}최종 수익률은 2R 부분익절이 발생한 경우 50%씩 가중 계산합니다.{% endif %}
                     </div>
                 {% endif %}
