@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>검색 중... — {{ strategy.name }}</title>
+    {% if rewarded_ad_unit_path %}
+    <script async src="https://securepubads.g.doubleclick.net/tag/js/gpt.js" crossorigin="anonymous"></script>
+    {% endif %}
     <style>
         :root {
             --bg-color: #121212;
@@ -141,6 +144,20 @@
             transition: all 0.2s;
         }
         .btn-cancel:active { background: rgba(255, 255, 255, 0.05); }
+        .btn-reward {
+            display: none;
+            margin-top: 20px;
+            background: var(--primary-color);
+            border: 0;
+            color: #fff;
+            padding: 12px 10px;
+            width: 100%;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .btn-reward:disabled { opacity: .55; cursor: wait; }
     </style>
 </head>
 <body>
@@ -158,9 +175,15 @@
 
     <div class="ticker-list"><div class="ticker-inner" id="ticker-inner"></div></div>
 
+    <button class="btn-reward" id="reward-btn" type="button">
+        짧은 광고를 끝까지 보고 조회 1회 받기
+    </button>
     <button class="btn-cancel" onclick="cancel()">취소</button>
+    <div style="display:none">{% csrf_token %}</div>
 </div>
 
+{{ scan_quota|json_script:"initial-scan-quota" }}
+{{ rewarded_ad_unit_path|json_script:"rewarded-ad-unit-path" }}
 <script>
     const strategyId = {{ strategy.id }};
     const exchange   = "{{ exchange }}";
@@ -175,6 +198,10 @@
     const statRight  = document.getElementById('stat-right');
     const subText    = document.getElementById('sub-text');
     const tickerWrap = document.getElementById('ticker-inner');
+    const spinner     = document.querySelector('.spinner');
+    const rewardBtn   = document.getElementById('reward-btn');
+    const initialQuota = JSON.parse(document.getElementById('initial-scan-quota').textContent);
+    const rewardedAdUnitPath = JSON.parse(document.getElementById('rewarded-ad-unit-path').textContent);
 
     let es;
     const MAX_TICKERS = 30;
@@ -194,6 +221,104 @@
         history.back();
     }
 
+    function csrfToken() {
+        const cookie = document.cookie.match(/csrftoken=([^;]+)/);
+        if (cookie) return cookie[1];
+        const input = document.querySelector('[name=csrfmiddlewaretoken]');
+        return input ? input.value : '';
+    }
+
+    function showQuotaWall(message) {
+        if (es) es.close();
+        spinner.style.display = 'none';
+        document.querySelector('.modal-title').textContent = '오늘 무료 조회를 모두 사용했습니다';
+        subText.textContent = message || '짧은 광고를 완료하면 스캔 조회권 1회를 받을 수 있습니다.';
+        document.querySelector('.bar-wrap').style.display = 'none';
+        document.querySelector('.stats').style.display = 'none';
+        document.querySelector('.ticker-list').style.display = 'none';
+        if (rewardedAdUnitPath) rewardBtn.style.display = 'block';
+    }
+
+    async function postJson(url, body) {
+        const response = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken(),
+            },
+            body: JSON.stringify(body || {}),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '요청을 처리하지 못했습니다.');
+        return data;
+    }
+
+    async function watchRewardedAd() {
+        rewardBtn.disabled = true;
+        rewardBtn.textContent = '광고를 준비하고 있습니다...';
+        try {
+            const challenge = await postJson('{% url "scan_reward_challenge" %}', {});
+            window.googletag = window.googletag || {cmd: []};
+            googletag.cmd.push(function() {
+                let granted = false;
+                let grantRequest = null;
+                const slot = googletag.defineOutOfPageSlot(
+                    challenge.ad_unit_path,
+                    googletag.enums.OutOfPageFormat.REWARDED
+                );
+                if (!slot) {
+                    rewardBtn.disabled = false;
+                    rewardBtn.textContent = '광고 재시도';
+                    alert('현재 표시할 수 있는 보상형 광고가 없습니다. 잠시 후 다시 시도해주세요.');
+                    return;
+                }
+                slot.addService(googletag.pubads());
+                googletag.pubads().addEventListener('rewardedSlotReady', function(evt) {
+                    if (evt.slot === slot) evt.makeRewardedVisible();
+                });
+                googletag.pubads().addEventListener('rewardedSlotGranted', function(evt) {
+                    if (evt.slot !== slot || granted) return;
+                    granted = true;
+                    grantRequest = postJson('{% url "scan_reward_grant" %}', {
+                        nonce: challenge.nonce,
+                    });
+                });
+                googletag.pubads().addEventListener('rewardedSlotClosed', async function(evt) {
+                    if (evt.slot !== slot) return;
+                    googletag.destroySlots([slot]);
+                    try {
+                        if (grantRequest) {
+                            await grantRequest;
+                            window.location.reload();
+                            return;
+                        }
+                    } catch (error) {
+                        alert(error.message);
+                    }
+                    window.location.reload();
+                });
+                googletag.pubads().addEventListener('slotRenderEnded', function(evt) {
+                    if (evt.slot === slot && evt.isEmpty) {
+                        googletag.destroySlots([slot]);
+                        rewardBtn.disabled = false;
+                        rewardBtn.textContent = '광고 재시도';
+                        alert('현재 표시할 수 있는 보상형 광고가 없습니다. 잠시 후 다시 시도해주세요.');
+                    }
+                });
+                googletag.enableServices();
+                googletag.display(slot);
+            });
+        } catch (error) {
+            rewardBtn.disabled = false;
+            rewardBtn.textContent = '광고 재시도';
+            alert(error.message);
+        }
+    }
+
+    rewardBtn.addEventListener('click', watchRewardedAd);
+
+    function startScan() {
     es = new EventSource(streamUrl);
     es.onmessage = function(e) {
         const data = JSON.parse(e.data);
@@ -221,6 +346,10 @@
         }
         if (data.type === 'error') {
             es.close();
+            if (data.code === 'quota_exhausted') {
+                showQuotaWall(data.msg);
+                return;
+            }
             if (data.code === 'scan_busy') {
                 subText.textContent = '이미 다른 검색이 진행 중입니다.';
             }
@@ -232,6 +361,13 @@
         es.close();
         window.location.href = resultUrl;
     };
+    }
+
+    if (initialQuota.enforced && !initialQuota.allowed) {
+        showQuotaWall();
+    } else {
+        startScan();
+    }
 </script>
 </body>
 </html>
