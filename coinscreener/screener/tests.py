@@ -66,11 +66,11 @@ class BacktestOffsetTestCase(TestCase):
         self.assertTrue(len(trades) > 0, "진입한 거래 내역이 있어야 합니다.")
         
         # 첫 번째 진입 날짜 확인
-        # index 150 (2026-01-01 + 150일 = 2026-05-31)에서 처음으로 종가(150)가 MA5(110)보다 커지므로 즉시 진입해야 함
+        # index 150 종가에서 신호가 확정되고 다음 봉 시가(index 151)에 진입해야 한다.
         first_entry = trades[0]
-        expected_date = (datetime(2026, 1, 1) + timedelta(days=150)).strftime('%Y-%m-%d')
+        expected_date = (datetime(2026, 1, 1) + timedelta(days=151)).strftime('%Y-%m-%d')
         self.assertEqual(first_entry['entry_date'], expected_date, 
-                         f"offset=0일 때는 급등한 당일({expected_date})에 매수 진입해야 하지만 {first_entry['entry_date']}에 진입했습니다.")
+                         f"offset=0 신호 다음 봉({expected_date})에 매수해야 하지만 {first_entry['entry_date']}에 진입했습니다.")
 
     @patch('pyupbit.get_ohlcv')
     def test_backtest_respects_offset_one(self, mock_get_ohlcv):
@@ -105,11 +105,81 @@ class BacktestOffsetTestCase(TestCase):
         self.assertTrue(len(trades) > 0, "진입한 거래 내역이 있어야 합니다.")
         
         # 첫 번째 진입 날짜 확인
-        # index 150에서 조건이 처음 만족되므로, offset=1이 적용되면 1봉 뒤인 index 151 (2026-06-01)에 매수 진입해야 함
+        # index 151에서 전 봉 조건이 확인되고 주문은 다음 봉 시가(index 152)에 체결된다.
         first_entry = trades[0]
-        expected_date = (datetime(2026, 1, 1) + timedelta(days=151)).strftime('%Y-%m-%d')
+        expected_date = (datetime(2026, 1, 1) + timedelta(days=152)).strftime('%Y-%m-%d')
         self.assertEqual(first_entry['entry_date'], expected_date, 
-                         f"offset=1일 때는 급등 다음 날({expected_date})에 매수 진입해야 하지만 {first_entry['entry_date']}에 진입했습니다.")
+                         f"offset=1 신호 다음 봉({expected_date})에 매수해야 하지만 {first_entry['entry_date']}에 진입했습니다.")
+
+    @patch('pyupbit.get_ohlcv')
+    def test_multitimeframe_uses_only_closed_weekly_candle(self, mock_get_ohlcv):
+        """진행 중인 주봉을 일봉 신호가 미리 참조하지 않아야 한다."""
+        daily_dates = [datetime(2026, 1, 1) + timedelta(days=i) for i in range(300)]
+        daily_df = pd.DataFrame({
+            'open': [100.0] * 300,
+            'high': [101.0] * 300,
+            'low': [99.0] * 300,
+            'close': [100.0] * 300,
+            'volume': [1000.0] * 300,
+        }, index=daily_dates)
+        weekly_dates = [datetime(2026, 1, 1) + timedelta(days=7 * i) for i in range(43)]
+        weekly_closes = [50.0] * 21 + [150.0] * 22
+        weekly_df = pd.DataFrame({
+            'open': weekly_closes,
+            'high': weekly_closes,
+            'low': weekly_closes,
+            'close': weekly_closes,
+            'volume': [1000.0] * 43,
+        }, index=weekly_dates)
+
+        def frame_for_interval(_ticker, interval, **_kwargs):
+            return daily_df if interval == 'day' else weekly_df
+
+        mock_get_ohlcv.side_effect = frame_for_interval
+        daily_condition = Condition.objects.create(
+            strategy=self.strategy, timeframe='day', offset=0,
+            left_indicator='CLOSE', left_param=0, operator='gt',
+            right_indicator='VAL', right_param=0,
+        )
+        weekly_condition = Condition.objects.create(
+            strategy=self.strategy, timeframe='week', offset=0,
+            left_indicator='CLOSE', left_param=0, operator='gt',
+            right_indicator='VAL', right_param=100,
+        )
+
+        result = run_backtest(
+            'KRW-BTC', [daily_condition, weekly_condition], 200,
+            'exit_n', 2, fee_pct=0, slippage_pct=0,
+        )
+
+        self.assertNotIn('error', result)
+        self.assertTrue(result['trades'])
+        # 5/28 시작 주봉은 6/4에 확정되고, 그때 처음 다음 일봉 시가 체결이 가능하다.
+        self.assertEqual(result['trades'][0]['entry_date'], '2026-06-04')
+
+    @patch('pyupbit.get_ohlcv')
+    def test_backtest_same_entry_candle_target_and_stop_prefers_stop(
+        self, mock_get_ohlcv
+    ):
+        frame = self.mock_df.copy()
+        frame.iloc[151, frame.columns.get_loc('high')] = 200.0
+        frame.iloc[151, frame.columns.get_loc('low')] = 90.0
+        mock_get_ohlcv.return_value = frame
+        condition = Condition.objects.create(
+            strategy=self.strategy, timeframe='day', offset=0,
+            left_indicator='CLOSE', left_param=0, operator='gt',
+            right_indicator='MA', right_param=5,
+        )
+
+        result = run_backtest(
+            'KRW-BTC', [condition], 200, 'tp_sl', 5,
+            fee_pct=0.05, slippage_pct=0.05,
+        )
+
+        self.assertTrue(result['trades'])
+        self.assertLess(result['trades'][0]['return_pct'], 0)
+        self.assertEqual(result['execution_rule'], 'signal_close_next_open')
+        self.assertAlmostEqual(result['trades'][0]['entry_price'], 100.05)
 
     @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
     def test_realtime_screener_matches_offset(self, mock_get_ohlcv):
@@ -1005,3 +1075,4 @@ class RemovedOperationalEndpointsTestCase(TestCase):
     def test_remote_debug_endpoint_is_not_routable(self):
         response = self.client.get('/cron/debug/?secret=even-a-valid-secret')
         self.assertEqual(response.status_code, 404)
+
