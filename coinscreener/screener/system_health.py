@@ -111,7 +111,7 @@ def collect_health(include_web=True):
 
 
 def _state_path():
-    runtime = Path(settings.BASE_DIR) / '.runtime'
+    runtime = Path(settings.RUNTIME_DIR)
     runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
     return runtime / 'health-monitor.json'
 
