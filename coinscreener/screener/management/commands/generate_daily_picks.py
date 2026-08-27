@@ -6,11 +6,39 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from coinscreener.screener.models import DailyRecommendation
 from coinscreener.screener.daily_picks import (
+    K_CANDIDATES,
+    MAX_ENTRY_GAP_PCT,
+    MAX_PREVIOUS_RANGE_MULTIPLIER,
+    MIN_BACKTEST_TRADES,
+    MIN_BACKTEST_WIN_RATE,
     RecommendationRejected,
     build_recommendation,
     is_stablecoin_ticker,
     rank_recommendations,
 )
+from coinscreener.screener.recommendation_versioning import (
+    DANTA_STRATEGY_VERSION,
+    json_number,
+    recommendation_snapshot,
+)
+
+
+DANTA_PARAMETERS = {
+    'k_candidates': list(K_CANDIDATES),
+    'min_backtest_trades': MIN_BACKTEST_TRADES,
+    'min_backtest_win_rate_pct': MIN_BACKTEST_WIN_RATE,
+    'target_pct': 2.0,
+    'stop_loss_pct': 1.5,
+    'max_entry_gap_pct': MAX_ENTRY_GAP_PCT,
+    'max_previous_range_multiplier': MAX_PREVIOUS_RANGE_MULTIPLIER,
+    'btc_ema_fast': 20,
+    'btc_ema_slow': 60,
+    'btc_1h_drop_limit_pct': -1.5,
+    'btc_15m_rsi_period': 14,
+    'btc_15m_rsi_min': 50,
+    'liquidity_candidate_limit': 10,
+    'recommendation_limit': 3,
+}
 
 class Command(BaseCommand):
     help = 'KST 오전 9시 기준 거래대금 상위 후보를 안전 기준으로 검증해 단타 종목을 추천합니다.'
@@ -22,9 +50,38 @@ class Command(BaseCommand):
             help='KST 09:00~10:59 생성 시간 제한을 무시합니다.',
         )
 
+    @staticmethod
+    def _snapshot(market_regime, data_as_of, extra_parameters=None):
+        parameters = dict(DANTA_PARAMETERS)
+        if extra_parameters:
+            parameters.update(extra_parameters)
+        return recommendation_snapshot(
+            DANTA_STRATEGY_VERSION,
+            parameters,
+            market_regime,
+            data_as_of,
+        )
+
+    def _record_rest_day(self, today_date, reason, market_regime, data_as_of):
+        DailyRecommendation.objects.create(
+            date=today_date,
+            trade_type='danta',
+            coin_ticker='SKIP',
+            coin_name='단타휴식',
+            entry_price=0,
+            target_price=0,
+            stop_loss=0,
+            k_value=0,
+            reason=reason,
+            status='skipped',
+            **self._snapshot(market_regime, data_as_of),
+        )
+
     def handle(self, *args, **options):
         now_kst = timezone.localtime(timezone.now())
         today_date = now_kst.date()
+        data_as_of = timezone.now()
+        market_regime = {'label': 'evaluating'}
 
         if not options.get('force') and not 9 <= now_kst.hour < 11:
             self.stdout.write(self.style.WARNING(
@@ -46,18 +103,26 @@ class Command(BaseCommand):
             if btc_60m is not None and len(btc_60m) > 60:
                 ema20 = btc_60m['close'].ewm(span=20, adjust=False).mean().iloc[-1]
                 ema60 = btc_60m['close'].ewm(span=60, adjust=False).mean().iloc[-1]
+                btc_change = (btc_60m['close'].iloc[-1] - btc_60m['close'].iloc[-2]) / btc_60m['close'].iloc[-2] * 100
+                market_regime.update({
+                    'btc_1h_close': json_number(btc_60m['close'].iloc[-1]),
+                    'btc_1h_ema20': json_number(ema20),
+                    'btc_1h_ema60': json_number(ema60),
+                    'btc_1h_change_pct': json_number(btc_change),
+                })
                 if ema20 <= ema60:
                     reason_msg = f"BTC 1시간봉 역배열 상태 (EMA20 < EMA60)"
+                    market_regime['label'] = 'btc_1h_downtrend'
                     self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
-                    DailyRecommendation.objects.create(date=today_date, trade_type='danta', coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
+                    self._record_rest_day(today_date, reason_msg, market_regime, data_as_of)
                     return
 
                 # 최근 1시간 하락폭 체크 (직전 종가 대비 현재가 등락률)
-                btc_change = (btc_60m['close'].iloc[-1] - btc_60m['close'].iloc[-2]) / btc_60m['close'].iloc[-2] * 100
                 if btc_change <= -1.5:
                     reason_msg = f"BTC 최근 1시간 급락 (하락폭 {btc_change:.2f}%)"
+                    market_regime['label'] = 'btc_1h_sharp_drop'
                     self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
-                    DailyRecommendation.objects.create(date=today_date, trade_type='danta', coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
+                    self._record_rest_day(today_date, reason_msg, market_regime, data_as_of)
                     return
             else:
                 self.stdout.write(self.style.ERROR("BTC 1시간봉 데이터를 가져오지 못했습니다."))
@@ -72,10 +137,12 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.ERROR("BTC 15분봉 RSI 계산 결과가 유효하지 않습니다."))
                     return
 
+                market_regime['btc_15m_rsi14'] = json_number(current_rsi)
                 if current_rsi <= 50:
                     reason_msg = f"BTC 15분봉 매수심리 악화 (RSI {current_rsi:.1f} <= 50)"
+                    market_regime['label'] = 'btc_15m_weak_momentum'
                     self.stdout.write(self.style.WARNING(f"[{today_date}] {reason_msg}. 오늘은 단타를 쉬는 날입니다."))
-                    DailyRecommendation.objects.create(date=today_date, trade_type='danta', coin_ticker='SKIP', coin_name='단타휴식', entry_price=0, target_price=0, stop_loss=0, k_value=0, reason=reason_msg, status='skipped')
+                    self._record_rest_day(today_date, reason_msg, market_regime, data_as_of)
                     return
             else:
                 self.stdout.write(self.style.ERROR("BTC 15분봉 데이터를 가져오지 못했습니다."))
@@ -86,6 +153,7 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(self.style.SUCCESS("BTC 필터 통과! 종목 스캔을 시작합니다."))
+        market_regime['label'] = 'btc_intraday_filter_passed'
 
         # 1. 전일 거래대금 상위 코인 찾기 (업비트 원화 마켓 전체 조회)
         tickers = pyupbit.get_tickers(fiat="KRW")
@@ -155,17 +223,8 @@ class Command(BaseCommand):
         recommendations = rank_recommendations(recommendations, limit=3)
         if not recommendations:
             reason_msg = "현재가 괴리·변동폭·백테스트 안전 기준을 통과한 종목이 없습니다."
-            DailyRecommendation.objects.create(
-                date=today_date,
-                trade_type='danta',
-                coin_ticker='SKIP',
-                coin_name='단타휴식',
-                entry_price=0,
-                target_price=0,
-                stop_loss=0,
-                k_value=0,
-                reason=reason_msg,
-                status='skipped',
+            self._record_rest_day(
+                today_date, reason_msg, market_regime, data_as_of
             )
             self.stdout.write(self.style.WARNING(
                 f"[{today_date}] {reason_msg}"
@@ -184,7 +243,19 @@ class Command(BaseCommand):
                 stop_loss=rec['stop_loss'],
                 k_value=rec['k_value'],
                 reason=rec['reason'],
-                status='pending'
+                status='pending',
+                **self._snapshot(
+                    market_regime,
+                    data_as_of,
+                    {
+                        'selected_k': rec['k_value'],
+                        'backtest_trades': rec['backtest_trades'],
+                        'backtest_win_rate_pct': json_number(rec['win_rate']),
+                        'backtest_total_pct': json_number(rec['backtest_profit']),
+                        'entry_gap_pct': json_number(rec['entry_gap_pct']),
+                        'previous_day_value_krw': json_number(rec['volume_value']),
+                    },
+                ),
             )
             self.stdout.write(self.style.SUCCESS(f"추천 등록 완료: {rec['ticker']} (진입가: {rec['entry_price']})"))
             
@@ -206,3 +277,4 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"텔레그램 발송 실패: {res.get('error')}"))
 
         self.stdout.write(self.style.SUCCESS("오늘의 단타 추천 스크립트 실행이 완료되었습니다."))
+
