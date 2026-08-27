@@ -227,6 +227,21 @@ class GenerateSwingPicksTestCase(TestCase):
             recommendation.entry_expires_on,
             today + timedelta(days=2),
         )
+        self.assertEqual(recommendation.strategy_version, 'swing-trend-v1.0')
+        self.assertEqual(
+            recommendation.market_regime['label'],
+            'btc_daily_uptrend',
+        )
+        self.assertEqual(
+            recommendation.strategy_parameters['risk_per_trade_pct'],
+            0.5,
+        )
+        self.assertEqual(
+            recommendation.strategy_parameters['momentum20_pct'],
+            10.0,
+        )
+        self.assertIsNotNone(recommendation.data_as_of)
+        self.assertTrue(recommendation.code_version)
         telegram_text = _mock_telegram.call_args.args[0]
         self.assertIn('진입가 100원', telegram_text)
         self.assertIn('1차 목표 110원 (2R·50% 익절)', telegram_text)
