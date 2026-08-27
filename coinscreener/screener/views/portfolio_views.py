@@ -7,6 +7,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from ..models import DailyRecommendation, PaperPosition
 from ..ownership import get_owner_key
+from ..position_sizing import calculate_position_size
 
 
 def _positive_number(raw):
@@ -117,4 +118,25 @@ def portfolio_close(request, position_id):
         position.status = 'closed'
         position.save()
     return redirect('portfolio_list')
+
+
+def position_size_calculator(request):
+    fields = {
+        'total_assets': request.GET.get('total_assets', '10000000').strip(),
+        'risk_pct': request.GET.get('risk_pct', '0.5').strip(),
+        'entry_price': request.GET.get('entry_price', '').strip(),
+        'stop_loss': request.GET.get('stop_loss', '').strip(),
+    }
+    result = None
+    error = ''
+    if request.GET.get('calculate'):
+        try:
+            result = calculate_position_size(**fields)
+        except ValueError as exc:
+            error = str(exc)
+    return render(request, 'screener/position_size_calculator.html', {
+        'fields': fields,
+        'result': result,
+        'error': error,
+    })
 
