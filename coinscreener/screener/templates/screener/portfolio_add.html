@@ -24,6 +24,7 @@
     <button class="paper-submit" type="submit">가상 매수 등록</button>
   </form>
   <div class="paper-note">실제 주문은 실행되지 않습니다. 목표가·손절가는 추천 당시 가격을 사용하며 왕복 예상비용 0.20%를 성과에서 차감합니다.</div>
+  <a class="paper-submit" style="display:block;box-sizing:border-box;text-align:center;text-decoration:none;background:#4338ca" href="{% url 'position_size_calculator' %}?entry_price={{ recommendation.entry_price }}&stop_loss={{ recommendation.stop_loss }}">먼저 적정 주문금액 계산</a>
 </div></div>
 {% endblock %}
 
