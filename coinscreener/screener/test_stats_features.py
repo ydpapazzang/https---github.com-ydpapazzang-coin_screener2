@@ -184,6 +184,27 @@ class StatsListViewTestCase(TestCase):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
         self.assertAlmostEqual(recommendation.estimated_net_result_pct, 1.8)
 
+    def test_version_snapshot_is_visible_in_expanded_record(self):
+        recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
+        recommendation.strategy_version = 'danta-breakout-v2.0'
+        recommendation.strategy_parameters = {'target_pct': 2.0}
+        recommendation.market_regime = {'label': 'btc_intraday_filter_passed'}
+        recommendation.data_as_of = timezone.now()
+        recommendation.code_version = 'abcdef1234567890'
+        recommendation.save()
+
+        response = self.client.get(reverse('stats_list'))
+
+        self.assertContains(response, 'danta-breakout-v2.0')
+        self.assertContains(response, 'abcdef123456')
+        self.assertContains(response, 'btc_intraday_filter_passed')
+        self.assertContains(response, 'target_pct')
+
+    def test_old_recommendation_is_labeled_as_legacy(self):
+        response = self.client.get(reverse('stats_list'))
+
+        self.assertContains(response, 'legacy (버전 기록 전)')
+
 
 class RecommendationMonitorTestCase(TestCase):
     def _minute_frame(self, rows, end=None):

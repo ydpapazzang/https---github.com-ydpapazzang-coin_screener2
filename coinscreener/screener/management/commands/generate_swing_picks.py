@@ -14,8 +14,22 @@ from coinscreener.screener.daily_picks import (
     is_stablecoin_ticker,
 )
 from coinscreener.screener.models import DailyRecommendation
+from coinscreener.screener.recommendation_versioning import (
+    SWING_STRATEGY_VERSION,
+    json_number,
+    recommendation_snapshot,
+)
 from coinscreener.screener.swing_strategy import (
+    ENTRY_VALID_DAYS,
+    MAX_ALREADY_CROSSED_PCT,
+    MAX_ATR_PCT,
+    MAX_DAILY_JUMP_PCT,
+    MAX_ENTRY_GAP_PCT,
+    MAX_HOLD_DAYS,
     MAX_OPEN_POSITIONS,
+    MAX_STOP_DISTANCE_PCT,
+    MIN_COMPLETED_CANDLES,
+    MIN_STOP_DISTANCE_PCT,
     RISK_PER_TRADE_PCT,
     build_swing_recommendation,
     rank_swing_recommendations,
@@ -24,6 +38,23 @@ from coinscreener.screener.swing_strategy import (
 
 
 UPBIT_MARKETS_URL = 'https://api.upbit.com/v1/market/all'
+
+SWING_PARAMETERS = {
+    'min_completed_daily_candles': MIN_COMPLETED_CANDLES,
+    'max_entry_gap_pct': MAX_ENTRY_GAP_PCT,
+    'max_already_crossed_pct': MAX_ALREADY_CROSSED_PCT,
+    'max_daily_jump_pct': MAX_DAILY_JUMP_PCT,
+    'max_atr_pct': MAX_ATR_PCT,
+    'min_stop_distance_pct': MIN_STOP_DISTANCE_PCT,
+    'max_stop_distance_pct': MAX_STOP_DISTANCE_PCT,
+    'entry_valid_days': ENTRY_VALID_DAYS,
+    'max_hold_days': MAX_HOLD_DAYS,
+    'max_open_positions': MAX_OPEN_POSITIONS,
+    'risk_per_trade_pct': RISK_PER_TRADE_PCT,
+    'partial_exit_r_multiple': 2,
+    'partial_exit_fraction': 0.5,
+    'liquidity_candidate_limit': 30,
+}
 
 
 def _format_krw_price(price):
@@ -61,11 +92,52 @@ class Command(BaseCommand):
 
     @staticmethod
     def _generation_lock_path():
-        runtime_dir = settings.BASE_DIR / '.runtime'
+        runtime_dir = settings.RUNTIME_DIR
         runtime_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         return runtime_dir / 'generate_swing_picks.lock'
 
-    def _record_rest_day(self, today_date, reason):
+    @staticmethod
+    def _market_regime_snapshot(regime=None, label='btc_daily_uptrend', reason=''):
+        regime = regime or {}
+        result = {
+            'label': label,
+            'reason': reason,
+        }
+        for key in (
+            'close', 'ema20', 'ema20_5d_ago', 'ema60', 'atr14',
+            'momentum20_pct', 'change_3d_pct', 'breakout_20',
+            'median_value_20',
+        ):
+            if key in regime:
+                result[f'btc_daily_{key}'] = json_number(regime[key])
+        return result
+
+    @staticmethod
+    def _snapshot(market_regime, data_as_of, recommendation=None):
+        parameters = dict(SWING_PARAMETERS)
+        if recommendation:
+            parameters.update({
+                'momentum20_pct': json_number(recommendation.get('momentum20_pct')),
+                'trend_strength_pct': json_number(recommendation.get('trend_strength_pct')),
+                'atr_pct': json_number(recommendation.get('atr_pct')),
+                'entry_gap_pct': json_number(recommendation.get('entry_gap_pct')),
+                'stop_distance_pct': json_number(recommendation.get('stop_distance_pct')),
+                'median_value_20': json_number(recommendation.get('median_value_20')),
+            })
+        return recommendation_snapshot(
+            SWING_STRATEGY_VERSION,
+            parameters,
+            market_regime,
+            data_as_of,
+        )
+
+    def _record_rest_day(
+        self, today_date, reason, market_regime=None, data_as_of=None
+    ):
+        market_regime = market_regime or self._market_regime_snapshot(
+            label='rejected', reason=reason
+        )
+        data_as_of = data_as_of or timezone.now()
         with transaction.atomic():
             if DailyRecommendation.objects.filter(
                 date=today_date,
@@ -84,11 +156,16 @@ class Command(BaseCommand):
                 k_value=0,
                 reason=reason,
                 status='skipped',
+                **self._snapshot(market_regime, data_as_of),
             )
         return True
 
     @staticmethod
-    def _recommendation_model(today_date, recommendation):
+    def _recommendation_model(
+        today_date, recommendation, market_regime=None, data_as_of=None
+    ):
+        market_regime = market_regime or {'label': 'btc_daily_uptrend'}
+        data_as_of = data_as_of or timezone.now()
         return DailyRecommendation(
             date=today_date,
             trade_type='swing',
@@ -102,11 +179,18 @@ class Command(BaseCommand):
             k_value=0,
             reason=recommendation['reason'],
             status='pending',
+            **Command._snapshot(
+                market_regime, data_as_of, recommendation
+            ),
         )
 
-    def _persist_recommendations(self, today_date, recommendations):
+    def _persist_recommendations(
+        self, today_date, recommendations, market_regime=None, data_as_of=None
+    ):
         objects = [
-            self._recommendation_model(today_date, recommendation)
+            self._recommendation_model(
+                today_date, recommendation, market_regime, data_as_of
+            )
             for recommendation in recommendations
         ]
         with transaction.atomic():
@@ -133,6 +217,7 @@ class Command(BaseCommand):
     def _generate(self, *args, **options):
         now_kst = timezone.localtime(timezone.now())
         today_date = now_kst.date()
+        data_as_of = timezone.now()
 
         if not options.get('force') and not 9 <= now_kst.hour < 11:
             self.stdout.write(self.style.WARNING(
@@ -169,7 +254,12 @@ class Command(BaseCommand):
             regime = validate_btc_regime(btc_daily, today_date)
         except RecommendationRejected as exc:
             reason = str(exc)
-            if self._record_rest_day(today_date, reason):
+            market_regime = self._market_regime_snapshot(
+                label='rejected', reason=reason
+            )
+            if self._record_rest_day(
+                today_date, reason, market_regime, data_as_of
+            ):
                 self.stdout.write(self.style.WARNING(
                     f"[{today_date}] 스윙 휴식: {reason}"
                 ))
@@ -180,6 +270,8 @@ class Command(BaseCommand):
             return
         except Exception as exc:
             raise CommandError(f"BTC 시장 국면 확인 실패: {exc}") from exc
+
+        market_regime = self._market_regime_snapshot(regime)
 
         try:
             tickers = self._safe_krw_tickers()
@@ -251,7 +343,9 @@ class Command(BaseCommand):
         )
         if not recommendations:
             reason = "유동성·추세·진입 괴리·변동성 기준을 통과한 종목이 없습니다."
-            if self._record_rest_day(today_date, reason):
+            if self._record_rest_day(
+                today_date, reason, market_regime, data_as_of
+            ):
                 self.stdout.write(self.style.WARNING(
                     f"[{today_date}] 스윙 휴식: {reason}"
                 ))
@@ -261,7 +355,9 @@ class Command(BaseCommand):
                 ))
             return
 
-        if not self._persist_recommendations(today_date, recommendations):
+        if not self._persist_recommendations(
+            today_date, recommendations, market_regime, data_as_of
+        ):
             self.stdout.write(self.style.WARNING(
                 f"[{today_date}] 생성 중 다른 스윙 결과가 먼저 저장되어 종료합니다."
             ))

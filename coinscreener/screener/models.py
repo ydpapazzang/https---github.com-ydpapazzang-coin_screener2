@@ -318,6 +318,24 @@ class DailyRecommendation(models.Model):
     stop_loss = models.FloatField(verbose_name="손절가")
     k_value = models.FloatField(default=0.5, verbose_name="적용된 K값")
     reason = models.TextField(verbose_name="추천 이유")
+
+    # 추천 생성 당시의 규칙과 입력을 불변 스냅샷으로 보관한다. 이후 전략
+    # 로직이 바뀌어도 과거 추천이 어느 버전에서 만들어졌는지 재현할 수 있다.
+    strategy_version = models.CharField(
+        max_length=80, blank=True, default='', verbose_name="전략 버전"
+    )
+    strategy_parameters = models.JSONField(
+        default=dict, blank=True, verbose_name="전략 파라미터"
+    )
+    market_regime = models.JSONField(
+        default=dict, blank=True, verbose_name="생성 당시 시장 상태"
+    )
+    data_as_of = models.DateTimeField(
+        null=True, blank=True, verbose_name="추천 데이터 기준 시각"
+    )
+    code_version = models.CharField(
+        max_length=64, blank=True, default='', verbose_name="코드 버전"
+    )
     
     status_choices = [
         ('pending', '진입대기'),
@@ -397,6 +415,22 @@ class DailyRecommendation(models.Model):
         if self.result_pct is None:
             return None
         return self.result_pct - self.ESTIMATED_ROUND_TRIP_COST_PCT
+
+    @property
+    def strategy_version_display(self):
+        return self.strategy_version or 'legacy (버전 기록 전)'
+
+    @property
+    def code_version_short(self):
+        if not self.code_version:
+            return '-'
+        return self.code_version[:12]
+
+    @property
+    def market_regime_display(self):
+        if not self.market_regime:
+            return '-'
+        return self.market_regime.get('label') or '-'
 
     class Meta:
         ordering = ['-date', 'trade_type', 'coin_ticker']
