@@ -228,6 +228,24 @@
         font-size: 10px;
         margin-top: 9px;
     }
+    .version-snapshot {
+        margin-top: 10px;
+        padding: 11px;
+        border: 1px solid rgba(85, 145, 255, 0.22);
+        border-radius: 8px;
+        background: rgba(34, 94, 180, 0.08);
+        color: var(--text-secondary);
+        font-size: 11px;
+        line-height: 1.55;
+        overflow-wrap: anywhere;
+    }
+    .version-snapshot b { color: var(--text-primary); }
+    .snapshot-json {
+        margin-top: 5px;
+        white-space: pre-wrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 10px;
+    }
 
     .pagination {
         display: flex;
@@ -430,6 +448,14 @@
                         {% if rec.trade_type == 'swing' %}최종 수익률은 2R 부분익절이 발생한 경우 50%씩 가중 계산합니다.{% endif %}
                     </div>
                 {% endif %}
+                <div class="version-snapshot">
+                    <b>추천 생성 기록</b><br>
+                    전략 {{ rec.strategy_version_display }} · 코드 {{ rec.code_version_short }}<br>
+                    데이터 기준 {% if rec.data_as_of %}{{ rec.data_as_of|date:"Y.m.d H:i:s" }} KST{% else %}-{% endif %}<br>
+                    시장 국면 {{ rec.market_regime_display }}
+                    {% if rec.strategy_parameters %}<div class="snapshot-json">파라미터 {{ rec.strategy_parameters }}</div>{% endif %}
+                    {% if rec.market_regime %}<div class="snapshot-json">시장 데이터 {{ rec.market_regime }}</div>{% endif %}
+                </div>
             </div>
         </details>
         {% endfor %}
