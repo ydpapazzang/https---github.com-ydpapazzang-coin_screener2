@@ -1,0 +1,26 @@
+{% extends 'screener/base.html' %}
+{% load humanize %}
+{% block title %}포지션 크기 계산기{% endblock %}
+{% block topbar %}{% endblock %}
+{% block extra_head %}
+<style>
+.calc-head{padding:25px 20px;background:linear-gradient(135deg,#4338ca,#1d4ed8);border-radius:0 0 20px 20px}.calc-title{font-size:22px;font-weight:700}.calc-sub{margin-top:7px;color:#dbeafe;font-size:12px;line-height:1.5}
+.calc-wrap{padding:18px 20px 26px}.calc-card{padding:18px;border:1px solid var(--border-color);border-radius:15px;background:var(--surface-color)}.calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}.calc-field{color:var(--text-secondary);font-size:11px}.calc-input{box-sizing:border-box;width:100%;margin-top:5px;padding:12px;border:1px solid var(--border-color);border-radius:9px;background:#171717;color:#fff;font-size:15px}.calc-submit{width:100%;margin-top:14px;padding:13px;border:0;border-radius:9px;background:#2d7bfe;color:#fff;font-weight:700}.calc-error{margin-top:12px;color:#ff6372;font-size:12px}
+.calc-result{margin-top:14px;padding:17px;border:1px solid rgba(54,209,183,.3);border-radius:14px;background:rgba(15,118,110,.12)}.result-main{text-align:center}.result-amount{margin-top:5px;color:#59e0c9;font-size:25px;font-weight:800}.result-row{display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07);color:var(--text-secondary);font-size:12px}.result-row b{color:var(--text-primary)}.calc-note{margin-top:14px;color:var(--text-secondary);font-size:10px;line-height:1.55}.warn{color:#ffbd59}
+@media(max-width:360px){.calc-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+{% block content %}
+<div class="calc-head"><div class="calc-title">🛡️ 포지션 크기 계산기</div><div class="calc-sub">먼저 감당할 손실을 정한 뒤 주문금액을 계산합니다. 종목 추천 기능이 아닙니다.</div></div>
+<div class="calc-wrap"><form class="calc-card" method="get"><div class="calc-grid">
+<label class="calc-field">총 투자자산 (원)<input class="calc-input" name="total_assets" type="number" min="1" step="1" required value="{{ fields.total_assets }}"></label>
+<label class="calc-field">1회 허용 손실률 (%)<input class="calc-input" name="risk_pct" type="number" min="0.01" max="100" step="0.01" required value="{{ fields.risk_pct }}"></label>
+<label class="calc-field">진입가 (원)<input class="calc-input" name="entry_price" type="number" min="0.00000001" step="any" required value="{{ fields.entry_price }}"></label>
+<label class="calc-field">손절가 (원)<input class="calc-input" name="stop_loss" type="number" min="0.00000001" step="any" required value="{{ fields.stop_loss }}"></label>
+</div><button class="calc-submit" name="calculate" value="1">적정 주문금액 계산</button>{% if error %}<div class="calc-error">{{ error }}</div>{% endif %}</form>
+{% if result %}<div class="calc-result"><div class="result-main"><div>적정 주문금액</div><div class="result-amount">{{ result.order_amount|floatformat:0|intcomma }}원</div></div>
+<div class="result-row"><span>최대 손실 예산</span><b>{{ result.risk_budget|floatformat:0|intcomma }}원</b></div><div class="result-row"><span>계산 수량</span><b>{{ result.quantity|floatformat:8 }}</b></div><div class="result-row"><span>진입→손절 거리</span><b>{{ result.stop_distance_pct|floatformat:2 }}%</b></div><div class="result-row"><span>예상 손실</span><b>{{ result.expected_loss|floatformat:0|intcomma }}원</b></div><div class="result-row"><span>총자산 사용 비율</span><b>{{ result.capital_usage_pct|floatformat:1 }}%</b></div>
+{% if result.capped_by_assets %}<div class="calc-note warn">계산상 주문금액이 총자산을 초과하여 총자산까지만 제한했습니다. 실제 예상손실은 허용 예산보다 작습니다.</div>{% endif %}</div>{% endif %}
+<div class="calc-note">계산식: 손실예산 ÷ 손절거리 비율. 수수료·슬리피지·갭 하락은 별도이므로 실제 주문은 계산값보다 보수적으로 줄이세요. 레버리지와 대출 투자는 반영하지 않습니다.</div></div>
+{% endblock %}
+
