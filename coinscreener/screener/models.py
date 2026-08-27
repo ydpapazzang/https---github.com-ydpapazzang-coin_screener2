@@ -478,3 +478,75 @@ class ScanUsage(models.Model):
             f"scans={self.scan_count} rewards={self.reward_credits}"
         )
 
+
+class PaperPosition(models.Model):
+    """브라우저 세션별 추천 기반 모의 투자 포지션."""
+
+    status_choices = [('open', '보유 중'), ('closed', '청산 완료')]
+    owner_key = models.CharField(max_length=64, db_index=True)
+    recommendation = models.ForeignKey(
+        DailyRecommendation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='paper_positions',
+    )
+    trade_type = models.CharField(
+        max_length=10, choices=DailyRecommendation.trade_type_choices,
+        db_index=True,
+    )
+    coin_ticker = models.CharField(max_length=50, db_index=True)
+    coin_name = models.CharField(max_length=100)
+    entry_price = models.FloatField(verbose_name='실제 모의 체결가')
+    invested_amount = models.FloatField(verbose_name='투입 금액')
+    target_price = models.FloatField(verbose_name='목표가')
+    stop_loss = models.FloatField(verbose_name='손절가')
+    current_price = models.FloatField(null=True, blank=True)
+    highest_price = models.FloatField(null=True, blank=True)
+    lowest_price = models.FloatField(null=True, blank=True)
+    status = models.CharField(
+        max_length=10, choices=status_choices, default='open', db_index=True,
+    )
+    exit_price = models.FloatField(null=True, blank=True)
+    exit_reason = models.CharField(max_length=20, blank=True)
+    opened_at = models.DateTimeField(auto_now_add=True)
+    exit_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-opened_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=('owner_key', 'recommendation'),
+                name='unique_session_paper_recommendation',
+            ),
+        ]
+
+    @property
+    def quantity(self):
+        return self.invested_amount / self.entry_price if self.entry_price else 0
+
+    @property
+    def valuation_price(self):
+        return self.exit_price if self.status == 'closed' else self.current_price
+
+    @property
+    def gross_return_pct(self):
+        price = self.valuation_price
+        if not price or not self.entry_price:
+            return None
+        return (price / self.entry_price - 1) * 100
+
+    @property
+    def net_return_pct(self):
+        gross = self.gross_return_pct
+        return None if gross is None else gross - 0.20
+
+    @property
+    def profit_amount(self):
+        result = self.net_return_pct
+        return None if result is None else self.invested_amount * result / 100
+
+    def __str__(self):
+        return f"{self.coin_ticker} {self.get_status_display()}"
+

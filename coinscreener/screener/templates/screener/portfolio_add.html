@@ -1,0 +1,29 @@
+{% extends 'screener/base.html' %}
+{% load humanize %}
+{% block title %}모의 매수{% endblock %}
+{% block topbar %}{% endblock %}
+{% block extra_head %}
+<style>
+.paper-wrap{padding:24px 20px}.paper-card{padding:20px;border:1px solid var(--border-color);border-radius:16px;background:var(--surface-color)}
+.paper-row{display:flex;justify-content:space-between;margin:9px 0;color:var(--text-secondary)}.paper-row b{color:var(--text-primary)}
+.paper-field{display:block;margin-top:16px;color:var(--text-secondary);font-size:12px}.paper-input{box-sizing:border-box;width:100%;margin-top:6px;padding:13px;border:1px solid var(--border-color);border-radius:10px;background:#171717;color:#fff;font-size:16px}
+.paper-submit{width:100%;margin-top:18px;padding:14px;border:0;border-radius:10px;background:#2d7bfe;color:#fff;font-weight:700}.paper-error{margin:12px 0;color:#ff6372}.paper-note{margin-top:14px;color:var(--text-secondary);font-size:11px;line-height:1.5}
+</style>
+{% endblock %}
+{% block content %}
+<div class="paper-wrap"><h2>모의 매수 등록</h2><div class="paper-card">
+  <h3>{{ recommendation.coin_name }} <small>{{ recommendation.coin_ticker }}</small></h3>
+  <div class="paper-row"><span>전략</span><b>{{ recommendation.get_trade_type_display }}</b></div>
+  <div class="paper-row"><span>추천 진입가</span><b>{{ recommendation.entry_price|floatformat:-2|intcomma }}원</b></div>
+  <div class="paper-row"><span>목표가</span><b>{{ recommendation.target_price|floatformat:-2|intcomma }}원</b></div>
+  <div class="paper-row"><span>손절가</span><b>{{ recommendation.stop_loss|floatformat:-2|intcomma }}원</b></div>
+  {% if error %}<div class="paper-error">{{ error }}</div>{% endif %}
+  <form method="post">{% csrf_token %}
+    <label class="paper-field">실제 모의 체결가<input class="paper-input" name="entry_price" type="number" min="0" step="any" required value="{{ recommendation.entry_price }}"></label>
+    <label class="paper-field">투입 금액 (원)<input class="paper-input" name="invested_amount" type="number" min="1" step="1" required placeholder="예: 100000"></label>
+    <button class="paper-submit" type="submit">가상 매수 등록</button>
+  </form>
+  <div class="paper-note">실제 주문은 실행되지 않습니다. 목표가·손절가는 추천 당시 가격을 사용하며 왕복 예상비용 0.20%를 성과에서 차감합니다.</div>
+</div></div>
+{% endblock %}
+

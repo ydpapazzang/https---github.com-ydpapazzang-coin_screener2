@@ -139,6 +139,7 @@
         line-height: 1.5;
         color: #ddd;
     }
+    .paper-buy { display:block;margin-top:14px;padding:12px;border-radius:10px;background:#0f766e;color:#fff;text-align:center;text-decoration:none;font-weight:700; }
 </style>
 {% endblock %}
 
@@ -214,6 +215,7 @@
                 💡 <b>추천 이유:</b><br><br>
                 {{ rec.reason|linebreaksbr }}
             </div>
+            <a class="paper-buy" href="{% url 'portfolio_add' rec.id %}">🧪 모의 매수</a>
         </div>
         {% endfor %}
     {% endif %}
@@ -246,3 +248,4 @@ function closeSheet() {
 }
 </script>
 {% endblock %}
+
