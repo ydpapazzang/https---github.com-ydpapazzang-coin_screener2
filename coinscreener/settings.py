@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+RUNTIME_DIR = Path(os.environ.get('APP_RUNTIME_DIR', BASE_DIR / '.runtime'))
 
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
@@ -54,6 +55,10 @@ SCAN_LEASE_SECONDS = max(60, int(os.environ.get('SCAN_LEASE_SECONDS', '1800')))
 SCAN_DAILY_FREE_LIMIT = max(0, int(os.environ.get('SCAN_DAILY_FREE_LIMIT', '2')))
 REWARDED_AD_UNIT_PATH = os.environ.get('REWARDED_AD_UNIT_PATH', '').strip()
 SCAN_DAILY_REWARD_LIMIT = max(1, int(os.environ.get('SCAN_DAILY_REWARD_LIMIT', '20')))
+
+# 추천 생성 당시의 배포 버전 추적용. 비어 있으면 실행 중인 저장소의
+# Git HEAD를 자동 조회하며, 컨테이너처럼 .git이 없는 환경에서는 이 값을 지정한다.
+APP_COMMIT_SHA = os.environ.get('APP_COMMIT_SHA', '').strip()
 
 INSTALLED_APPS = [
     'django.contrib.admin',
