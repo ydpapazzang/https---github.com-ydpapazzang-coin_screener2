@@ -45,6 +45,7 @@ urlpatterns = [
     path('portfolio/', views.portfolio_list, name='portfolio_list'),
     path('portfolio/add/<int:recommendation_id>/', views.portfolio_add, name='portfolio_add'),
     path('portfolio/<int:position_id>/close/', views.portfolio_close, name='portfolio_close'),
+    path('position-size/', views.position_size_calculator, name='position_size_calculator'),
 
     # 정보/약관/가이드 페이지 (애드센스 승인·신뢰도용)
     path('more/',    views.more_menu, name='more_menu'),
