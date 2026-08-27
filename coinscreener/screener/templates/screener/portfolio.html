@@ -1,0 +1,27 @@
+{% extends 'screener/base.html' %}
+{% load humanize %}
+{% block title %}모의 포트폴리오{% endblock %}
+{% block topbar %}{% endblock %}
+{% block extra_head %}
+<style>
+.pf-head{padding:24px 20px;background:linear-gradient(135deg,#164e63,#0f766e);border-radius:0 0 20px 20px}.pf-title{font-size:22px;font-weight:700}.pf-sub{margin-top:6px;color:#c7f9f1;font-size:12px}
+.pf-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}.pf-box{padding:12px 6px;border-radius:10px;background:rgba(0,0,0,.2);text-align:center}.pf-val{font-weight:700;font-size:14px}.pf-label{margin-top:4px;color:#b7d8d4;font-size:9px}
+.pf-filter{display:flex;gap:7px;padding:14px 20px}.pf-filter a{padding:8px 12px;border-radius:999px;background:var(--surface-color);color:var(--text-secondary);text-decoration:none;font-size:12px}.pf-filter a.on{background:#2d7bfe;color:#fff}
+.pf-list{padding:0 20px 24px}.pf-card{margin-bottom:12px;padding:16px;border:1px solid var(--border-color);border-radius:14px;background:var(--surface-color)}.pf-card-head,.pf-row{display:flex;justify-content:space-between;gap:8px}.pf-row{margin-top:8px;color:var(--text-secondary);font-size:12px}.pf-row b{color:var(--text-primary)}.up{color:#ff5364!important}.down{color:#5790ff!important}.pf-badge{font-size:10px}.pf-close{display:flex;gap:7px;margin-top:12px}.pf-close input{min-width:0;flex:1;padding:9px;border:1px solid var(--border-color);border-radius:8px;background:#171717;color:#fff}.pf-close button{border:0;border-radius:8px;background:#444;color:#fff}.pf-empty{padding:50px 20px;text-align:center;color:var(--text-secondary)}
+.curve{margin:0 20px 16px;padding:14px;border-radius:12px;background:var(--surface-color)}#curve-svg{width:100%;height:110px}.curve-note{color:var(--text-secondary);font-size:10px}
+</style>
+{% endblock %}
+{% block content %}
+<div class="pf-head"><div class="pf-title">🧪 모의 포트폴리오</div><div class="pf-sub">추천을 가상 체결하고 목표·손절을 자동 추적합니다.</div>
+<div class="pf-summary"><div class="pf-box"><div class="pf-val">{{ invested|floatformat:0|intcomma }}원</div><div class="pf-label">등록 투자금</div></div><div class="pf-box"><div class="pf-val {% if open_profit >= 0 %}up{% else %}down{% endif %}">{{ open_profit|floatformat:0|intcomma }}원</div><div class="pf-label">보유 손익</div></div><div class="pf-box"><div class="pf-val {% if realized_profit >= 0 %}up{% else %}down{% endif %}">{{ realized_profit|floatformat:0|intcomma }}원</div><div class="pf-label">확정 손익</div></div></div></div>
+<div class="pf-filter"><a class="{% if not selected_trade_type %}on{% endif %}" href="{% url 'portfolio_list' %}">전체</a><a class="{% if selected_trade_type == 'danta' %}on{% endif %}" href="?trade_type=danta">단타</a><a class="{% if selected_trade_type == 'swing' %}on{% endif %}" href="?trade_type=swing">스윙</a></div>
+<div class="curve"><b>확정 손익 자산곡선</b><svg id="curve-svg" viewBox="0 0 400 110" preserveAspectRatio="none"></svg><div class="curve-note">각 청산 시점까지의 누적 손익입니다.</div></div>
+<div class="pf-list">{% for p in positions %}<div class="pf-card"><div class="pf-card-head"><b>{{ p.coin_name }} <small>{{ p.coin_ticker }}</small></b><span class="pf-badge">{{ p.get_trade_type_display }} · {{ p.get_status_display }}</span></div>
+<div class="pf-row"><span>체결가 / 평가·청산가</span><b>{{ p.entry_price|floatformat:-2|intcomma }} / {% if p.valuation_price %}{{ p.valuation_price|floatformat:-2|intcomma }}{% else %}-{% endif %}원</b></div><div class="pf-row"><span>목표 / 손절</span><b>{{ p.target_price|floatformat:-2|intcomma }} / {{ p.stop_loss|floatformat:-2|intcomma }}원</b></div><div class="pf-row"><span>투입금 / 수량</span><b>{{ p.invested_amount|floatformat:0|intcomma }}원 / {{ p.quantity|floatformat:8 }}</b></div><div class="pf-row"><span>비용 후 수익률·손익</span><b class="{% if p.net_return_pct >= 0 %}up{% else %}down{% endif %}">{% if p.net_return_pct != None %}{{ p.net_return_pct|floatformat:2 }}% · {{ p.profit_amount|floatformat:0|intcomma }}원{% else %}-{% endif %}</b></div>
+{% if p.status == 'open' %}<form class="pf-close" method="post" action="{% url 'portfolio_close' p.id %}">{% csrf_token %}<input name="exit_price" type="number" step="any" min="0" required value="{{ p.current_price }}" placeholder="수동 청산가"><button>수동 청산</button></form>{% else %}<div class="pf-row"><span>청산 사유</span><b>{{ p.exit_reason }}</b></div>{% endif %}</div>{% empty %}<div class="pf-empty">등록된 모의 포지션이 없습니다.<br>단타·스윙 추천에서 ‘모의 매수’를 선택하세요.</div>{% endfor %}</div>
+{{ curve_json|json_script:"curve-data" }}
+{% endblock %}
+{% block extra_js %}<script>
+const data=JSON.parse(document.getElementById('curve-data').textContent),svg=document.getElementById('curve-svg');if(data.length){const vals=[0,...data.map(x=>x.value)],min=Math.min(...vals),max=Math.max(...vals),range=max-min||1;const pts=vals.map((v,i)=>`${i/(vals.length-1||1)*400},${100-(v-min)/range*85}`).join(' ');svg.innerHTML=`<line x1="0" y1="${100-(0-min)/range*85}" x2="400" y2="${100-(0-min)/range*85}" stroke="#555"/><polyline points="${pts}" fill="none" stroke="#36d1b7" stroke-width="3" vector-effect="non-scaling-stroke"/>`;}
+</script>{% endblock %}
+
