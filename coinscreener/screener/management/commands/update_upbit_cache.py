@@ -345,6 +345,46 @@ class Command(BaseCommand):
         """단타와 스윙 추천을 각각의 규칙으로 추적한다."""
         self._monitor_danta_recommendations()
         self._monitor_swing_recommendations()
+        self._monitor_paper_positions()
+
+    def _monitor_paper_positions(self):
+        """열린 모의 포지션을 1분봉으로 목표·손절 자동 처리한다."""
+        from django.utils import timezone
+        from coinscreener.screener.models import PaperPosition
+
+        for position in PaperPosition.objects.filter(status='open'):
+            try:
+                frame = pyupbit.get_ohlcv(
+                    position.coin_ticker, interval='minute1', count=1
+                )
+                if frame is None or frame.empty:
+                    continue
+                candle = frame.iloc[-1]
+                high = float(candle['high'])
+                low = float(candle['low'])
+                close = float(candle['close'])
+                if not all(math.isfinite(value) and value > 0 for value in (high, low, close)):
+                    continue
+                position.current_price = close
+                position.highest_price = max(position.highest_price or high, high)
+                position.lowest_price = min(position.lowest_price or low, low)
+                # 같은 1분봉에서 목표와 손절이 함께 닿으면 보수적으로 손절 우선.
+                if low <= position.stop_loss:
+                    position.status = 'closed'
+                    position.exit_price = position.stop_loss
+                    position.exit_reason = 'stop_loss'
+                    position.exit_at = timezone.now()
+                elif high >= position.target_price:
+                    position.status = 'closed'
+                    position.exit_price = position.target_price
+                    position.exit_reason = 'target'
+                    position.exit_at = timezone.now()
+                position.save()
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(
+                    f"[{position.coin_ticker}] 모의 포지션 추적 오류: {exc}"
+                ))
+            time.sleep(0.05)
 
     def _monitor_danta_recommendations(self):
         from django.utils import timezone
