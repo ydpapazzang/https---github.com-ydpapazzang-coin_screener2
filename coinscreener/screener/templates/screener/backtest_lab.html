@@ -1,0 +1,55 @@
+{% extends 'screener/base.html' %}
+{% block title %}백테스트 연구실{% endblock %}
+{% block content %}
+<style>
+.lab{padding:18px 16px 90px}.lab h1{font-size:22px;margin:0}.lab-sub{color:#9e9e9e;font-size:13px;line-height:1.55;margin:8px 0 18px}
+.panel,.card{background:#1e1e1e;border:1px solid #303030;border-radius:14px;padding:16px;margin-bottom:14px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field label{display:block;color:#9e9e9e;font-size:11px;margin-bottom:5px}.field input,.field select{width:100%;background:#121212;color:#fff;border:1px solid #393939;border-radius:8px;padding:11px}.run{width:100%;border:0;border-radius:10px;background:#2d7bfe;color:#fff;font-weight:800;padding:13px;margin-top:13px}.run:disabled{opacity:.55}.title{font-size:15px;font-weight:800;margin-bottom:12px}.metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.metric{background:#151515;border-radius:9px;padding:11px}.metric small{display:block;color:#999;font-size:10px}.metric b{font-size:17px}.good{color:#ef5350}.bad{color:#448aff}.rows{font-size:12px}.row{display:grid;grid-template-columns:1.25fr repeat(4,.8fr);gap:5px;padding:9px 0;border-bottom:1px solid #2b2b2b;align-items:center}.row.head{color:#888;font-size:10px}.warning{border-left:3px solid #ffb300;padding-left:11px;margin:7px 0;color:#ddd;font-size:12px;line-height:1.45}.note{font-size:11px;color:#888;line-height:1.5}.hidden{display:none}@media(max-width:380px){.grid{grid-template-columns:1fr}.row{font-size:10px}}
+</style>
+<div class="lab">
+  <h1>🧪 백테스트 연구실</h1>
+  <div class="lab-sub"><b>{{ strategy.name }}</b> · 최고 수익 한 개가 아니라 검증구간과 주변 설정에서도 성과가 유지되는지 확인합니다.</div>
+  <div class="panel">
+    <div class="grid">
+      <div class="field"><label>코인</label><select id="ticker"><option>KRW-BTC</option><option>KRW-ETH</option><option>KRW-XRP</option><option>KRW-SOL</option></select></div>
+      <div class="field"><label>기간</label><select id="count"><option value="100">100봉</option><option value="200">200봉</option><option value="500" selected>500봉</option></select></div>
+      <div class="field"><label>매도 방식</label><select id="mode"><option value="cond_exit">조건 이탈</option><option value="exit_n">N봉 후</option><option value="tp_sl">동일 목표·손절률</option></select></div>
+      <div class="field"><label>매도값</label><input id="param" type="number" value="5" min="0.1" step="0.1"></div>
+      <div class="field"><label>편도 수수료 (%)</label><input id="fee" type="number" value="0.05" min="0" max="1" step="0.01"></div>
+      <div class="field"><label>편도 슬리피지 (%)</label><input id="slippage" type="number" value="0.05" min="0" max="1" step="0.01"></div>
+    </div>
+    <button class="run" id="run">분석 실행</button>
+  </div>
+  <div id="error" class="card hidden"></div>
+  <div id="results" class="hidden">
+    <div class="card"><div class="title">기준 결과</div><div class="metrics" id="baseline"></div></div>
+    <div class="card"><div class="title">학습 70% / 검증 30%</div><div class="rows" id="validation"></div></div>
+    <div class="card"><div class="title">Walk-forward 검증</div><div class="rows" id="walk"></div></div>
+    <div class="card"><div class="title">시장 국면별</div><div class="rows" id="regimes"></div><p class="note">BTC 50일선 위치와 기울기로 상승·횡보·하락장을 분류합니다.</p></div>
+    <div class="card"><div class="title">매개변수·비용 민감도</div><div class="rows" id="sensitivity"></div></div>
+    <div class="card"><div class="title">몬테카를로 500회</div><div class="metrics" id="monte"></div></div>
+    <div class="card"><div class="title">과최적화 경고: <span id="level"></span></div><div id="warnings"></div></div>
+    <p class="note" id="disclaimer"></p>
+  </div>
+</div>
+<script>
+const pct=v=>`${Number(v)>0?'+':''}${v}%`;
+const metric=(label,value)=>`<div class="metric"><small>${label}</small><b class="${Number(value)>0?'good':Number(value)<0?'bad':''}">${value}</b></div>`;
+const head=()=>'<div class="row head"><span>구간/설정</span><span>거래</span><span>승률</span><span>기대</span><span>수익</span></div>';
+const resultRow=(name,r)=>`<div class="row"><span>${name}</span><span>${r.total_trades}</span><span>${r.win_rate}%</span><span>${pct(r.expectancy)}</span><span>${pct(r.total_return)}</span></div>`;
+document.getElementById('run').onclick=async()=>{
+ const button=document.getElementById('run'), error=document.getElementById('error'); button.disabled=true;button.textContent='분석 중…';error.classList.add('hidden');
+ try{
+  const response=await secureFetch('{% url "backtest_lab_run" strategy.id %}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:document.getElementById('ticker').value,candle_count:+document.getElementById('count').value,sell_mode:document.getElementById('mode').value,sell_param:+document.getElementById('param').value,fee:+document.getElementById('fee').value,slippage:+document.getElementById('slippage').value})});
+  const d=await response.json(); if(!response.ok) throw new Error(d.error||'분석 실패');
+  document.getElementById('baseline').innerHTML=metric('거래',d.baseline.total_trades)+metric('승률',d.baseline.win_rate+'%')+metric('비용 후 기대수익',pct(d.baseline.expectancy))+metric('누적 수익률',pct(d.baseline.total_return))+metric('MDD','-'+d.baseline.mdd+'%')+metric('샤프',d.baseline.sharpe);
+  document.getElementById('validation').innerHTML=head()+resultRow('학습',d.validation.train)+resultRow('검증',d.validation.validation);
+  document.getElementById('walk').innerHTML=head()+(d.walk_forward.map(x=>resultRow(`${x.window}차 ${x.start}~${x.end}`,x)).join('')||'<p class="note">거래가 4건 이상 필요합니다.</p>');
+  document.getElementById('regimes').innerHTML=head()+(d.regimes.map(x=>resultRow(x.regime,x)).join('')||'<p class="note">국면을 분류할 데이터가 부족합니다.</p>');
+  document.getElementById('sensitivity').innerHTML=head()+d.sensitivity.map(x=>resultRow(x.label,x)).join('');
+  document.getElementById('monte').innerHTML=metric('하위 10%',pct(d.monte_carlo.p10))+metric('중앙값',pct(d.monte_carlo.median))+metric('상위 10%',pct(d.monte_carlo.p90))+metric('손실 확률',d.monte_carlo.loss_probability+'%')+metric('중앙 MDD','-'+d.monte_carlo.median_mdd+'%');
+  document.getElementById('level').textContent=d.overfit.level;document.getElementById('warnings').innerHTML=d.overfit.warnings.map(x=>`<div class="warning">${x}</div>`).join('');document.getElementById('disclaimer').textContent=d.disclaimer;document.getElementById('results').classList.remove('hidden');
+ }catch(e){error.textContent='⚠️ '+e.message;error.classList.remove('hidden')}finally{button.disabled=false;button.textContent='분석 실행'}
+};
+</script>
+{% endblock %}
+
