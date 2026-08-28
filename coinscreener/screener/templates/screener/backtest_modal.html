@@ -174,6 +174,7 @@
                 <input type="number" class="bt-sel" id="bt-param" value="5" min="1" style="width:80px;">
             </div>
             <button class="bt-run" id="bt-run-btn" onclick="runBT()">▶ 백테스트 실행</button>
+            <button class="bt-run" type="button" style="background:#6d4aff;margin-left:0" onclick="openBTLab()">🧪 연구실</button>
         </div>
 
         <!-- loading overlay -->
@@ -315,6 +316,9 @@ function openBT(strategyId, strategyName, timeframe = 'day') {
 }
 function closeBT() {
     document.getElementById('bt-modal-backdrop').classList.remove('open');
+}
+function openBTLab() {
+    if (btStrategyId) window.location.href = `/strategy/${btStrategyId}/backtest/lab/`;
 }
 document.getElementById('bt-modal-backdrop').addEventListener('click', function(e) {
     if (e.target === this) closeBT();
