@@ -263,6 +263,20 @@
         text-decoration: none;
     }
     .page-info { color: var(--text-secondary); }
+    .confidence-section { padding: 14px 20px 2px; }
+    .confidence-heading { margin-bottom: 9px; font-size: 15px; font-weight: 700; }
+    .confidence-card { margin-bottom: 10px; padding: 14px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: var(--surface-color); }
+    .confidence-top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+    .confidence-version { margin-top:3px; color:var(--text-secondary); font-size:10px; overflow-wrap:anywhere; }
+    .confidence-grade { padding:5px 8px; border-radius:999px; background:#4b4b4b; font-size:10px; font-weight:700; white-space:nowrap; }
+    .grade-검증완료 { background:#0f766e; }.grade-검증중 { background:#6d4c9c; }.grade-관찰 { background:#7a5a19; }
+    .confidence-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:11px; }
+    .confidence-metric { padding:8px 5px; border-radius:8px; background:rgba(0,0,0,.18); text-align:center; }
+    .confidence-value { font-size:12px; font-weight:700; }.confidence-label { margin-top:3px; color:var(--text-secondary); font-size:8px; }
+    .confidence-reason { margin-top:8px; color:var(--text-secondary); font-size:10px; }
+    .confidence-periods { width:100%; margin-top:10px; border-collapse:collapse; font-size:9px; text-align:right; }
+    .confidence-periods th,.confidence-periods td { padding:5px 3px; border-top:1px solid rgba(255,255,255,.06); }.confidence-periods th:first-child,.confidence-periods td:first-child{text-align:left}
+    .regime-list { margin-top:8px; color:var(--text-secondary); font-size:9px; line-height:1.6; }
 </style>
 {% endblock %}
 
@@ -302,6 +316,28 @@
         승률은 결과가 확정된 {{ decided }}건 기준입니다.
     </div>
 </div>
+
+<section class="confidence-section">
+    <div class="confidence-heading">전략 신뢰도</div>
+    {% for report in confidence_reports %}
+    <div class="confidence-card">
+        <div class="confidence-top"><div><b>{{ report.trade_type_label }}</b><div class="confidence-version">{{ report.strategy_version }}</div></div><span class="confidence-grade grade-{{ report.grade|cut:' ' }}">{{ report.grade }}</span></div>
+        <div class="confidence-grid">
+            <div class="confidence-metric"><div class="confidence-value">{{ report.sample_count }}건</div><div class="confidence-label">확정 표본</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{% if report.expectancy_pct != None %}{{ report.expectancy_pct|floatformat:2 }}%{% else %}-{% endif %}</div><div class="confidence-label">비용 후 기대수익</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{{ report.mdd_pct|floatformat:2 }}%</div><div class="confidence-label">MDD</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{{ report.max_loss_streak }}회</div><div class="confidence-label">최대 연속 손실</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{{ report.span_days }}일</div><div class="confidence-label">관찰 기간</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{% if report.win_rate != None %}{{ report.win_rate|floatformat:1 }}%{% else %}-{% endif %}</div><div class="confidence-label">비용 후 승률</div></div>
+        </div>
+        <div class="confidence-reason">{{ report.grade_reason }}</div>
+        <table class="confidence-periods"><tr><th>기간</th><th>표본</th><th>기대수익</th><th>누적</th><th>승률</th></tr>
+            {% for days, value in report.periods.items %}<tr><td>최근 {{ days }}일</td><td>{{ value.sample_count }}</td><td>{% if value.expectancy_pct != None %}{{ value.expectancy_pct|floatformat:2 }}%{% else %}-{% endif %}</td><td>{% if value.cumulative_pct != None %}{{ value.cumulative_pct|floatformat:2 }}%{% else %}-{% endif %}</td><td>{% if value.win_rate != None %}{{ value.win_rate|floatformat:1 }}%{% else %}-{% endif %}</td></tr>{% endfor %}
+        </table>
+        {% if report.regimes %}<div class="regime-list"><b>시장 국면별</b><br>{% for regime in report.regimes %}{{ regime.label }} · {{ regime.sample_count }}건 · 기대 {{ regime.expectancy_pct|floatformat:2 }}% · 승률 {{ regime.win_rate|floatformat:1 }}%{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>{% endif %}
+    </div>
+    {% endfor %}
+</section>
 
 <div class="disclaimer">
     ⚠️ 아래 성적은 과거 추천의 <b>가상 성과 기록</b>이며, 순성과는 왕복 예상비용 {{ estimated_cost|floatformat:2 }}%를 차감했습니다. 미래 수익을 보장하지 않습니다.

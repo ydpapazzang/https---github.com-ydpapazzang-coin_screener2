@@ -6,6 +6,7 @@ from django.shortcuts import render
 from django.utils import timezone
 
 from ..models import DailyRecommendation
+from ..strategy_confidence import build_confidence_report
 
 
 def _display_date():
@@ -152,5 +153,9 @@ def stats_list(request):
         'status_choices': DailyRecommendation.status_choices,
         'trade_type_choices': DailyRecommendation.trade_type_choices,
         'filter_query': query_params.urlencode(),
+        'confidence_reports': [
+            build_confidence_report('danta'),
+            build_confidence_report('swing'),
+        ],
     })
 
