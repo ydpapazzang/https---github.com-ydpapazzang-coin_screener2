@@ -335,6 +335,8 @@ def get_required_len(indicator_type, param):
         return 78
     if indicator_type in ('IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM'):
         return 78
+    if indicator_type == 'IC_PAST_CLOUD':
+        return 104
     if indicator_type == 'IC_CHIKOU':
         return 0
     if indicator_type == 'IC_CHIKOU_REF':
@@ -355,7 +357,8 @@ def get_max_required_len(conditions):
         l_len = get_required_len(cond.left_indicator, cond.left_param)
         r_len = get_required_len(cond.right_indicator, cond.right_param)
         extra = 1 if cond.operator in ('cross_up', 'cross_down') else 0
-        req = max(l_len, r_len) + cond.offset + extra
+        closed_extra = 1 if getattr(cond, 'closed_only', False) else 0
+        req = max(l_len, r_len) + cond.offset + extra + closed_extra
         if req > max_len:
             max_len = req
 
@@ -401,7 +404,7 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
                 cond_met = False
                 # cond.offset이 'n봉 이내'를 의미하므로, 0부터 cond.offset까지 모든 봉을 검사하여 하나라도 만족하면 True
                 for i in range(cond.offset + 1):
-                    total_offset = base_offset + i
+                    total_offset = base_offset + i + (1 if getattr(cond, 'closed_only', False) else 0)
                     
                     extra_needed = 1 if cond.operator in ('cross_up', 'cross_down') else 0
                     required_len = max(
@@ -445,16 +448,25 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
                         if left_val_prev is None or right_val_prev is None or pd.isna(left_val_prev) or pd.isna(right_val_prev):
                             continue
                             
+                        threshold = max(0.0, float(getattr(cond, 'threshold_pct', 0.0) or 0.0)) / 100.0
+                        current_barrier = right_val * (1 + threshold if cond.operator == 'cross_up' else 1 - threshold)
+                        previous_barrier = right_val_prev * (1 + threshold if cond.operator == 'cross_up' else 1 - threshold)
                         if cond.operator == 'cross_up':
-                            if left_val_prev <= right_val_prev and left_val > right_val:
+                            if left_val_prev <= previous_barrier and left_val > current_barrier:
                                 cond_met = True
                                 break
                         elif cond.operator == 'cross_down':
-                            if left_val_prev >= right_val_prev and left_val < right_val:
+                            if left_val_prev >= previous_barrier and left_val < current_barrier:
                                 cond_met = True
                                 break
                     else:
-                        op_map = {'gt': left_val > right_val, 'lt': left_val < right_val, 'gte': left_val >= right_val, 'lte': left_val <= right_val}
+                        threshold = max(0.0, float(getattr(cond, 'threshold_pct', 0.0) or 0.0)) / 100.0
+                        barrier = right_val
+                        if cond.operator in ('gt', 'gte'):
+                            barrier *= 1 + threshold
+                        elif cond.operator in ('lt', 'lte'):
+                            barrier *= 1 - threshold
+                        op_map = {'gt': left_val > barrier, 'lt': left_val < barrier, 'gte': left_val >= barrier, 'lte': left_val <= barrier}
                         if op_map.get(cond.operator):
                             cond_met = True
                             break
@@ -560,6 +572,7 @@ _COLUMN_INDICATORS = {
     'BB_UPPER', 'BB_MIDDLE', 'BB_LOWER',
     'IC_TENKAN', 'IC_KIJUN', 'IC_SPAN_A', 'IC_SPAN_B',
     'IC_CLOUD_TOP', 'IC_CLOUD_BOTTOM', 'IC_CHIKOU', 'IC_CHIKOU_REF',
+    'IC_PAST_CLOUD',
 }
 
 
@@ -632,6 +645,14 @@ def ensure_indicator_column(df, indicator_type, param, bb_std=2.0):
 
         df['IC_CLOUD_TOP_{}_{}'.format(param, bb_std)] = np.maximum(span_a_shifted, span_b_shifted)
         df['IC_CLOUD_BOTTOM_{}_{}'.format(param, bb_std)] = np.minimum(span_a_shifted, span_b_shifted)
+
+    elif indicator_type == 'IC_PAST_CLOUD':
+        tenkan = (df['high'].rolling(window=9).max() + df['low'].rolling(window=9).min()) / 2
+        kijun = (df['high'].rolling(window=26).max() + df['low'].rolling(window=26).min()) / 2
+        span_a = (tenkan + kijun) / 2
+        span_b = (df['high'].rolling(window=52).max() + df['low'].rolling(window=52).min()) / 2
+        # 후행스팬(t의 종가)이 놓이는 t-26 좌표의 구름은 원시 스팬의 t-52 값이다.
+        df[col_name] = pd.concat([span_a, span_b], axis=1).max(axis=1).shift(52)
 
     elif indicator_type == 'IC_CHIKOU':
         df[col_name] = df['close']
@@ -728,3 +749,4 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
 
     val = df[col_name].iloc[target_idx]
     return None if pd.isna(val) else float(val)
+

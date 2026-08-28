@@ -22,6 +22,7 @@ urlpatterns = [
 
     path('strategy/<int:strategy_id>/condition/add/',                       views.condition_add,    name='condition_add'),
     path('strategy/<int:strategy_id>/condition/<int:condition_id>/delete/', views.condition_delete, name='condition_delete'),
+    path('strategy/<int:strategy_id>/preset/ichimoku-triple/', views.ichimoku_triple_preset, name='ichimoku_triple_preset'),
 
     # 알림 API
     path('strategy/<int:strategy_id>/alert/',          views.alert_get,      name='alert_get'),

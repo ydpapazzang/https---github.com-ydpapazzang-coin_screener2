@@ -63,48 +63,58 @@ def _check_conditions_at(df_map, conditions, signal_time) -> bool:
         row_idx = _condition_row_index(df, signal_time)
         if row_idx < 0:
             return False
-        offset = (len(df) - 1) - row_idx + cond.offset
+        base_offset = (len(df) - 1) - row_idx
+        matched = False
+        # 실시간 검색과 동일하게 'N봉 이내'는 0..N 중 하나라도 충족함을 뜻한다.
+        for lookback in range(cond.offset + 1):
+            offset = base_offset + lookback
+            ha_patterns = ('HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')
+            if cond.left_indicator in ha_patterns:
+                if check_ha_pattern(df, cond.left_indicator, cond.left_param, offset):
+                    matched = True
+                    break
+                continue
 
-        # ── 하이킨아시 패턴 조건 처리 ──
-        ha_patterns = ('HA_BULL', 'HA_BEAR', 'HA_BULL_N', 'HA_BEAR_N', 'HA_NO_LOWER', 'HA_NO_UPPER')
-        if cond.left_indicator in ha_patterns:
-            if not check_ha_pattern(df, cond.left_indicator, cond.left_param, offset):
-                return False
-            continue  # 조건 만족, 다음 조건으로
+            bb_std = cond.bb_std if cond.bb_std is not None else 2.0
+            lv = get_indicator_value(df, cond.left_indicator, cond.left_param, offset, bb_std=bb_std)
+            rv = get_indicator_value(df, cond.right_indicator, cond.right_param, offset, bb_std=bb_std)
+            if lv is None or rv is None:
+                continue
 
-        # ── 일반 지표 조건 처리 ──
-        bb_std = cond.bb_std if cond.bb_std is not None else 2.0
-        lv = get_indicator_value(df, cond.left_indicator,  cond.left_param,  offset, bb_std=bb_std)
-        rv = get_indicator_value(df, cond.right_indicator, cond.right_param, offset, bb_std=bb_std)
-        if lv is None or rv is None:
-            return False
-            
-        if cond.operator == 'btw':
-            if cond.left_indicator == 'VOLUME':
-                max_multiplier = cond.left_param / 100.0
-                max_val = get_indicator_value(df, cond.right_indicator, cond.right_param, offset, bb_std=max_multiplier)
+            if cond.operator == 'btw':
+                if cond.left_indicator == 'VOLUME':
+                    max_multiplier = cond.left_param / 100.0
+                    max_val = get_indicator_value(df, cond.right_indicator, cond.right_param, offset, bb_std=max_multiplier)
+                else:
+                    max_val = cond.bb_std if cond.bb_std is not None else float('inf')
+                matched = max_val is not None and rv <= lv <= max_val
+            elif cond.operator in ('cross_up', 'cross_down'):
+                prev_offset = offset + 1
+                lv_prev = get_indicator_value(df, cond.left_indicator, cond.left_param, prev_offset, bb_std=bb_std)
+                rv_prev = get_indicator_value(df, cond.right_indicator, cond.right_param, prev_offset, bb_std=bb_std)
+                if lv_prev is None or rv_prev is None:
+                    continue
+                threshold = max(0.0, float(getattr(cond, 'threshold_pct', 0.0) or 0.0)) / 100.0
+                current_barrier = rv * (1 + threshold if cond.operator == 'cross_up' else 1 - threshold)
+                previous_barrier = rv_prev * (1 + threshold if cond.operator == 'cross_up' else 1 - threshold)
+                matched = (
+                    lv_prev <= previous_barrier and lv > current_barrier
+                    if cond.operator == 'cross_up'
+                    else lv_prev >= previous_barrier and lv < current_barrier
+                )
             else:
-                max_val = cond.bb_std if cond.bb_std is not None else float('inf')
-            
-            if not (rv <= lv <= max_val):
-                return False
-        elif cond.operator in ('cross_up', 'cross_down'):
-            prev_offset = offset + 1
-            lv_prev = get_indicator_value(df, cond.left_indicator, cond.left_param, prev_offset, bb_std=bb_std)
-            rv_prev = get_indicator_value(df, cond.right_indicator, cond.right_param, prev_offset, bb_std=bb_std)
-            if lv_prev is None or rv_prev is None:
-                return False
-                
-            if cond.operator == 'cross_up':
-                if not (lv_prev <= rv_prev and lv > rv):
-                    return False
-            elif cond.operator == 'cross_down':
-                if not (lv_prev >= rv_prev and lv < rv):
-                    return False
-        else:
-            ops = {'gt': lv>rv, 'lt': lv<rv, 'gte': lv>=rv, 'lte': lv<=rv}
-            if not ops.get(cond.operator, False):
-                return False
+                threshold = max(0.0, float(getattr(cond, 'threshold_pct', 0.0) or 0.0)) / 100.0
+                barrier = rv
+                if cond.operator in ('gt', 'gte'):
+                    barrier *= 1 + threshold
+                elif cond.operator in ('lt', 'lte'):
+                    barrier *= 1 - threshold
+                matched = {'gt': lv > barrier, 'lt': lv < barrier,
+                           'gte': lv >= barrier, 'lte': lv <= barrier}.get(cond.operator, False)
+            if matched:
+                break
+        if not matched:
+            return False
     return True
 
 

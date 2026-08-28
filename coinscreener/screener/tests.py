@@ -74,7 +74,7 @@ class BacktestOffsetTestCase(TestCase):
 
     @patch('pyupbit.get_ohlcv')
     def test_backtest_respects_offset_one(self, mock_get_ohlcv):
-        """cond.offset = 1 (1봉 전 기준)일 때 백테스팅이 1봉 늦게 매수 진입하는지 테스트"""
+        """offset=1은 UI 문구대로 현재~1봉 이내 중 하나가 맞으면 진입한다."""
         mock_get_ohlcv.return_value = self.mock_df
         
         # 조건 설정: 1봉 전 종가(CLOSE, 0) > 1봉 전 단순이동평균(MA, 5)
@@ -104,12 +104,11 @@ class BacktestOffsetTestCase(TestCase):
         trades = result['trades']
         self.assertTrue(len(trades) > 0, "진입한 거래 내역이 있어야 합니다.")
         
-        # 첫 번째 진입 날짜 확인
-        # index 151에서 전 봉 조건이 확인되고 주문은 다음 봉 시가(index 152)에 체결된다.
+        # index 150의 신호가 현재~1봉 범위에 포함되므로 다음 봉 시가(index 151)에 체결된다.
         first_entry = trades[0]
-        expected_date = (datetime(2026, 1, 1) + timedelta(days=152)).strftime('%Y-%m-%d')
+        expected_date = (datetime(2026, 1, 1) + timedelta(days=151)).strftime('%Y-%m-%d')
         self.assertEqual(first_entry['entry_date'], expected_date, 
-                         f"offset=1 신호 다음 봉({expected_date})에 매수해야 하지만 {first_entry['entry_date']}에 진입했습니다.")
+                         f"1봉 이내 신호 다음 봉({expected_date})에 매수해야 하지만 {first_entry['entry_date']}에 진입했습니다.")
 
     @patch('pyupbit.get_ohlcv')
     def test_multitimeframe_uses_only_closed_weekly_candle(self, mock_get_ohlcv):
