@@ -38,7 +38,7 @@ class Strategy(models.Model):
             'MA': 'MA', 'EMA': 'EMA', 'WMA': 'WMA', 'RSI': 'RSI',
             'BB_UPPER': '볼린저밴드', 'BB_MIDDLE': '볼린저밴드', 'BB_LOWER': '볼린저밴드',
             'HA_BULL': '하이킨아시', 'HA_BEAR': '하이킨아시', 'HA_BULL_N': '하이킨아시', 'HA_BEAR_N': '하이킨아시', 'HA_NO_LOWER': '하이킨아시', 'HA_NO_UPPER': '하이킨아시',
-            'IC_TENKAN': '일목균형표', 'IC_KIJUN': '일목균형표', 'IC_SPAN_A': '일목균형표', 'IC_SPAN_B': '일목균형표', 'IC_SPAN_C': '일목균형표', 'IC_SPAN_D': '일목균형표', 'IC_CHIKOU': '일목균형표', 'IC_CHIKOU_REF': '일목균형표',
+            'IC_TENKAN': '일목균형표', 'IC_KIJUN': '일목균형표', 'IC_SPAN_A': '일목균형표', 'IC_SPAN_B': '일목균형표', 'IC_SPAN_C': '일목균형표', 'IC_SPAN_D': '일목균형표', 'IC_CHIKOU': '일목균형표', 'IC_CHIKOU_REF': '일목균형표', 'IC_PAST_CLOUD': '일목균형표',
             'VOLUME': '거래량', 'VOLUME_PREV': '거래량', 'VOLUME_MA': '거래량'
         }
         for c in conds:
@@ -95,6 +95,7 @@ class Condition(models.Model):
         ('IC_CHIKOU_REF',  '26봉 전 종가'),
         ('IC_CLOUD_TOP',   '일목 구름대 상단'),
         ('IC_CLOUD_BOTTOM','일목 구름대 하단'),
+        ('IC_PAST_CLOUD',  '26봉 전 구름대 상단'),
         ('VAL',         '고정값'),
         ('CLOSE',       '종가'),
         ('CHANGE_RATE', '당일 등락률(%)'),
@@ -125,6 +126,8 @@ class Condition(models.Model):
     right_indicator = models.CharField(max_length=15, choices=INDICATOR_CHOICES, default='MA')
     right_param     = models.IntegerField(default=20)
     bb_std          = models.FloatField(null=True, blank=True)
+    closed_only     = models.BooleanField(default=False, verbose_name="마감 완료봉만 사용")
+    threshold_pct   = models.FloatField(default=0.0, verbose_name="기준선 이격률 (%)")
 
     def get_offset_display(self):
         """조건 목록 표시용: 0이면 '현재봉', 그 외에는 'N봉 이내'."""
@@ -185,7 +188,13 @@ class Condition(models.Model):
         right_part = f"{right_lbl}({self.right_param})" if self.right_indicator not in ('CLOSE', 'VAL') else right_lbl
         if self.right_indicator == 'VAL': right_part = f"{self.right_param}"
         
-        return f"{self.offset}봉이내 {left_part} {op_lbl} {right_part}"
+        extras = []
+        if self.closed_only:
+            extras.append('마감봉')
+        if self.threshold_pct:
+            extras.append(f'{self.threshold_pct:g}% 이격')
+        suffix = f" · {' · '.join(extras)}" if extras else ''
+        return f"{self.offset}봉이내 {left_part} {op_lbl} {right_part}{suffix}"
 
     @property
     def get_volume_pct(self):

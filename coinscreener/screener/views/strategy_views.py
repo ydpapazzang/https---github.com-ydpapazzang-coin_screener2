@@ -9,6 +9,7 @@ from django.http import JsonResponse, StreamingHttpResponse, HttpResponseForbidd
 from django.utils import timezone
 from django.contrib import messages
 from django.core.cache import cache
+from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import pyupbit
@@ -92,7 +93,8 @@ def strategy_clone(request, strategy_id):
             left_indicator=c.left_indicator, left_param=c.left_param,
             operator=c.operator,
             right_indicator=c.right_indicator, right_param=c.right_param,
-            bb_std=c.bb_std,
+            bb_std=c.bb_std, closed_only=c.closed_only,
+            threshold_pct=c.threshold_pct,
         )
         for c in src.conditions.all()
     ]
@@ -129,6 +131,15 @@ def condition_add(request, strategy_id):
         timeframe = 'day'
     operator  = request.POST.get('operator', 'gte')
     bb_std    = None
+    closed_only = request.POST.get('closed_only') == 'on'
+    try:
+        threshold_pct = float(request.POST.get('threshold_pct', 0) or 0)
+    except ValueError:
+        messages.error(request, "이격률 값이 올바르지 않습니다.")
+        return redirect('strategy_detail', strategy_id=strategy_id)
+    if not 0 <= threshold_pct <= 20:
+        messages.error(request, "이격률은 0~20% 범위여야 합니다.")
+        return redirect('strategy_detail', strategy_id=strategy_id)
 
     try:
         offset = int(request.POST.get('offset', 0))
@@ -282,7 +293,7 @@ def condition_add(request, strategy_id):
 
     elif cond_type == 'IC':
         ic_comparison = request.POST.get('ic_comparison', 'TENKAN_KIJUN')
-        valid_ic = ('TENKAN_KIJUN', 'CLOSE_SPAN_A', 'CLOSE_SPAN_B', 'SPAN_A_SPAN_B', 'CHIKOU_CLOSE', 'CLOSE_KIJUN', 'CLOSE_CLOUD')
+        valid_ic = ('TENKAN_KIJUN', 'CLOSE_SPAN_A', 'CLOSE_SPAN_B', 'SPAN_A_SPAN_B', 'CHIKOU_CLOSE', 'CHIKOU_CLOUD', 'CLOSE_KIJUN', 'CLOSE_CLOUD')
         if ic_comparison not in valid_ic:
             messages.error(request, "올바르지 않은 일목균형표 비교 유형입니다.")
             return redirect('strategy_detail', strategy_id=strategy_id)
@@ -302,6 +313,9 @@ def condition_add(request, strategy_id):
         elif ic_comparison == 'CHIKOU_CLOSE':
             left_indicator, left_param = 'IC_CHIKOU', 0
             right_indicator, right_param = 'IC_CHIKOU_REF', 26
+        elif ic_comparison == 'CHIKOU_CLOUD':
+            left_indicator, left_param = 'IC_CHIKOU', 0
+            right_indicator, right_param = 'IC_PAST_CLOUD', 52
         elif ic_comparison == 'CLOSE_KIJUN':
             left_indicator, left_param = 'CLOSE', 0
             right_indicator, right_param = 'IC_KIJUN', 26
@@ -380,8 +394,47 @@ def condition_add(request, strategy_id):
         right_indicator=right_indicator,
         right_param=right_param,
         bb_std=bb_std,
+        closed_only=closed_only,
+        threshold_pct=threshold_pct if cond_type == 'IC' else 0.0,
     )
     clear_strategy_cache(strategy_id)
+    return redirect('strategy_detail', strategy_id=strategy_id)
+
+
+@require_POST
+def ichimoku_triple_preset(request, strategy_id):
+    """보수적인 상승 삼역호전 조건 묶음을 중복 없이 추가한다."""
+    strategy = get_owned_strategy(request, strategy_id)
+    specs = [
+        # 전환선 > 기준선
+        dict(left_indicator='IC_TENKAN', left_param=9, operator='gte',
+             right_indicator='IC_KIJUN', right_param=26, threshold_pct=0.0),
+        # 종가가 구름 상단보다 최소 1% 위
+        dict(left_indicator='CLOSE', left_param=0, operator='gte',
+             right_indicator='IC_CLOUD_TOP', right_param=26, threshold_pct=1.0),
+        # 후행스팬이 26봉 전 주가 및 그 위치의 구름 위
+        dict(left_indicator='IC_CHIKOU', left_param=0, operator='gte',
+             right_indicator='IC_CHIKOU_REF', right_param=26, threshold_pct=0.0),
+        dict(left_indicator='IC_CHIKOU', left_param=0, operator='gte',
+             right_indicator='IC_PAST_CLOUD', right_param=52, threshold_pct=0.0),
+        # 미래 구름도 양전환
+        dict(left_indicator='IC_SPAN_A', left_param=26, operator='gte',
+             right_indicator='IC_SPAN_B', right_param=26, threshold_pct=0.0),
+        # 현재 거래량 >= 20봉 평균의 120%
+        dict(left_indicator='VOLUME', left_param=0, operator='gte',
+             right_indicator='VOLUME_MA', right_param=20, threshold_pct=0.0,
+             bb_std=1.2),
+    ]
+    created = 0
+    with transaction.atomic():
+        for spec in specs:
+            _, was_created = Condition.objects.get_or_create(
+                strategy=strategy, timeframe='day', offset=0,
+                closed_only=True, bb_std=spec.pop('bb_std', None), **spec,
+            )
+            created += int(was_created)
+    clear_strategy_cache(strategy_id)
+    messages.success(request, f'삼역호전 프리셋을 적용했습니다. 새 조건 {created}개 추가')
     return redirect('strategy_detail', strategy_id=strategy_id)
 
 
@@ -657,5 +710,4 @@ def open_market(request):
         'symbol': sym,
         'exchange': ex,
     })
-
 

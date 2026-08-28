@@ -301,6 +301,8 @@
         <div class="cond-card">
            <div class="cond-text">
                <span>{{ cond.get_timeframe_display }} {{ cond.get_offset_display }}</span>
+               {% if cond.closed_only %}<span style="color:#26a69a;">마감봉</span>{% endif %}
+               {% if cond.threshold_pct %}<span style="color:#ffb300;">+{{ cond.threshold_pct|floatformat:-1 }}% 이격</span>{% endif %}
                
                {% if cond.left_indicator == 'HA_BULL' or cond.left_indicator == 'HA_BEAR' or cond.left_indicator == 'HA_BULL_N' or cond.left_indicator == 'HA_BEAR_N' or cond.left_indicator == 'HA_NO_LOWER' or cond.left_indicator == 'HA_NO_UPPER' %}
                  <span>{{ cond.get_left_indicator_display }}</span>
@@ -611,6 +613,11 @@
                 {% csrf_token %}
                 <input type="hidden" name="cond_type" value="IC">
                 <input type="hidden" name="ic_comparison" id="ic_comparison_val" value="TENKAN_KIJUN">
+                <div style="padding:14px;border:1px solid #5b46b2;border-radius:12px;background:rgba(91,70,178,.12);margin-bottom:14px;">
+                    <div style="font-weight:800;margin-bottom:5px;">⚡ 상승 삼역호전 프리셋</div>
+                    <div style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-bottom:10px;">일봉 마감 기준 · 종가 구름 위 1% · 후행스팬 과거 주가/구름 위 · 양운 · 거래량 120%</div>
+                    <button type="submit" formaction="{% url 'ichimoku_triple_preset' strategy.id %}" formmethod="post" class="submit-cond-btn" onclick="return confirm('삼역호전 조건 6개를 추가할까요?');">원클릭 적용</button>
+                </div>
                 
                 <div class="field-group">
                     <label class="field-label">단위 / 기간</label>
@@ -626,7 +633,9 @@
                         <div class="opt-btn ic-opt" onclick="selectIC('CLOSE_SPAN_A', this)">종가 / 선행1</div>
                         <div class="opt-btn ic-opt" onclick="selectIC('CLOSE_KIJUN', this)">종가 / 기준선</div>
                         <div class="opt-btn ic-opt" onclick="selectIC('CLOSE_CLOUD', this)">종가 / 구름대</div>
+                        <div class="opt-btn ic-opt" onclick="selectIC('SPAN_A_SPAN_B', this)">선행1 / 선행2</div>
                         <div class="opt-btn ic-opt" onclick="selectIC('CHIKOU_CLOSE', this)">후행스팬 / 주가</div>
+                        <div class="opt-btn ic-opt" onclick="selectIC('CHIKOU_CLOUD', this)">후행스팬 / 과거 구름</div>
                     </div>
                 </div>
                 <div class="field-group">
@@ -637,6 +646,14 @@
                         <option value="lte">이하</option>
                     </select>
                 </div>
+                <div class="field-group">
+                    <label class="field-label">구름대 돌파 이격률 (%)</label>
+                    <input type="number" name="threshold_pct" value="0" min="0" max="20" step="0.1" class="finput">
+                    <div style="font-size:10px;color:var(--text-secondary);margin-top:5px;">종가/구름대 조건에 권장: 1%. 다른 비교에서는 0% 사용.</div>
+                </div>
+                <label style="display:flex;align-items:center;gap:9px;font-size:12px;margin:12px 0 4px;">
+                    <input type="checkbox" name="closed_only" checked> 마감 완료봉만 사용
+                </label>
                 <button type="submit" class="submit-cond-btn">조건 추가하기</button>
             </form>
 
@@ -664,6 +681,9 @@
                     <label class="field-label">평균 기간</label>
                     <input type="number" name="volume_period" id="volume_period" value="20" class="finput">
                 </div>
+                <label style="display:flex;align-items:center;gap:9px;font-size:12px;margin:12px 0 4px;">
+                    <input type="checkbox" name="closed_only" checked> 마감 완료봉만 사용
+                </label>
                 <div class="field-group">
                     <label class="field-label">기준 비율 (%)</label>
                     <input type="number" name="volume_pct" value="150" class="finput">
@@ -848,3 +868,4 @@
 {% include "screener/backtest_modal.html" %}
 {% endif %}
 {% endblock %}
+
