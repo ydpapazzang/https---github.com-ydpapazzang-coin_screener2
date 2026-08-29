@@ -152,7 +152,7 @@ class P1HealthEndpointTestCase(TestCase):
             'warnings': [],
         }
         with tempfile.TemporaryDirectory() as temporary:
-            with override_settings(BASE_DIR=Path(temporary)):
+            with override_settings(RUNTIME_DIR=Path(temporary) / '.runtime'):
                 call_command('monitor_health', stdout=StringIO())
                 call_command('monitor_health', stdout=StringIO())
         send_message.assert_called_once()
@@ -175,7 +175,7 @@ class P1HealthEndpointTestCase(TestCase):
             'warnings': [],
         }
         with tempfile.TemporaryDirectory() as temporary:
-            with override_settings(BASE_DIR=Path(temporary)):
+            with override_settings(RUNTIME_DIR=Path(temporary) / '.runtime'):
                 call_command('monitor_health', stdout=StringIO())
         send_message.assert_not_called()
 

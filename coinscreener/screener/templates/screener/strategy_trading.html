@@ -94,6 +94,8 @@
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     .cond-title { font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
     .badge { background: rgba(45,123,254,0.1); color: var(--primary-color); font-size: 12px; padding: 2px 8px; border-radius: 12px; }
+    .delete-all-btn { background: transparent; border: 1px solid rgba(239,83,80,0.45); color: var(--down-color); border-radius: 9px; padding: 7px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .delete-all-btn:disabled { opacity: 0.4; cursor: default; }
     
     .cond-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
     .cond-card { 
@@ -294,6 +296,14 @@
     <!-- Conditions -->
     <div class="section-header">
         <div class="cond-title">검색 조건 <span class="badge">{{ strategy.conditions.count }}</span></div>
+        {% if strategy.conditions.count %}
+        {% if not strategy.is_sample or request.user.is_staff %}
+        <form action="{% url 'conditions_delete_all' strategy.id %}" method="post" style="margin:0;">
+            {% csrf_token %}
+            <button type="submit" class="delete-all-btn" onclick="return confirm('검색 조건 {{ strategy.conditions.count }}개를 모두 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.');">전체 삭제</button>
+        </form>
+        {% endif %}
+        {% endif %}
     </div>
     
     <div class="cond-list">

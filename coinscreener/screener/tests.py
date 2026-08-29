@@ -207,8 +207,9 @@ class BacktestOffsetTestCase(TestCase):
         is_match, details, price, volume, change_rate, status = check_strategy('KRW-BTC', [cond])
         self.assertTrue(is_match)
 
+    @patch('pyupbit.get_ohlcv')
     @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
-    def test_bollinger_dynamic_std(self, mock_get_ohlcv):
+    def test_bollinger_dynamic_std(self, mock_get_ohlcv, mock_backtest_ohlcv):
         """Condition 모델의 bb_std 값(1.0 vs 5.0)에 따라 볼린저 밴드 상단 값이 동적으로 계산되는지 검증"""
         # 50개 봉짜리 테스트 데이터 생성: 48개는 100원, 마지막 2개 봉(index 48, 49)은 120원
         # 이렇게 하면 백테스트 시 index 48에서 매수 진입하고, 마지막 index 49에서 매도 청산되어 거래 내역(trades)에 기록됩니다.
@@ -230,6 +231,7 @@ class BacktestOffsetTestCase(TestCase):
         }, index=dates)
         
         mock_get_ohlcv.return_value = test_df
+        mock_backtest_ohlcv.return_value = test_df
         
         # 1. bb_std = 1.0 설정 전략
         # CLOSE(0) > BB_UPPER(20), bb_std=1.0
@@ -282,8 +284,9 @@ class BacktestOffsetTestCase(TestCase):
         self.assertNotIn('error', res_bt5)
         self.assertEqual(len(res_bt5.get('trades', [])), 0)
 
+    @patch('pyupbit.get_ohlcv')
     @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
-    def test_ichimoku_indicators(self, mock_get_ohlcv):
+    def test_ichimoku_indicators(self, mock_get_ohlcv, mock_backtest_ohlcv):
         """일목균형표 지표들(전환선, 기준선, 선행스팬1, 선행스팬2, 후행스팬) 계산 및 스크리닝/백테스트 검증"""
         # 일목 선행스팬2 계산을 위해 최소 78봉 이상의 데이터가 필요하므로 100개 봉 데이터 생성
         dates = [datetime(2026, 1, 1) + timedelta(days=i) for i in range(100)]
@@ -305,6 +308,7 @@ class BacktestOffsetTestCase(TestCase):
         }, index=dates)
 
         mock_get_ohlcv.return_value = test_df
+        mock_backtest_ohlcv.return_value = test_df
 
         # 1. 전환선 >= 기준선 조건
         cond_tenkan_kijun = Condition.objects.create(
@@ -720,8 +724,12 @@ class AlertDeduplicationTestCase(TransactionTestCase):
 
         self.assertEqual(len(results), 1)
         self.assertEqual(telegram_results, [])
-        newest = self.AlertHistory.objects.order_by('-created_at').first()
-        self.assertFalse(newest.is_notified)
+        histories = self.AlertHistory.objects.filter(
+            strategy=self.strategy,
+            symbol='KRW-BTC',
+        )
+        self.assertEqual(histories.count(), 2)
+        self.assertTrue(histories.filter(is_notified=False).exists())
 
     def test_symbol_can_be_notified_again_after_twelve_hours(self):
         from django.utils import timezone
@@ -796,43 +804,25 @@ class CronAlertSlotTestCase(TestCase):
         )
 
     @patch.dict('os.environ', {'CRON_SECRET': 'slot-secret'})
-    def test_same_schedule_slot_runs_only_once(self):
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-
-        fixed_now = datetime(2026, 8, 21, 9, 5, tzinfo=ZoneInfo('Asia/Seoul'))
-        with patch('django.utils.timezone.now', return_value=fixed_now), patch(
+    def test_authenticated_legacy_endpoint_reports_systemd_migration(self):
+        with patch(
             'coinscreener.screener.views.cron_views.process_scan_and_alert',
-            return_value=([], []),
-        ) as mock_process, patch(
-            'coinscreener.screener.views.cron_views._get_tickers',
-            return_value=[],
-        ), patch(
-            'coinscreener.screener.views.cron_views.tg.is_configured',
-            return_value=True,
-        ), patch(
-            'coinscreener.screener.views.cron_views.tg.send_alert',
-            return_value={'ok': True},
-        ):
-            first = self.client.get(
-                '/cron/scan/', HTTP_AUTHORIZATION='Bearer slot-secret'
-            )
-            second = self.client.get(
+        ) as mock_process:
+            response = self.client.get(
                 '/cron/scan/', HTTP_AUTHORIZATION='Bearer slot-secret'
             )
 
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(first.json()['processed'], 1)
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(second.json()['processed'], 0)
-        self.assertEqual(mock_process.call_count, 1)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        self.assertTrue(response.json()['disabled'])
+        mock_process.assert_not_called()
 
     @patch.dict('os.environ', {'CRON_SECRET': 'slot-secret'})
-    def test_eight_thirty_does_not_run_nine_oclock_schedule(self):
+    def test_disabled_endpoint_never_runs_a_matching_schedule(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo
 
-        fixed_now = datetime(2026, 8, 21, 8, 30, tzinfo=ZoneInfo('Asia/Seoul'))
+        fixed_now = datetime(2026, 8, 21, 9, 0, tzinfo=ZoneInfo('Asia/Seoul'))
         with patch('django.utils.timezone.now', return_value=fixed_now), patch(
             'coinscreener.screener.views.cron_views.process_scan_and_alert'
         ) as mock_process:
@@ -841,15 +831,20 @@ class CronAlertSlotTestCase(TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['processed'], 0)
+        self.assertTrue(response.json()['disabled'])
         mock_process.assert_not_called()
 
 
 class StrategyTradingViewsTestCase(TestCase):
     def setUp(self):
         from .models import Strategy
+        self.owner_key = 'trading-test-owner'
+        session = self.client.session
+        session['owner_key'] = self.owner_key
+        session.save()
         self.strategy = Strategy.objects.create(
             name="Trading Strategy",
+            owner_key=self.owner_key,
             win_rate=65.0,
             stop_loss=-5.0,
             take_profit=15.0,
@@ -980,6 +975,58 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(c.right_param, 20)
         self.assertEqual(c.bb_std, 2.0)
 
+    def test_conditions_delete_all(self):
+        Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            left_indicator='CLOSE',
+            operator='gte',
+            right_indicator='MA',
+            right_param=5,
+        )
+        Condition.objects.create(
+            strategy=self.strategy,
+            timeframe='day',
+            left_indicator='VOLUME',
+            operator='gte',
+            right_indicator='VOLUME_MA',
+            right_param=20,
+        )
+
+        response = self.client.post(
+            f'/strategy/{self.strategy.id}/conditions/delete-all/'
+        )
+
+        self.assertRedirects(response, f'/strategy/{self.strategy.id}/')
+        self.assertFalse(self.strategy.conditions.exists())
+
+    def test_conditions_delete_all_rejects_get(self):
+        response = self.client.get(
+            f'/strategy/{self.strategy.id}/conditions/delete-all/'
+        )
+        self.assertEqual(response.status_code, 405)
+
+    def test_conditions_delete_all_rejects_another_owner(self):
+        other = Strategy.objects.create(
+            name='Other owner strategy',
+            owner_key='another-owner',
+        )
+        condition = Condition.objects.create(
+            strategy=other,
+            timeframe='day',
+            left_indicator='CLOSE',
+            operator='gte',
+            right_indicator='MA',
+            right_param=5,
+        )
+
+        response = self.client.post(
+            f'/strategy/{other.id}/conditions/delete-all/'
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Condition.objects.filter(pk=condition.pk).exists())
+
     @patch('coinscreener.screener.views.cron_views._get_tickers')
     @patch('coinscreener.screener.views.cron_views.check_strategy')
     def test_strategy_scan_count_no_conditions(self, mock_check_strategy, mock_get_tickers):
@@ -1007,7 +1054,7 @@ class StrategyTradingViewsTestCase(TestCase):
 
         mock_get_tickers.return_value = ['KRW-BTC', 'KRW-ETH']
 
-        def side_effect(ticker, conditions):
+        def side_effect(ticker, conditions, **kwargs):
             if ticker == 'KRW-BTC':
                 return True, ['골든크로스'], 50000.0, 1000000000.0, 0.0, '진입 대기'
             return False, [], 3000.0, 50000000.0, 0.0, '진입 대기'
