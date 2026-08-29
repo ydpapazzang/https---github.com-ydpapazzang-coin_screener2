@@ -177,9 +177,8 @@
     .bs-title { font-size: 16px; font-weight: 700; }
     .bs-close { background: none; border: none; font-size: 24px; color: var(--text-secondary); cursor: pointer; }
     
-    .bs-tabs { display: flex; overflow-x: auto; padding: 12px 20px; gap: 8px; border-bottom: 1px solid var(--border-color); }
-    .bs-tabs::-webkit-scrollbar { display: none; }
-    .stab { white-space: nowrap; padding: 8px 16px; background: rgba(255,255,255,0.05); border-radius: 20px; border: 1px solid transparent; color: var(--text-secondary); font-size: 13px; font-weight: 600; cursor: pointer; }
+    .bs-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 12px 20px; gap: 8px; border-bottom: 1px solid var(--border-color); }
+    .stab { min-height: 38px; padding: 7px 5px; white-space: normal; overflow-wrap: anywhere; background: rgba(255,255,255,0.05); border-radius: 14px; border: 1px solid transparent; color: var(--text-secondary); font-size: 12px; line-height: 1.2; font-weight: 600; cursor: pointer; }
     .stab.active { background: rgba(45,123,254,0.1); border-color: var(--primary-color); color: var(--primary-color); }
     
     .bs-body { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 60px; }
