@@ -45,6 +45,24 @@ class IchimokuTriplePresetTestCase(TestCase):
             self.strategy.conditions.filter(right_indicator='IC_PAST_CLOUD').exists()
         )
 
+    def test_preset_uses_selected_timeframe_and_period_window(self):
+        url = f'/strategy/{self.strategy.id}/preset/ichimoku-triple/'
+        response = self.client.post(url, {'timeframe': 'week', 'offset': '3'})
+
+        self.assertEqual(response.status_code, 302)
+        conditions = self.strategy.conditions.all()
+        self.assertEqual(conditions.count(), 6)
+        self.assertTrue(all(condition.timeframe == 'week' for condition in conditions))
+        self.assertTrue(all(condition.offset == 3 for condition in conditions))
+
+    def test_preset_invalid_timeframe_and_period_use_safe_defaults(self):
+        url = f'/strategy/{self.strategy.id}/preset/ichimoku-triple/'
+        self.client.post(url, {'timeframe': 'hour', 'offset': '999'})
+
+        conditions = self.strategy.conditions.all()
+        self.assertTrue(all(condition.timeframe == 'day' for condition in conditions))
+        self.assertTrue(all(condition.offset == 0 for condition in conditions))
+
 
 class IchimokuConditionEngineTestCase(TestCase):
     def setUp(self):
