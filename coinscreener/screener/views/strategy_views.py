@@ -405,6 +405,16 @@ def condition_add(request, strategy_id):
 def ichimoku_triple_preset(request, strategy_id):
     """보수적인 상승 삼역호전 조건 묶음을 중복 없이 추가한다."""
     strategy = get_owned_strategy(request, strategy_id)
+    timeframe = request.POST.get('timeframe', 'day')
+    if timeframe not in {'day', 'week', 'month'}:
+        timeframe = 'day'
+    try:
+        offset = int(request.POST.get('offset', 0))
+    except (TypeError, ValueError):
+        offset = 0
+    if offset not in {0, 1, 2, 3, 5, 10, 20}:
+        offset = 0
+
     specs = [
         # 전환선 > 기준선
         dict(left_indicator='IC_TENKAN', left_param=9, operator='gte',
@@ -429,12 +439,14 @@ def ichimoku_triple_preset(request, strategy_id):
     with transaction.atomic():
         for spec in specs:
             _, was_created = Condition.objects.get_or_create(
-                strategy=strategy, timeframe='day', offset=0,
+                strategy=strategy, timeframe=timeframe, offset=offset,
                 closed_only=True, bb_std=spec.pop('bb_std', None), **spec,
             )
             created += int(was_created)
     clear_strategy_cache(strategy_id)
-    messages.success(request, f'삼역호전 프리셋을 적용했습니다. 새 조건 {created}개 추가')
+    timeframe_label = {'day': '일봉', 'week': '주봉', 'month': '월봉'}[timeframe]
+    offset_label = '현재봉' if offset == 0 else f'{offset}봉 이내'
+    messages.success(request, f'삼역호전 프리셋을 {timeframe_label} · {offset_label} 기준으로 적용했습니다. 새 조건 {created}개 추가')
     return redirect('strategy_detail', strategy_id=strategy_id)
 
 
