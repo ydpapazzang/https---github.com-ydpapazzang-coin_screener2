@@ -448,6 +448,16 @@ def condition_delete(request, strategy_id, condition_id):
     return redirect('strategy_detail', strategy_id=strategy_id)
 
 
+@require_POST
+def conditions_delete_all(request, strategy_id):
+    """Delete every condition belonging to an owned strategy."""
+    strategy = get_owned_strategy(request, strategy_id)
+    deleted_count, _ = strategy.conditions.all().delete()
+    clear_strategy_cache(strategy_id)
+    messages.success(request, f'검색 조건 {deleted_count}개를 모두 삭제했습니다.')
+    return redirect('strategy_detail', strategy_id=strategy_id)
+
+
 
 
 # from ..models import AlertSetting

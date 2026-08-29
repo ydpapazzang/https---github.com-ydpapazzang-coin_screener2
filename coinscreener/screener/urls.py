@@ -21,6 +21,7 @@ urlpatterns = [
     path('scan/reward/grant/', views.scan_reward_grant, name='scan_reward_grant'),
 
     path('strategy/<int:strategy_id>/condition/add/',                       views.condition_add,    name='condition_add'),
+    path('strategy/<int:strategy_id>/conditions/delete-all/', views.conditions_delete_all, name='conditions_delete_all'),
     path('strategy/<int:strategy_id>/condition/<int:condition_id>/delete/', views.condition_delete, name='condition_delete'),
     path('strategy/<int:strategy_id>/preset/ichimoku-triple/', views.ichimoku_triple_preset, name='ichimoku_triple_preset'),
 
