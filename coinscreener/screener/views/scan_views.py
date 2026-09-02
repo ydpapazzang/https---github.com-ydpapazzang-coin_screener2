@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 import threading
 _PARSED_OHLCV = {}
 _PARSED_OHLCV_LOCK = threading.Lock()
-_PARSED_OHLCV_MAX = 4000  # 티커×타임프레임 상한(메모리 방어)
+_PARSED_OHLCV_MAX = 450  # 티커×타임프레임 상한(1GB 서버 메모리 방어)
 
 
 # (B) 상호작용 검색 기본 스캔 범위
@@ -543,14 +543,19 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
         # 2) 변경된(또는 처음 보는) 항목만 무거운 data를 읽어 파싱한다.
         _tp0 = _time.perf_counter()
         if reparse_ids:
+            import pickle
+            import zlib
             for obj in OHLCVCache.objects.filter(id__in=reparse_ids):
-                data_dict = obj.data
                 try:
-                    df = pd.DataFrame(
-                        data_dict['data'],
-                        index=pd.to_datetime(data_dict['index'], unit='ms'),
-                        columns=data_dict['columns'],
-                    )
+                    if obj.frame_blob:
+                        df = pickle.loads(zlib.decompress(bytes(obj.frame_blob)))
+                    else:
+                        data_dict = obj.data
+                        df = pd.DataFrame(
+                            data_dict['data'],
+                            index=pd.to_datetime(data_dict['index'], unit='ms'),
+                            columns=data_dict['columns'],
+                        )
                     df.index.name = None
                 except Exception:
                     continue

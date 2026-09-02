@@ -250,6 +250,12 @@ class OHLCVCache(models.Model):
     ticker = models.CharField(max_length=50, db_index=True)
     timeframe = models.CharField(max_length=50, db_index=True)
     data = models.JSONField(verbose_name="OHLCV JSON Data")
+    frame_blob = models.BinaryField(
+        null=True,
+        blank=True,
+        editable=False,
+        verbose_name="Compressed OHLCV DataFrame",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
