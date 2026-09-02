@@ -12,6 +12,11 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 RUNTIME_DIR = Path(os.environ.get('APP_RUNTIME_DIR', BASE_DIR / '.runtime'))
+ENABLED_CRYPTO_EXCHANGES = frozenset(
+    exchange.strip().lower()
+    for exchange in os.environ.get('ENABLED_CRYPTO_EXCHANGES', 'upbit,bithumb').split(',')
+    if exchange.strip()
+)
 
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 

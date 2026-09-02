@@ -9,6 +9,7 @@ import FinanceDataReader as fdr
 import pandas as pd
 from django.core.management.base import BaseCommand
 from django.core.cache import cache
+from django.conf import settings
 from coinscreener.screener.models import Condition
 
 class Command(BaseCommand):
@@ -83,10 +84,17 @@ class Command(BaseCommand):
         specs_by_tf = indicator_specs_by_timeframe(
             list(Condition.objects.all())
         )
-        sources = (
+        available_sources = (
             ('upbit', lambda: pyupbit.get_tickers(fiat='KRW')),
             ('bithumb', pybithumb.get_tickers),
         )
+        sources = tuple(
+            source for source in available_sources
+            if source[0] in settings.ENABLED_CRYPTO_EXCHANGES
+        )
+        disabled = [name for name, _ in available_sources if name not in settings.ENABLED_CRYPTO_EXCHANGES]
+        if disabled:
+            self.stdout.write(f"[CRAWLER_DISABLED_EXCHANGES] {','.join(disabled)}")
         cycle_stats = {
             'requested': 0,
             'success': 0,
