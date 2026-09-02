@@ -48,6 +48,11 @@ _PARSED_OHLCV_MAX = 4000  # 티커×타임프레임 상한(메모리 방어)
 DEFAULT_SCAN_LIMIT = 150
 
 
+def _exchange_is_enabled(exchange):
+    """Crypto exchanges can be paused without serving stale cache data."""
+    return exchange == 'kospi' or exchange in settings.ENABLED_CRYPTO_EXCHANGES
+
+
 def _effective_scan_limit(exchange, vol_limit, full=False):
     """상호작용 검색에 적용할 실질 스캔 상한을 반환.
     - full=True 이거나 사용자가 명시적 vol_limit(>0)을 지정하면 그대로 둔다.
@@ -281,6 +286,9 @@ def coin_search(request, strategy_id):
         return redirect('strategy_detail', strategy_id=strategy_id)
 
     exchange  = request.GET.get('exchange', 'upbit')
+    if not _exchange_is_enabled(exchange):
+        messages.warning(request, '빗썸 시세 수집은 서버 안정화를 위해 일시 중단되었습니다.')
+        return redirect('strategy_detail', strategy_id=strategy_id)
     # 사용자가 선택한 스캔 범위를 그대로 사용합니다. (0인 경우 전체 코인 스캔)
     try:
         vol_limit_param = request.GET.get('vol_limit')
@@ -621,6 +629,14 @@ def coin_search_stream(request, strategy_id):
     owner_key  = get_owner_key(request)
     conditions = list(strategy.conditions.all())
     exchange   = request.GET.get('exchange', 'upbit')
+    if not _exchange_is_enabled(exchange):
+        return StreamingHttpResponse(
+            "data: " + json.dumps({
+                "type": "error",
+                "msg": "빗썸 시세 수집은 서버 안정화를 위해 일시 중단되었습니다.",
+            }) + "\n\n",
+            content_type='text/event-stream',
+        )
     try:
         vol_limit_param = request.GET.get('vol_limit')
         vol_limit = int(vol_limit_param) if vol_limit_param is not None else 0

@@ -9,6 +9,7 @@ from django.http import JsonResponse, StreamingHttpResponse, HttpResponseForbidd
 from django.utils import timezone
 from django.contrib import messages
 from django.core.cache import cache
+from django.conf import settings
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
@@ -115,6 +116,7 @@ def strategy_detail(request, strategy_id):
         'strategy':   strategy,
         'conditions': conditions,
         'histories':  histories,
+        'bithumb_enabled': 'bithumb' in settings.ENABLED_CRYPTO_EXCHANGES,
     })
 
 

@@ -287,7 +287,7 @@
       <div class="filter-title">거래소 선택</div>
       <div class="filter-chips">
          <div class="fchip exchange-chip on" data-val="upbit" onclick="selectExchange(this)">업비트</div>
-         <div class="fchip exchange-chip" data-val="bithumb" onclick="selectExchange(this)">빗썸</div>
+         {% if bithumb_enabled %}<div class="fchip exchange-chip" data-val="bithumb" onclick="selectExchange(this)">빗썸</div>{% endif %}
          <div class="fchip exchange-chip" data-val="kospi" onclick="selectExchange(this)">코스피</div>
       </div>
     </div>
