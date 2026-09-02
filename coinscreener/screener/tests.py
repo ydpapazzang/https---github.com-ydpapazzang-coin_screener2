@@ -539,6 +539,31 @@ class BulkPrefetchFreshnessTestCase(TestCase):
         self.assertEqual(float(cached['close'].iloc[-1]), 105.0)
 
     @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
+    def test_compressed_frame_blob_is_preferred_over_json(self, mock_get_ohlcv):
+        import pickle
+        import zlib
+        from django.core.cache import cache
+        from .models import OHLCVCache
+        from .views import scan_views
+        from .views.scan_views import _bulk_prefetch_ohlcv
+
+        OHLCVCache.objects.filter(pk=self.cache_row.pk).update(
+            data={'data': [], 'index': [], 'columns': []},
+            frame_blob=zlib.compress(pickle.dumps(self.df, protocol=5), level=1),
+        )
+        with scan_views._PARSED_OHLCV_LOCK:
+            scan_views._PARSED_OHLCV.clear()
+
+        _bulk_prefetch_ohlcv(
+            [{'ticker': 'KRW-BTC'}], [self.condition], exchange='upbit'
+        )
+
+        mock_get_ohlcv.assert_not_called()
+        cached = cache.get('ohlcv_KRW-BTC_day_60')
+        self.assertIsNotNone(cached)
+        self.assertEqual(float(cached['close'].iloc[-1]), 105.0)
+
+    @patch('coinscreener.screener.engine.get_ohlcv_with_retry')
     def test_stale_db_cache_is_not_reused_and_live_refresh_runs(self, mock_get_ohlcv):
         from django.core.cache import cache
         from django.utils import timezone

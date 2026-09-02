@@ -80,17 +80,20 @@ def _resolve_exchange(ticker, exchange=None):
     return 'kospi'
 
 
-def save_cache_payload(ticker, timeframe, data, retries=3):
+def save_cache_payload(ticker, timeframe, data, frame_blob=None, retries=3):
     """OHLCVCache payload를 저장하며 짧은 SQLite write lock을 재시도한다."""
     from django.db.utils import OperationalError
     from .models import OHLCVCache
 
     for attempt in range(retries):
         try:
+            defaults = {'data': data}
+            if frame_blob is not None:
+                defaults['frame_blob'] = frame_blob
             obj, _ = OHLCVCache.objects.update_or_create(
                 ticker=ticker,
                 timeframe=timeframe,
-                defaults={'data': data},
+                defaults=defaults,
             )
             return obj
         except OperationalError as exc:
@@ -111,8 +114,15 @@ def save_ohlcv_cache(ticker, interval, df, retries=3):
         return None
 
     import json
+    import pickle
+    import zlib
     json_data = json.loads(df.to_json(orient='split'))
-    return save_cache_payload(ticker, interval, json_data, retries=retries)
+    # JSON은 이전 버전 및 사람이 확인할 수 있는 호환 포맷으로 유지한다. 검색 경로는
+    # 압축 pickle을 우선 읽어 대량 JSON→DataFrame 재파싱 비용을 피한다.
+    frame_blob = zlib.compress(pickle.dumps(df, protocol=5), level=1)
+    return save_cache_payload(
+        ticker, interval, json_data, frame_blob=frame_blob, retries=retries,
+    )
 
 
 def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
@@ -131,13 +141,18 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
     try:
         from .models import OHLCVCache
         import json
+        import pickle
+        import zlib
         cached_obj = OHLCVCache.objects.filter(ticker=ticker, timeframe=interval).first()
         if cached_obj and cached_obj.data:
             now = datetime.datetime.now(datetime.timezone.utc)
             if (now - cached_obj.updated_at).total_seconds() < max_cache_age(interval):
-                json_str = json.dumps(cached_obj.data)
-                import io
-                df = pd.read_json(io.StringIO(json_str), orient='split')
+                if cached_obj.frame_blob:
+                    df = pickle.loads(zlib.decompress(bytes(cached_obj.frame_blob)))
+                else:
+                    json_str = json.dumps(cached_obj.data)
+                    import io
+                    df = pd.read_json(io.StringIO(json_str), orient='split')
                 df.index.name = None
                 df_tail = df.tail(count)
                 if len(df_tail) > 0:
