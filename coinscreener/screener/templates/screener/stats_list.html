@@ -156,6 +156,14 @@
         font-weight: 700;
         overflow-wrap: anywhere;
     }
+    .rec-skip-reason {
+        max-width: 100%;
+        color: #c9c0a3;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
+    }
     .trade-type-badge {
         display: inline-flex;
         align-items: center;
@@ -405,6 +413,9 @@
                         {{ rec.coin_name }}
                         {% if rec.coin_ticker != 'SKIP' %}<span class="rec-ticker">{{ rec.coin_ticker }}</span>{% endif %}
                     </div>
+                    {% if rec.status == 'skipped' %}
+                    <div class="rec-skip-reason">휴식 사유: {{ rec.reason|default:"시장 안전 기준에 따라 추천을 쉬었습니다." }}</div>
+                    {% endif %}
                 </div>
                 <div class="rec-right">
                     <div class="rec-status">{% if rec.status == 'closed' %}{{ rec.exit_reason_display }}{% else %}{{ rec.get_status_display }}{% endif %} · 상세보기</div>
