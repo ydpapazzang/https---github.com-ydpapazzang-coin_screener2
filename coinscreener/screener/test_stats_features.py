@@ -110,6 +110,24 @@ class StatsListViewTestCase(TestCase):
         self.assertEqual(recommendation.trade_type, 'swing')
         self.assertContains(response, '스윙')
 
+    def test_skipped_recommendation_shows_rest_reason_in_summary(self):
+        self._recommendation(
+            date=timezone.localdate() - timedelta(days=3),
+            coin_ticker='SKIP',
+            coin_name='단타휴식',
+            entry_price=0,
+            target_price=0,
+            stop_loss=0,
+            status='skipped',
+            result_pct=None,
+            highest_price=None,
+            reason='BTC 1시간봉 역배열 상태 (EMA20 < EMA60)',
+        )
+
+        response = self.client.get(reverse('stats_list'))
+
+        self.assertContains(response, '휴식 사유: BTC 1시간봉 역배열 상태')
+
     @patch(
         'coinscreener.screener.views.danta_views._display_date',
         return_value=timezone.localdate(),
