@@ -126,7 +126,7 @@ def save_ohlcv_cache(ticker, interval, df, retries=3):
 
 
 def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
-                         exchange=None, persist_db=True):
+                         exchange=None, persist_db=True, cache_only=False):
     """전역 속도 제한이 적용된 OHLCV 조회. 신선한 캐시는 길이와 무관하게 즉시 사용한다.
     (짧은 상장이력 코인은 데이터가 적은 게 정상이며, 지표 계산 시 자연히 None 처리되므로
      길이 임계값으로 재조회 루프를 도는 대신 캐시를 그대로 신뢰한다.)
@@ -160,6 +160,11 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
                     return df_tail
     except Exception as e:
         logger.error(f"OHLCVCache read error for {ticker}: {e}", exc_info=True)
+
+    # 관찰 작업은 크롤러가 쌓아 둔 시세만 사용한다. 캐시가 비었을 때 API를
+    # 호출하면 관찰 타이머가 크롤러 부하를 다시 키우기 때문이다.
+    if cache_only:
+        return None
 
     # 캐시가 없으면 실시간 조회를 수행하고 DB 캐시를 즉시 업데이트
     try:
