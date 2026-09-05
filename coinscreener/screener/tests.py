@@ -978,7 +978,7 @@ class StrategyTradingViewsTestCase(TestCase):
             f'/strategy/{self.strategy.id}/condition/add/',
             data={
                 'cond_type': 'RSI',
-                'timeframe': 'minute15',
+                'timeframe': 'minute5',
                 'offset': 0,
                 'operator': 'gte',
                 'rsi_period': 14,
@@ -988,7 +988,7 @@ class StrategyTradingViewsTestCase(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertTrue(self.strategy.conditions.filter(
-            timeframe='minute15', left_indicator='RSI',
+            timeframe='minute5', left_indicator='RSI',
         ).exists())
 
     def test_condition_add_bb(self):
