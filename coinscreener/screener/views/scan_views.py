@@ -12,6 +12,7 @@ from django.core.cache import cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 import pyupbit
+import requests
 
 from ..models import Strategy, Condition, AlertSetting, AlertHistory, OHLCVCache
 from ..engine import check_strategy
@@ -69,6 +70,66 @@ def _effective_scan_limit(exchange, vol_limit, full=False):
 # 티커+실시간 시세 목록을 짧게 캐싱(초). 반복 검색 시 업비트 시세 API 왕복(~0.9s)을
 # 건너뛰기 위함. 시세가 이만큼 지연될 수 있으나, 캔들 캐시(5분)·스크리너 용도상 무해하다.
 _TICKERS_FRESH_TTL = 30
+
+
+def _enrich_upbit_ticker_snapshot(tickers):
+    """현재 검색에 사용할 업비트 가격·등락률·24시간 거래대금을 일괄 보강한다.
+
+    종목 목록은 짧게 캐시해도, 이 스냅샷은 검색 직전에 다시 받아야 화면의
+    등락률/거래대금이 0으로 굳지 않는다. API 장애 시에는 기존 캐시 값을 보존한다.
+    """
+    if not tickers:
+        return tickers
+
+    try:
+        valid_markets = cache.get('upbit_valid_markets')
+        if not valid_markets:
+            markets = requests.get('https://api.upbit.com/v1/market/all', timeout=5).json()
+            if isinstance(markets, list):
+                valid_markets = {
+                    item['market'] for item in markets
+                    if isinstance(item, dict) and item.get('market')
+                }
+                cache.set('upbit_valid_markets', valid_markets, 3600)
+
+        ticker_codes = [item.get('ticker') for item in tickers if item.get('ticker')]
+        if valid_markets:
+            ticker_codes = [ticker for ticker in ticker_codes if ticker in valid_markets]
+
+        snapshots = {}
+        for start in range(0, len(ticker_codes), 100):
+            chunk = ticker_codes[start:start + 100]
+            if not chunk:
+                continue
+            response = requests.get(
+                'https://api.upbit.com/v1/ticker',
+                params={'markets': ','.join(chunk)}, timeout=5,
+            )
+            payload = response.json()
+            if not isinstance(payload, list):
+                logger.warning('Upbit ticker snapshot skipped: unexpected response')
+                continue
+            for item in payload:
+                market = item.get('market')
+                if market:
+                    snapshots[market] = item
+
+        for ticker in tickers:
+            snapshot = snapshots.get(ticker.get('ticker'))
+            if not snapshot:
+                continue
+            price = snapshot.get('trade_price')
+            change = snapshot.get('signed_change_rate')
+            amount = snapshot.get('acc_trade_price_24h') or snapshot.get('acc_trade_price')
+            if price is not None:
+                ticker['current_price'] = price
+            if change is not None:
+                ticker['change_rate'] = change * 100
+            if amount:
+                ticker['amount'] = amount
+    except Exception as exc:
+        logger.warning('Upbit ticker snapshot enrichment failed: %s', exc)
+    return tickers
 
 
 def _get_tickers(exchange, vol_limit):
@@ -135,51 +196,9 @@ def _get_tickers_raw(exchange, vol_limit):
             if vol_limit:
                 result_list = result_list[:vol_limit]
             
-            # 업비트인 경우, 실시간 가격과 등락률을 단 1~2번의 API 호출(0.1초)로 일괄 갱신합니다.
+            # 업비트인 경우, 실시간 가격과 등락률·24시간 거래대금을 일괄 갱신합니다.
             if exchange == 'upbit':
-                try:
-                    import requests
-                    # 상장폐지 티커가 DB에 남아 있으면 시세 일괄 요청이 404로 통째로 실패하므로,
-                    # 유효 마켓 목록(1시간 캐시)으로 먼저 걸러 404 자체를 방지한다.
-                    valid_markets = cache.get('upbit_valid_markets')
-                    if not valid_markets:
-                        try:
-                            ma = requests.get('https://api.upbit.com/v1/market/all', timeout=5).json()
-                            if isinstance(ma, list):
-                                valid_markets = set(m['market'] for m in ma if isinstance(m, dict) and 'market' in m)
-                                cache.set('upbit_valid_markets', valid_markets, 3600)
-                        except Exception:
-                            valid_markets = None
-
-                    tickers_only = [t['ticker'] for t in result_list]
-                    if valid_markets:
-                        tickers_only = [t for t in tickers_only if t in valid_markets]
-
-                    # Upbit API는 한 번에 여러 티커(콤마 구분) 요청 가능
-                    chunks = [tickers_only[i:i+100] for i in range(0, len(tickers_only), 100)]
-                    change_rates = {}
-                    prices = {}
-                    for chunk in chunks:
-                        if not chunk:
-                            continue
-                        try:
-                            res = requests.get(f'https://api.upbit.com/v1/ticker?markets={",".join(chunk)}', timeout=5).json()
-                        except Exception as ce:
-                            print(f"Upbit ticker chunk error: {ce}")
-                            continue
-                        if isinstance(res, list):
-                            for item in res:
-                                change_rates[item['market']] = item.get('signed_change_rate', 0) * 100
-                                prices[item['market']] = item.get('trade_price', 0)
-                        else:
-                            # 유효 마켓 필터 후에도 실패하면 표시용 시세만 생략(0)하고 넘어간다(느린 개별 재시도 금지)
-                            print(f"Upbit ticker chunk skipped: {res}")
-
-                    for t in result_list:
-                        t['change_rate'] = change_rates.get(t['ticker'], 0)
-                        t['current_price'] = prices.get(t['ticker'], 0)
-                except Exception as e:
-                    print(f"Error fetching real-time upbit ticker data: {e}")
+                _enrich_upbit_ticker_snapshot(result_list)
 
             return result_list
     except Exception:
@@ -269,6 +288,7 @@ def _get_tickers_raw(exchange, vol_limit):
                     'market_cap': 0,
                     'amount': 0,
                 })
+            _enrich_upbit_ticker_snapshot(result)
             return result
         except Exception as e:
             print(f"Error fetching Upbit tickers: {e}")
@@ -671,6 +691,9 @@ def coin_search_stream(request, strategy_id):
         scan_limit = _effective_scan_limit(exchange, vol_limit, full_scan)
         _t_tickers0 = time.perf_counter()
         tickers_data = _get_tickers(exchange, scan_limit)
+        # 목록 캐시가 적중해도 검색 결과는 현재 가격·등락률·24시간 거래대금을 사용한다.
+        if exchange == 'upbit':
+            _enrich_upbit_ticker_snapshot(tickers_data)
         t_tickers = time.perf_counter() - _t_tickers0
         total   = len(tickers_data)
 
@@ -706,13 +729,16 @@ def coin_search_stream(request, strategy_id):
                     return "API_ERROR"
                 if is_match:
                     unique_details = list(dict.fromkeys(details))
+                    # 라이브 24시간 거래대금이 일시적으로 없을 때에는 전략 기준 봉의
+                    # 거래대금(value)을 표시해 빈 값 대신 판단 근거를 남긴다.
+                    display_amount = amount or volume or 0
                     return {
                         'symbol':         ticker,
                         'name':           name,
                         'market_cap':     market_cap,
                         'market_cap_display': f"{market_cap / 100_000_000:.1f}억" if market_cap else "-",
-                        'amount':         amount,
-                        'amount_display': f"{amount / 100_000_000:.1f}억" if amount else "-",
+                        'amount':         display_amount,
+                        'amount_display': f"{display_amount / 100_000_000:.1f}억" if display_amount else "-",
                         'price':          price,
                         'change_rate':    change_rate,
                         'details':        ", ".join(unique_details),
