@@ -26,6 +26,18 @@ from .ajax import ajax_redirect
 
 logger = logging.getLogger(__name__)
 
+# 업비트가 지원하고, 캐시 크롤러가 조건 사용 시 수집할 수 있는 봉 단위다.
+# 코스피는 일/주/월봉만 지원하므로 분봉 조건을 사용하면 업비트를 선택해야 한다.
+SUPPORTED_STRATEGY_TIMEFRAMES = {
+    'minute15', 'minute30', 'minute60', 'minute240',
+    'day', 'week', 'month',
+}
+TIMEFRAME_LABELS = {
+    'minute15': '15분봉', 'minute30': '30분봉',
+    'minute60': '1시간봉', 'minute240': '4시간봉',
+    'day': '일봉', 'week': '주봉', 'month': '월봉',
+}
+
 def _get_cron_secret():
     return os.environ.get('CRON_SECRET', '')
 
@@ -133,8 +145,7 @@ def condition_add(request, strategy_id):
 
     cond_type = request.POST.get('cond_type', '').upper()
     timeframe = request.POST.get('timeframe', 'day')
-    # 분봉 검색은 지원하지 않음: 일/주/월만 허용하고 그 외 값은 일봉으로 처리
-    if timeframe not in ('day', 'week', 'month'):
+    if timeframe not in SUPPORTED_STRATEGY_TIMEFRAMES:
         timeframe = 'day'
     operator  = request.POST.get('operator', 'gte')
     bb_std    = None
@@ -414,7 +425,7 @@ def ichimoku_triple_preset(request, strategy_id):
     """보수적인 상승 삼역호전 조건 묶음을 중복 없이 추가한다."""
     strategy = get_owned_strategy(request, strategy_id)
     timeframe = request.POST.get('timeframe', 'day')
-    if timeframe not in {'day', 'week', 'month'}:
+    if timeframe not in SUPPORTED_STRATEGY_TIMEFRAMES:
         timeframe = 'day'
     try:
         offset = int(request.POST.get('offset', 0))
@@ -452,7 +463,7 @@ def ichimoku_triple_preset(request, strategy_id):
             )
             created += int(was_created)
     clear_strategy_cache(strategy_id)
-    timeframe_label = {'day': '일봉', 'week': '주봉', 'month': '월봉'}[timeframe]
+    timeframe_label = TIMEFRAME_LABELS[timeframe]
     offset_label = '현재봉' if offset == 0 else f'{offset}봉 이내'
     messages.success(request, f'삼역호전 프리셋을 {timeframe_label} · {offset_label} 기준으로 적용했습니다. 새 조건 {created}개 추가')
     return redirect('strategy_detail', strategy_id=strategy_id)
