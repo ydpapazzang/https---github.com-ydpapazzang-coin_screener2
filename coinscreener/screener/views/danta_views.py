@@ -5,7 +5,7 @@ from django.db.models import Q
 from django.shortcuts import render
 from django.utils import timezone
 
-from ..models import DailyRecommendation, IntradayObservation
+from ..models import DailyRecommendation
 from ..strategy_confidence import build_confidence_report
 
 
@@ -51,32 +51,6 @@ def swing_list(request):
 def _parse_filter_date(raw_value):
     if not raw_value:
         return None
-
-
-def _intraday_observation_context():
-    """성적표의 독립 AJAX 카드에 필요한 최신 관찰 데이터만 구성한다."""
-    observations = IntradayObservation.objects.all()
-    summary = {
-        'total': observations.count(),
-        'open': observations.filter(status__in=['open', 'target_1']).count(),
-        'target_1': observations.filter(status='target_1').count(),
-        'target_2': observations.filter(status='target_2').count(),
-        'stopped': observations.filter(status='stopped').count(),
-        'expired': observations.filter(status='expired').count(),
-    }
-    return {
-        'intraday_observations': observations.order_by('-detected_at')[:30],
-        'intraday_summary': summary,
-    }
-
-
-def intraday_observations_partial(request):
-    """실시간 단타 관찰 카드만 반환하는 GET 전용 AJAX 엔드포인트."""
-    return render(
-        request,
-        'screener/partials/intraday_observations.html',
-        _intraday_observation_context(),
-    )
     try:
         return date.fromisoformat(raw_value)
     except (TypeError, ValueError):
@@ -184,6 +158,5 @@ def stats_list(request):
             build_confidence_report('swing'),
         ],
     }
-    context.update(_intraday_observation_context())
     return render(request, 'screener/stats_list.html', context)
 
