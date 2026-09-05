@@ -279,6 +279,13 @@
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 body: submitter ? new FormData(form, submitter) : new FormData(form),
             });
+            // 로그인 만료·프록시 리디렉션처럼 HTML이 반환되는 예외 상황에서는
+            // JSON 파싱 오류를 내지 않고 브라우저의 기본 POST 흐름으로 되돌린다.
+            if (!(response.headers.get('content-type') || '').includes('application/json')) {
+                form.dataset.noAjax = '';
+                form.submit();
+                return;
+            }
             var result = await response.json();
             if (!response.ok || !result.ok || !result.redirect_url) throw new Error(result.error || '요청 처리에 실패했습니다.');
             var nextUrl = new URL(result.redirect_url, window.location.href);
@@ -315,6 +322,9 @@
             if (window.document.startViewTransition) return;
             var form = e.target;
             if (!form || form.tagName !== 'FORM') return;
+            // 위의 AJAX 제출 핸들러가 일반 POST를 먼저 처리한다. 여기서는
+            // data-no-ajax로 명시된 네이티브 제출만 전환 애니메이션을 적용한다.
+            if (form.method.toLowerCase() === 'post' && form.dataset.noAjax === undefined) return;
             e.preventDefault();
             exitAndRun(function () { form.submit(); });
         }, true);
