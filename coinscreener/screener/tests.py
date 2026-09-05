@@ -973,6 +973,24 @@ class StrategyTradingViewsTestCase(TestCase):
         self.assertEqual(c.bb_std, 1.5) # 150% -> 1.5
         self.assertEqual(c.get_volume_pct, 150)
 
+    def test_condition_add_accepts_supported_intraday_timeframe(self):
+        response = self.client.post(
+            f'/strategy/{self.strategy.id}/condition/add/',
+            data={
+                'cond_type': 'RSI',
+                'timeframe': 'minute15',
+                'offset': 0,
+                'operator': 'gte',
+                'rsi_period': 14,
+                'rsi_threshold': 50,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(self.strategy.conditions.filter(
+            timeframe='minute15', left_indicator='RSI',
+        ).exists())
+
     def test_condition_add_bb(self):
         # Adding a bollinger bands condition via POST
         payload = {
