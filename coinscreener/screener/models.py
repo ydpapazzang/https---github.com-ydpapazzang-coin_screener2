@@ -309,6 +309,8 @@ class IntradayObservation(models.Model):
     reason = models.TextField(blank=True, verbose_name="신호 근거")
     strategy_version = models.CharField(max_length=64, db_index=True)
     last_checked_at = models.DateTimeField(null=True, blank=True)
+    highest_price = models.FloatField(null=True, blank=True)
+    lowest_price = models.FloatField(null=True, blank=True)
     exit_price = models.FloatField(null=True, blank=True)
     result_pct = models.FloatField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -319,6 +321,12 @@ class IntradayObservation(models.Model):
             models.Index(fields=['ticker', 'strategy_version']),
         ]
         ordering = ['-detected_at', '-id']
+
+    @property
+    def max_profit_pct(self):
+        if not self.entry_price or self.highest_price is None:
+            return None
+        return (self.highest_price / self.entry_price - 1) * 100
 
     def __str__(self):
         return f"{self.ticker} {self.detected_at:%Y-%m-%d %H:%M}"

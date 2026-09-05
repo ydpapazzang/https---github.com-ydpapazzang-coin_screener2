@@ -353,7 +353,55 @@ class Command(BaseCommand):
         """단타와 스윙 추천을 각각의 규칙으로 추적한다."""
         self._monitor_danta_recommendations()
         self._monitor_swing_recommendations()
+        self._monitor_intraday_observations()
         self._monitor_paper_positions()
+
+    def _monitor_intraday_observations(self):
+        """관찰 단타의 목표·손절을 1분봉으로 보수적으로 판정한다."""
+        from django.utils import timezone
+        from coinscreener.screener.models import IntradayObservation
+
+        observations = IntradayObservation.objects.filter(
+            status__in=['open', 'target_1'],
+        ).order_by('detected_at')
+        now = timezone.now()
+        for observation in observations:
+            try:
+                frame = pyupbit.get_ohlcv(
+                    observation.ticker, interval='minute1', count=1,
+                )
+                if frame is None or frame.empty:
+                    continue
+                candle = frame.iloc[-1]
+                high, low, close = (
+                    float(candle['high']), float(candle['low']),
+                    float(candle['close']),
+                )
+                if not all(math.isfinite(value) and value > 0 for value in (high, low, close)):
+                    continue
+                observation.highest_price = max(observation.highest_price or high, high)
+                observation.lowest_price = min(observation.lowest_price or low, low)
+                observation.last_checked_at = now
+
+                # 동일한 1분봉에서 손절·목표가 모두 닿으면 순서를 알 수 없으므로
+                # 과대평가를 막기 위해 손절을 먼저 적용한다.
+                if low <= observation.stop_loss:
+                    observation.status, observation.exit_price = 'stopped', observation.stop_loss
+                elif high >= observation.target_2_price:
+                    observation.status, observation.exit_price = 'target_2', observation.target_2_price
+                elif high >= observation.target_1_price:
+                    observation.status = 'target_1'
+                elif now - observation.detected_at >= datetime.timedelta(hours=4):
+                    observation.status, observation.exit_price = 'expired', close
+
+                if observation.exit_price is not None:
+                    observation.result_pct = (observation.exit_price / observation.entry_price - 1) * 100
+                observation.save()
+            except Exception as exc:
+                self.stdout.write(self.style.ERROR(
+                    f'[{observation.ticker}] 실시간 단타 관찰 추적 오류: {exc}'
+                ))
+            time.sleep(0.05)
 
     def _monitor_paper_positions(self):
         """열린 모의 포지션을 1분봉으로 목표·손절 자동 처리한다."""

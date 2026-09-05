@@ -285,6 +285,14 @@
     .confidence-periods { width:100%; margin-top:10px; border-collapse:collapse; font-size:9px; text-align:right; }
     .confidence-periods th,.confidence-periods td { padding:5px 3px; border-top:1px solid rgba(255,255,255,.06); }.confidence-periods th:first-child,.confidence-periods td:first-child{text-align:left}
     .regime-list { margin-top:8px; color:var(--text-secondary); font-size:9px; line-height:1.6; }
+    .intraday-section { padding: 14px 20px 2px; }
+    .intraday-card { margin-bottom: 10px; padding: 14px; border: 1px solid rgba(47,125,246,.25); border-radius: 12px; background: var(--surface-color); }
+    .intraday-note { margin: 7px 0 11px; color: var(--text-secondary); font-size: 10px; line-height: 1.5; }
+    .intraday-list { display:flex; flex-direction:column; gap:7px; }
+    .intraday-row { padding:10px; border-radius:8px; background:rgba(0,0,0,.18); }
+    .intraday-row-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .intraday-name { font-weight:700; font-size:13px; }.intraday-time { color:var(--text-secondary); font-size:10px; }
+    .intraday-status { font-size:10px; font-weight:700; }.intraday-prices { margin-top:6px; color:var(--text-secondary); font-size:10px; line-height:1.55; }
 </style>
 {% endblock %}
 
@@ -345,6 +353,34 @@
         {% if report.regimes %}<div class="regime-list"><b>시장 국면별</b><br>{% for regime in report.regimes %}{{ regime.label }} · {{ regime.sample_count }}건 · 기대 {{ regime.expectancy_pct|floatformat:2 }}% · 승률 {{ regime.win_rate|floatformat:1 }}%{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>{% endif %}
     </div>
     {% endfor %}
+</section>
+
+<section class="intraday-section">
+    <div class="confidence-heading">실시간 단타 관찰 기록</div>
+    <div class="intraday-card">
+        <div class="confidence-grid">
+            <div class="confidence-metric"><div class="confidence-value">{{ intraday_summary.total }}건</div><div class="confidence-label">관찰 신호</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{{ intraday_summary.open }}건</div><div class="confidence-label">추적 중</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{{ intraday_summary.target_2 }}건</div><div class="confidence-label">2차 목표 도달</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{{ intraday_summary.stopped }}건</div><div class="confidence-label">손절</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{{ intraday_summary.target_1 }}건</div><div class="confidence-label">1차 목표 추적</div></div>
+            <div class="confidence-metric"><div class="confidence-value">{{ intraday_summary.expired }}건</div><div class="confidence-label">4시간 만료</div></div>
+        </div>
+        <div class="intraday-note">15분봉 신호를 관찰용으로 기록합니다. 1분봉 고가·저가로 목표·손절을 추적하며, 같은 1분봉에서 둘 다 닿으면 과대평가를 막기 위해 손절을 우선 적용합니다. 실거래 결과가 아닙니다.</div>
+        <div class="intraday-list">
+            {% for obs in intraday_observations %}
+            <div class="intraday-row">
+                <div class="intraday-row-top">
+                    <div><span class="intraday-name">{{ obs.name }}</span> <span class="rec-ticker">{{ obs.ticker }}</span><div class="intraday-time">{{ obs.detected_at|date:"m.d H:i" }} KST · {{ obs.strategy_version }}</div></div>
+                    <div class="intraday-status {% if obs.status == 'stopped' %}pct-down{% elif obs.status == 'target_1' or obs.status == 'target_2' %}pct-up{% endif %}">{{ obs.get_status_display }}{% if obs.result_pct != None %} · {% if obs.result_pct > 0 %}+{% endif %}{{ obs.result_pct|floatformat:2 }}%{% endif %}</div>
+                </div>
+                <div class="intraday-prices">진입 {{ obs.entry_price|floatformat:-2|intcomma }}원 · 1차 {{ obs.target_1_price|floatformat:-2|intcomma }}원 · 2차 {{ obs.target_2_price|floatformat:-2|intcomma }}원 · 손절 {{ obs.stop_loss|floatformat:-2|intcomma }}원{% if obs.max_profit_pct != None %}<br>관측 최고 {{ obs.highest_price|floatformat:-2|intcomma }}원 · 최대 {% if obs.max_profit_pct > 0 %}+{% endif %}{{ obs.max_profit_pct|floatformat:2 }}%{% endif %}</div>
+            </div>
+            {% empty %}
+            <div class="intraday-note">아직 조건을 만족한 실시간 단타 관찰 신호가 없습니다.</div>
+            {% endfor %}
+        </div>
+    </div>
 </section>
 
 <div class="disclaimer">
