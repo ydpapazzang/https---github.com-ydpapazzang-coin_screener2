@@ -241,6 +241,60 @@
         }
         return fetch(url, options);
     }
+
+    // 일반 폼의 POST-redirect 흐름을 AJAX로 전환한다. 같은 화면으로 돌아오면
+    // 앱 영역만 교체해 스크롤·전환이 덜 딱딱하게 느껴지도록 한다.
+    async function smoothRefresh(url) {
+        var response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (!response.ok) throw new Error('새 화면을 불러오지 못했습니다.');
+        var documentNext = new DOMParser().parseFromString(await response.text(), 'text/html');
+        var currentApp = document.querySelector('.app-container');
+        var nextApp = documentNext.querySelector('.app-container');
+        if (!currentApp || !nextApp) throw new Error('화면 영역을 찾지 못했습니다.');
+        currentApp.style.opacity = '0.35';
+        currentApp.style.transition = 'opacity 120ms ease';
+        await new Promise(function(resolve) { window.setTimeout(resolve, 120); });
+        currentApp.innerHTML = nextApp.innerHTML;
+        document.title = documentNext.title;
+        history.replaceState({}, '', url);
+        currentApp.style.opacity = '1';
+    }
+
+    document.addEventListener('submit', async function(event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || form.method.toLowerCase() !== 'post' || form.dataset.noAjax !== undefined) return;
+        event.preventDefault();
+        var submitter = event.submitter || null;
+        var action = submitter && submitter.formAction ? submitter.formAction : form.action;
+        var method = submitter && submitter.formMethod ? submitter.formMethod : form.method;
+        var button = submitter || form.querySelector('button[type="submit"], input[type="submit"]');
+        var previousLabel = button && ('value' in button ? button.value : button.textContent);
+        if (button) {
+            button.disabled = true;
+            if ('value' in button) button.value = '처리 중…'; else button.textContent = '처리 중…';
+        }
+        try {
+            var response = await secureFetch(action, {
+                method: method,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: submitter ? new FormData(form, submitter) : new FormData(form),
+            });
+            var result = await response.json();
+            if (!response.ok || !result.ok || !result.redirect_url) throw new Error(result.error || '요청 처리에 실패했습니다.');
+            var nextUrl = new URL(result.redirect_url, window.location.href);
+            if (nextUrl.pathname === window.location.pathname && nextUrl.search === window.location.search) {
+                await smoothRefresh(nextUrl.href);
+            } else {
+                window.location.assign(nextUrl.href);
+            }
+        } catch (error) {
+            window.alert(error.message || '요청 처리 중 오류가 발생했습니다.');
+            if (button) {
+                button.disabled = false;
+                if ('value' in button) button.value = previousLabel; else button.textContent = previousLabel;
+            }
+        }
+    });
     </script>
 
     {% block extra_js %}{% endblock %}
@@ -268,3 +322,4 @@
     </script>
 </body>
 </html>
+
