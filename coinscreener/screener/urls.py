@@ -46,7 +46,6 @@ urlpatterns = [
     path('danta/', views.danta_list, name='danta_list'),
     path('swing/', views.swing_list, name='swing_list'),
     path('stats/', views.stats_list, name='stats_list'),
-    path('stats/intraday-observations/', views.intraday_observations_partial, name='intraday_observations_partial'),
     path('portfolio/', views.portfolio_list, name='portfolio_list'),
     path('portfolio/add/<int:recommendation_id>/', views.portfolio_add, name='portfolio_add'),
     path('portfolio/<int:position_id>/close/', views.portfolio_close, name='portfolio_close'),
