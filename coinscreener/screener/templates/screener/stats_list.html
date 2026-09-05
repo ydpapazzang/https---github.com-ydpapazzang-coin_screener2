@@ -352,7 +352,8 @@
     투자 판단과 책임은 본인에게 있습니다. <a href="{% url 'terms' %}">이용약관</a>
 </div>
 
-<form class="stats-filter" method="get" action="{% url 'stats_list' %}">
+<div id="stats-results" aria-live="polite">
+<form id="stats-filter-form" class="stats-filter" method="get" action="{% url 'stats_list' %}">
     <div class="filter-grid">
         <label class="filter-field filter-field-wide">
             <span class="filter-label">종목 검색</span>
@@ -387,7 +388,7 @@
         </label>
         <div class="filter-actions">
             <button class="filter-button" type="submit">조회</button>
-            <a class="filter-reset" href="{% url 'stats_list' %}">초기화</a>
+            <button id="stats-filter-reset" class="filter-reset" type="button" data-reset-url="{% url 'stats_list' %}?trade_type=danta">초기화</button>
         </div>
     </div>
     <div class="filter-count">조건에 맞는 성적 {{ total }}건</div>
@@ -519,5 +520,46 @@
         <a class="page-link" href="?{% if filter_query %}{{ filter_query }}&{% endif %}page={{ page_obj.next_page_number }}">다음</a>
     {% endif %}
 </nav>
-{% endif %}{% endblock %}
-
+{% endif %}
+</div><script>
+(() => {
+    let results = document.getElementById('stats-results');
+    async function loadResults(url) {
+        const submit = results.querySelector('.filter-button');
+        if (submit) submit.disabled = true;
+        try {
+            const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!response.ok) throw new Error('조회 실패');
+            const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+            const next = parsed.getElementById('stats-results');
+            if (!next) throw new Error('결과 영역 누락');
+            results.replaceWith(next);
+            results = next;
+            window.history.replaceState({}, '', url);
+            bindEvents();
+        } catch (error) {
+            window.alert('성적 조회에 실패했습니다. 잠시 후 다시 시도해주세요.');
+        } finally {
+            const currentSubmit = results.querySelector('.filter-button');
+            if (currentSubmit) currentSubmit.disabled = false;
+        }
+    }
+    function bindEvents() {
+        const form = results.querySelector('#stats-filter-form');
+        const reset = results.querySelector('#stats-filter-reset');
+        form?.addEventListener('submit', (event) => {
+            event.preventDefault();
+            loadResults(form.action + '?' + new URLSearchParams(new FormData(form)).toString());
+        });
+        reset?.addEventListener('click', () => loadResults(reset.dataset.resetUrl));
+        results.querySelectorAll('.pagination .page-link').forEach((link) => {
+            link.addEventListener('click', (event) => {
+                event.preventDefault();
+                loadResults(link.href);
+            });
+        });
+    }
+    bindEvents();
+})();
+</script>
+{% endblock %}

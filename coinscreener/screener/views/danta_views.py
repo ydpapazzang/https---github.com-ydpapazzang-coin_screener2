@@ -78,7 +78,8 @@ def stats_list(request):
 
     query = request.GET.get('q', '').strip()[:50]
     status = request.GET.get('status', '').strip()
-    trade_type = request.GET.get('trade_type', '').strip()
+    raw_trade_type = request.GET.get('trade_type')
+    trade_type = raw_trade_type.strip() if raw_trade_type is not None else 'danta'
     date_from_raw = request.GET.get('date_from', '').strip()
     date_to_raw = request.GET.get('date_to', '').strip()
     date_from = _parse_filter_date(date_from_raw)
@@ -99,7 +100,7 @@ def stats_list(request):
     if trade_type in valid_trade_types:
         recommendations = recommendations.filter(trade_type=trade_type)
     else:
-        trade_type = ''
+        trade_type = 'danta' if raw_trade_type is None else ''
     if date_from:
         recommendations = recommendations.filter(date__gte=date_from)
     if date_to:
