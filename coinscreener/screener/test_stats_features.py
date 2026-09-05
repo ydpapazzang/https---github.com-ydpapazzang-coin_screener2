@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .management.commands.update_upbit_cache import Command
-from .models import DailyRecommendation
+from .models import DailyRecommendation, IntradayObservation
 
 
 class StatsListViewTestCase(TestCase):
@@ -62,6 +62,19 @@ class StatsListViewTestCase(TestCase):
             ['KRW-BTC'],
         )
         self.assertContains(response, '최대 +10.00%')
+
+    def test_intraday_observation_partial_returns_only_the_card(self):
+        IntradayObservation.objects.create(
+            detected_at=timezone.now(), ticker='KRW-TEST', name='TEST',
+            entry_price=100, target_1_price=101.2, target_2_price=102.4,
+            stop_loss=99.2, reason='test', strategy_version='test-v1',
+        )
+        response = self.client.get(reverse('intraday_observations_partial'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '관찰 신호')
+        self.assertContains(response, 'KRW-TEST')
+        self.assertNotContains(response, '단타·스윙 누적 성적표')
 
     def test_date_range_filter(self):
         today = timezone.localdate()
