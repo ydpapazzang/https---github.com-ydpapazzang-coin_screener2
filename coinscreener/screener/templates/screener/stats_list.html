@@ -285,18 +285,6 @@
     .confidence-periods { width:100%; margin-top:10px; border-collapse:collapse; font-size:9px; text-align:right; }
     .confidence-periods th,.confidence-periods td { padding:5px 3px; border-top:1px solid rgba(255,255,255,.06); }.confidence-periods th:first-child,.confidence-periods td:first-child{text-align:left}
     .regime-list { margin-top:8px; color:var(--text-secondary); font-size:9px; line-height:1.6; }
-    .intraday-section { padding: 14px 20px 2px; }
-    .intraday-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:9px; }
-    .intraday-heading .confidence-heading { margin:0; }
-    .intraday-refresh { min-height:30px; padding:0 11px; border:1px solid rgba(47,125,246,.65); border-radius:8px; color:#b9d2ff; background:rgba(47,125,246,.12); font-size:11px; font-weight:700; cursor:pointer; }
-    .intraday-refresh:disabled { opacity:.55; cursor:wait; }
-    .intraday-card { margin-bottom: 10px; padding: 14px; border: 1px solid rgba(47,125,246,.25); border-radius: 12px; background: var(--surface-color); }
-    .intraday-note { margin: 7px 0 11px; color: var(--text-secondary); font-size: 10px; line-height: 1.5; }
-    .intraday-list { display:flex; flex-direction:column; gap:7px; }
-    .intraday-row { padding:10px; border-radius:8px; background:rgba(0,0,0,.18); }
-    .intraday-row-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
-    .intraday-name { font-weight:700; font-size:13px; }.intraday-time { color:var(--text-secondary); font-size:10px; }
-    .intraday-status { font-size:10px; font-weight:700; }.intraday-prices { margin-top:6px; color:var(--text-secondary); font-size:10px; line-height:1.55; }
 </style>
 {% endblock %}
 
@@ -357,14 +345,6 @@
         {% if report.regimes %}<div class="regime-list"><b>시장 국면별</b><br>{% for regime in report.regimes %}{{ regime.label }} · {{ regime.sample_count }}건 · 기대 {{ regime.expectancy_pct|floatformat:2 }}% · 승률 {{ regime.win_rate|floatformat:1 }}%{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>{% endif %}
     </div>
     {% endfor %}
-</section>
-
-<section class="intraday-section">
-    <div class="intraday-heading">
-        <div class="confidence-heading">실시간 단타 관찰 기록</div>
-        <button id="intraday-refresh" class="intraday-refresh" type="button" data-url="{% url 'intraday_observations_partial' %}">조회</button>
-    </div>
-    <div id="intraday-observations">{% include 'screener/partials/intraday_observations.html' %}</div>
 </section>
 
 <div class="disclaimer">
@@ -539,31 +519,5 @@
         <a class="page-link" href="?{% if filter_query %}{{ filter_query }}&{% endif %}page={{ page_obj.next_page_number }}">다음</a>
     {% endif %}
 </nav>
-{% endif %}
-<script>
-(() => {
-    const button = document.getElementById('intraday-refresh');
-    const container = document.getElementById('intraday-observations');
-    if (!button || !container) return;
-    button.addEventListener('click', async () => {
-        button.disabled = true;
-        const originalText = button.textContent;
-        button.textContent = '조회 중…';
-        try {
-            const response = await fetch(button.dataset.url, {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            });
-            if (!response.ok) throw new Error('조회 실패');
-            container.innerHTML = await response.text();
-        } catch (error) {
-            button.textContent = '조회 실패';
-            window.setTimeout(() => { button.textContent = originalText; }, 1500);
-        } finally {
-            button.disabled = false;
-        }
-        if (button.textContent !== '조회 실패') button.textContent = originalText;
-    });
-})();
-</script>
-{% endblock %}
+{% endif %}{% endblock %}
 
