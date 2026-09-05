@@ -36,6 +36,20 @@ class PaperPortfolioViewTestCase(TestCase):
         self.assertEqual(position.invested_amount, 100000)
         self.assertEqual(position.target_price, 102)
 
+    def test_ajax_add_returns_redirect_instruction(self):
+        self._owner(self.client, 'owner-a')
+        response = self.client.post(
+            reverse('portfolio_add', args=[self.recommendation.id]),
+            {'entry_price': '100.5', 'invested_amount': '100000'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {
+            'ok': True,
+            'redirect_url': reverse('portfolio_list'),
+        })
+
     def test_positions_are_private_to_browser_session(self):
         PaperPosition.objects.create(
             owner_key='owner-a', recommendation=self.recommendation,
