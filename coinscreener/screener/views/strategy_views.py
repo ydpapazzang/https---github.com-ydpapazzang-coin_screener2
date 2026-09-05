@@ -22,6 +22,7 @@ from ..ownership import (
     is_staff,
 )
 from .scan_views import _get_tickers, _bulk_prefetch_ohlcv
+from .ajax import ajax_redirect
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ def strategy_list(request):
     })
 
 
+@ajax_redirect
 def strategy_create(request):
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
@@ -58,6 +60,7 @@ def strategy_create(request):
     return redirect('strategy_list')
 
 
+@ajax_redirect
 def strategy_delete(request):
     if request.method == 'POST':
         strategy_ids = request.POST.getlist('strategy_ids')
@@ -72,6 +75,7 @@ def strategy_delete(request):
     return redirect('strategy_list')
 
 
+@ajax_redirect
 def strategy_clone(request, strategy_id):
     """공용 샘플 또는 내 전략을 복제해 내 소유의 새 전략으로 만든다."""
     if request.method != 'POST':
@@ -120,6 +124,7 @@ def strategy_detail(request, strategy_id):
     })
 
 
+@ajax_redirect
 def condition_add(request, strategy_id):
     strategy = get_owned_strategy(request, strategy_id)
 
@@ -404,6 +409,7 @@ def condition_add(request, strategy_id):
 
 
 @require_POST
+@ajax_redirect
 def ichimoku_triple_preset(request, strategy_id):
     """보수적인 상승 삼역호전 조건 묶음을 중복 없이 추가한다."""
     strategy = get_owned_strategy(request, strategy_id)
@@ -452,6 +458,7 @@ def ichimoku_triple_preset(request, strategy_id):
     return redirect('strategy_detail', strategy_id=strategy_id)
 
 
+@ajax_redirect
 def condition_delete(request, strategy_id, condition_id):
     if request.method == 'POST':
         # 내 소유 전략의 조건만 삭제 가능
@@ -463,6 +470,7 @@ def condition_delete(request, strategy_id, condition_id):
 
 
 @require_POST
+@ajax_redirect
 def conditions_delete_all(request, strategy_id):
     """Delete every condition belonging to an owned strategy."""
     strategy = get_owned_strategy(request, strategy_id)

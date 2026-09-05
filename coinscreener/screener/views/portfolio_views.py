@@ -8,6 +8,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from ..models import DailyRecommendation, PaperPosition
 from ..ownership import get_owner_key
 from ..position_sizing import calculate_position_size
+from .ajax import ajax_redirect
 
 
 def _positive_number(raw):
@@ -54,6 +55,7 @@ def portfolio_list(request):
 
 
 @require_http_methods(['GET', 'POST'])
+@ajax_redirect
 def portfolio_add(request, recommendation_id):
     recommendation = get_object_or_404(
         DailyRecommendation, id=recommendation_id
@@ -102,6 +104,7 @@ def portfolio_add(request, recommendation_id):
 
 
 @require_POST
+@ajax_redirect
 def portfolio_close(request, position_id):
     position = get_object_or_404(
         PaperPosition,
