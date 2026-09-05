@@ -21,10 +21,25 @@ def _display_date():
 def danta_list(request):
     """오늘의 단타 추천 탭."""
     display_date = _display_date()
-    recommendations = DailyRecommendation.objects.filter(
+    recommendations = list(DailyRecommendation.objects.filter(
         date=display_date,
         trade_type='danta',
-    )
+    ).order_by('-created_at'))
+
+    # 탭의 현재가는 저장된 진입가와 구분해 가볍게 일괄 보강한다.
+    active_tickers = [
+        rec.coin_ticker for rec in recommendations
+        if rec.coin_ticker.startswith('KRW-') and rec.status in ('active', 'partial')
+    ]
+    if active_tickers:
+        try:
+            import pyupbit
+            prices = pyupbit.get_current_price(active_tickers)
+            if isinstance(prices, dict):
+                for rec in recommendations:
+                    rec.current_price = prices.get(rec.coin_ticker)
+        except Exception:
+            pass
 
     return render(request, 'screener/danta_list.html', {
         'recommendations': recommendations,

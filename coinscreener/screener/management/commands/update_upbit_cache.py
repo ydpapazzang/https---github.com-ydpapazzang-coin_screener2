@@ -453,19 +453,21 @@ class Command(BaseCommand):
         expired_recs = DailyRecommendation.objects.filter(
             date__lt=today_date,
             trade_type='danta',
-            status__in=['pending', 'active'],
+            status__in=['pending', 'active', 'partial'],
         ).order_by('date', 'id')
         for rec in expired_recs:
             try:
                 candle = self._get_danta_session_candle(rec)
                 if candle is None:
                     raise RuntimeError('추천일의 일봉을 찾을 수 없습니다.')
-                self._apply_danta_candle(
-                    rec,
-                    self._danta_session_end(rec.date),
-                    candle,
-                    finalize=True,
-                )
+                if self._is_dual_timeframe_danta(rec):
+                    self._apply_dual_timeframe_danta_candle(
+                        rec, self._danta_session_end(rec.date), candle, finalize=True,
+                    )
+                else:
+                    self._apply_danta_candle(
+                        rec, self._danta_session_end(rec.date), candle, finalize=True,
+                    )
                 rec.save()
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(
@@ -477,7 +479,7 @@ class Command(BaseCommand):
         tracked_recs = DailyRecommendation.objects.filter(
             date=today_date,
             trade_type='danta',
-            status__in=['pending', 'active', 'success']
+            status__in=['pending', 'active', 'success', 'partial']
         )
         if not tracked_recs.exists():
             return
@@ -505,7 +507,10 @@ class Command(BaseCommand):
                     }
                     candle_at = timezone.now()
 
-                self._apply_danta_candle(rec, candle_at, candle)
+                if self._is_dual_timeframe_danta(rec):
+                    self._apply_dual_timeframe_danta_candle(rec, candle_at, candle)
+                else:
+                    self._apply_danta_candle(rec, candle_at, candle)
 
                 rec.save()
             except Exception as exc:
@@ -513,6 +518,63 @@ class Command(BaseCommand):
                     f"[{rec.coin_ticker}] 단타 추적 오류: {exc}"
                 ))
             time.sleep(0.1)
+
+    @staticmethod
+    def _is_dual_timeframe_danta(rec):
+        return rec.strategy_version == 'danta-1h5m-pullback-v1.0'
+
+    def _close_dual_timeframe_danta(self, rec, exit_price, reason, at):
+        rec.exit_price = exit_price
+        rec.exit_at = at
+        rec.exit_reason = reason
+        rec.result_pct = self._swing_result_pct(rec, exit_price)
+        rec.status = 'success' if rec.result_pct > 0 else 'failed'
+
+    def _apply_dual_timeframe_danta_candle(self, rec, candle_at, candle, finalize=False):
+        """Track TP1 50%, break-even stop, then the 1H Ichimoku exit for dual-TF danta."""
+        values = {field: float(candle[field]) for field in ('open', 'high', 'low', 'close')}
+        if not all(math.isfinite(value) and value > 0 for value in values.values()):
+            raise ValueError('유효하지 않은 듀얼 타임프레임 단타 봉')
+        rec.last_checked_at = candle_at
+        rec.highest_price = max(rec.highest_price or rec.entry_price, values['high'])
+        rec.lowest_price = min(rec.lowest_price or rec.entry_price, values['low'])
+
+        # OHLC 봉 안의 순서를 알 수 없으므로 손절을 먼저 적용한다.
+        if values['low'] <= rec.stop_loss:
+            exit_price = min(rec.stop_loss, values['open'])
+            self._close_dual_timeframe_danta(
+                rec, exit_price,
+                'break_even_stop' if rec.partial_exit_price else 'stop_loss', candle_at,
+            )
+            return
+
+        if rec.status == 'active' and values['high'] >= rec.target_price:
+            rec.status = 'partial'
+            rec.partial_exit_price = rec.target_price
+            rec.partial_exit_at = candle_at
+            # 수수료를 고려해 TP1 후 손절을 약간의 본절 위로 올린다.
+            rec.stop_loss = max(rec.stop_loss, rec.entry_price * 1.001)
+            self.stdout.write(self.style.SUCCESS(
+                f'[{rec.coin_ticker}] 듀얼 단타 TP1 도달, 50% 익절·본절 이동'
+            ))
+
+        if rec.status == 'partial':
+            hourly = pyupbit.get_ohlcv(rec.coin_ticker, interval='minute60', count=80)
+            if hourly is not None and len(hourly) >= 53:
+                completed = hourly.iloc[:-1].astype(float)
+                high, low, close = completed['high'], completed['low'], completed['close']
+                tenkan = (high.rolling(9).max() + low.rolling(9).min()) / 2
+                kijun = (high.rolling(26).max() + low.rolling(26).min()) / 2
+                if close.iloc[-1] < kijun.iloc[-1] or tenkan.iloc[-1] < kijun.iloc[-1]:
+                    self._close_dual_timeframe_danta(
+                        rec, values['close'], 'hourly_ichimoku_exit', candle_at,
+                    )
+                    return
+
+        if finalize and rec.status in ('active', 'partial'):
+            self._close_dual_timeframe_danta(
+                rec, values['close'], 'session_close', candle_at,
+            )
 
     @staticmethod
     def _danta_session_end(rec_date):
