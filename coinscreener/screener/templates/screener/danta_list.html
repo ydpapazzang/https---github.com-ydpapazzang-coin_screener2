@@ -166,10 +166,7 @@
             현재는 1시간 추세·5분 분출·첫 눌림목 조건을 모두 만족한 종목이 없습니다.<br>다음 5분봉 마감 뒤 다시 탐색합니다.
         </div>
     {% elif recommendations.0.status == 'skipped' %}
-        <div style="text-align: center; color: var(--text-secondary); margin-top: 40px; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 12px;">
-            오늘은 추천 코인이 없습니다.<br><br>
-            <span style="color: var(--text-tertiary); font-size: 14px;">사유 : {{ recommendations.0.reason }}</span>
-        </div>
+        {# 휴식/차단 사유 카드는 단타 화면에 표시하지 않는다. #}
     {% else %}
         {% for rec in recommendations %}
         <div class="coin-card" onclick="openSheet('{{ rec.id }}')">
