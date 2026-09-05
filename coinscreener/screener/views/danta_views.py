@@ -51,6 +51,32 @@ def swing_list(request):
 def _parse_filter_date(raw_value):
     if not raw_value:
         return None
+
+
+def _intraday_observation_context():
+    """성적표의 독립 AJAX 카드에 필요한 최신 관찰 데이터만 구성한다."""
+    observations = IntradayObservation.objects.all()
+    summary = {
+        'total': observations.count(),
+        'open': observations.filter(status__in=['open', 'target_1']).count(),
+        'target_1': observations.filter(status='target_1').count(),
+        'target_2': observations.filter(status='target_2').count(),
+        'stopped': observations.filter(status='stopped').count(),
+        'expired': observations.filter(status='expired').count(),
+    }
+    return {
+        'intraday_observations': observations.order_by('-detected_at')[:30],
+        'intraday_summary': summary,
+    }
+
+
+def intraday_observations_partial(request):
+    """실시간 단타 관찰 카드만 반환하는 GET 전용 AJAX 엔드포인트."""
+    return render(
+        request,
+        'screener/partials/intraday_observations.html',
+        _intraday_observation_context(),
+    )
     try:
         return date.fromisoformat(raw_value)
     except (TypeError, ValueError):
@@ -60,7 +86,6 @@ def _parse_filter_date(raw_value):
 def stats_list(request):
     """검색·필터·상세 조회를 제공하는 단타·스윙 추천 성적 탭."""
     recommendations = DailyRecommendation.objects.all()
-    intraday_observations = IntradayObservation.objects.all()
 
     query = request.GET.get('q', '').strip()[:50]
     status = request.GET.get('status', '').strip()
@@ -129,16 +154,7 @@ def stats_list(request):
     query_params = request.GET.copy()
     query_params.pop('page', None)
 
-    intraday_summary = {
-        'total': intraday_observations.count(),
-        'open': intraday_observations.filter(status__in=['open', 'target_1']).count(),
-        'target_1': intraday_observations.filter(status='target_1').count(),
-        'target_2': intraday_observations.filter(status='target_2').count(),
-        'stopped': intraday_observations.filter(status='stopped').count(),
-        'expired': intraday_observations.filter(status='expired').count(),
-    }
-
-    return render(request, 'screener/stats_list.html', {
+    context = {
         'recommendations': page_obj.object_list,
         'page_obj': page_obj,
         'total': total,
@@ -167,7 +183,7 @@ def stats_list(request):
             build_confidence_report('danta'),
             build_confidence_report('swing'),
         ],
-        'intraday_observations': intraday_observations.order_by('-detected_at')[:30],
-        'intraday_summary': intraday_summary,
-    })
+    }
+    context.update(_intraday_observation_context())
+    return render(request, 'screener/stats_list.html', context)
 
