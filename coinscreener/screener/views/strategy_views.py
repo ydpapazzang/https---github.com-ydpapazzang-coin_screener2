@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 # 업비트가 지원하고, 캐시 크롤러가 조건 사용 시 수집할 수 있는 봉 단위다.
 # 코스피는 일/주/월봉만 지원하므로 분봉 조건을 사용하면 업비트를 선택해야 한다.
 SUPPORTED_STRATEGY_TIMEFRAMES = {
-    'minute15', 'minute30', 'minute60', 'minute240',
+    'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240',
     'day', 'week', 'month',
 }
 TIMEFRAME_LABELS = {
-    'minute15': '15분봉', 'minute30': '30분봉',
+    'minute5': '5분봉', 'minute10': '10분봉', 'minute15': '15분봉', 'minute30': '30분봉',
     'minute60': '1시간봉', 'minute240': '4시간봉',
     'day': '일봉', 'week': '주봉', 'month': '월봉',
 }
