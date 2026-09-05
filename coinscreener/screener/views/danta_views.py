@@ -5,7 +5,7 @@ from django.db.models import Q
 from django.shortcuts import render
 from django.utils import timezone
 
-from ..models import DailyRecommendation
+from ..models import DailyRecommendation, IntradayObservation
 from ..strategy_confidence import build_confidence_report
 
 
@@ -60,6 +60,7 @@ def _parse_filter_date(raw_value):
 def stats_list(request):
     """검색·필터·상세 조회를 제공하는 단타·스윙 추천 성적 탭."""
     recommendations = DailyRecommendation.objects.all()
+    intraday_observations = IntradayObservation.objects.all()
 
     query = request.GET.get('q', '').strip()[:50]
     status = request.GET.get('status', '').strip()
@@ -128,6 +129,15 @@ def stats_list(request):
     query_params = request.GET.copy()
     query_params.pop('page', None)
 
+    intraday_summary = {
+        'total': intraday_observations.count(),
+        'open': intraday_observations.filter(status__in=['open', 'target_1']).count(),
+        'target_1': intraday_observations.filter(status='target_1').count(),
+        'target_2': intraday_observations.filter(status='target_2').count(),
+        'stopped': intraday_observations.filter(status='stopped').count(),
+        'expired': intraday_observations.filter(status='expired').count(),
+    }
+
     return render(request, 'screener/stats_list.html', {
         'recommendations': page_obj.object_list,
         'page_obj': page_obj,
@@ -157,5 +167,7 @@ def stats_list(request):
             build_confidence_report('danta'),
             build_confidence_report('swing'),
         ],
+        'intraday_observations': intraday_observations.order_by('-detected_at')[:30],
+        'intraday_summary': intraday_summary,
     })
 
