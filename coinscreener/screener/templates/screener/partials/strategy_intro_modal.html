@@ -1,0 +1,58 @@
+<style>
+    .strategy-intro-btn {
+        margin-top: 14px; padding: 8px 13px; border: 1px solid rgba(255,255,255,.48);
+        border-radius: 999px; background: rgba(0,0,0,.15); color: #fff; font-size: 12px;
+        font-weight: 700; cursor: pointer;
+    }
+    .strategy-intro-backdrop {
+        position: fixed; inset: 0; z-index: 3000; display: none; align-items: center;
+        justify-content: center; padding: 20px; background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+    }
+    .strategy-intro-backdrop.open { display: flex; }
+    .strategy-intro-modal {
+        width: min(440px, 100%); max-height: 82vh; overflow-y: auto; padding: 24px;
+        border: 1px solid rgba(255,255,255,.13); border-radius: 18px; background: #1e222d;
+        box-shadow: 0 24px 64px rgba(0,0,0,.55); position: relative; text-align: left;
+    }
+    .strategy-intro-close {
+        position: absolute; top: 13px; right: 13px; width: 30px; height: 30px; border: 0;
+        border-radius: 50%; background: #2a2e39; color: #aeb4c2; cursor: pointer; font-size: 16px;
+    }
+    .strategy-intro-title { padding-right: 34px; color: #fff; font-size: 19px; font-weight: 800; }
+    .strategy-intro-lead { margin: 9px 0 20px; color: #aeb4c2; font-size: 13px; line-height: 1.65; }
+    .strategy-intro-step { display: flex; gap: 11px; padding: 13px 0; border-top: 1px solid rgba(255,255,255,.08); }
+    .strategy-intro-number {
+        flex: 0 0 24px; height: 24px; display: grid; place-items: center; border-radius: 50%;
+        background: rgba(45,123,254,.2); color: #7eabff; font-size: 12px; font-weight: 800;
+    }
+    .strategy-intro-step b { display: block; color: #fff; font-size: 13px; }
+    .strategy-intro-step p { margin: 4px 0 0; color: #aeb4c2; font-size: 12px; line-height: 1.55; }
+    .strategy-intro-note { margin-top: 10px; padding: 12px; border-radius: 9px; background: rgba(255,255,255,.05); color: #aeb4c2; font-size: 11px; line-height: 1.6; }
+</style>
+
+<button type="button" class="strategy-intro-btn" onclick="openStrategyIntro()">매매전략 보기</button>
+<div class="strategy-intro-backdrop" id="strategy-intro-backdrop" onclick="if (event.target === this) closeStrategyIntro()">
+    <section class="strategy-intro-modal" role="dialog" aria-modal="true" aria-labelledby="strategy-intro-title">
+        <button type="button" class="strategy-intro-close" aria-label="닫기" onclick="closeStrategyIntro()">✕</button>
+        {% if strategy_kind == 'danta' %}
+        <div class="strategy-intro-title" id="strategy-intro-title">⚡ 1H/5M 눌림목 단타 전략</div>
+        <p class="strategy-intro-lead">상위 시간대의 상승 흐름 안에서, 5분봉의 첫 눌림목이 지지를 확인할 때만 짧게 진입하는 전략입니다.</p>
+        <div class="strategy-intro-step"><span class="strategy-intro-number">1</span><div><b>시장·1시간 추세 확인</b><p>BTC 흐름과 종목의 1시간 추세가 약세이면 신규 진입을 쉬고, 상승 구조가 유지되는 종목만 봅니다.</p></div></div>
+        <div class="strategy-intro-step"><span class="strategy-intro-number">2</span><div><b>5분봉 분출 뒤 첫 눌림목</b><p>거래량을 동반한 분출 뒤, 볼린저 중심선 또는 기준선 부근까지 눌린 가격이 다시 지지를 받는지 확인합니다.</p></div></div>
+        <div class="strategy-intro-step"><span class="strategy-intro-number">3</span><div><b>손익비가 맞는 자리만 진입</b><p>진입가·손절가·1차 목표가를 계산해 필요한 손익비를 충족한 경우만 추천합니다.</p></div></div>
+        <div class="strategy-intro-step"><span class="strategy-intro-number">4</span><div><b>분할 익절과 추세 청산</b><p>1차 목표가에서 50%를 정리하고, 남은 물량은 1시간 기준선 이탈 또는 전환선·기준선 데드크로스 시 정리합니다.</p></div></div>
+        {% else %}
+        <div class="strategy-intro-title" id="strategy-intro-title">📈 일봉 돌파 스윙 전략</div>
+        <p class="strategy-intro-lead">시장 방향과 종목의 일봉 추세가 함께 맞을 때, 과도한 추격을 피한 돌파 구간만 포착하는 전략입니다.</p>
+        <div class="strategy-intro-step"><span class="strategy-intro-number">1</span><div><b>BTC 시장 필터</b><p>BTC가 일봉 상승 추세일 때만 신규 추천을 검토합니다. 시장이 약하면 현금 대기를 우선합니다.</p></div></div>
+        <div class="strategy-intro-step"><span class="strategy-intro-number">2</span><div><b>일봉 추세·유동성 선별</b><p>EMA20·EMA60 추세, 최근 모멘텀, 거래 가능 유동성 및 과도하지 않은 변동성을 함께 확인합니다.</p></div></div>
+        <div class="strategy-intro-step"><span class="strategy-intro-number">3</span><div><b>20일 돌파 구간 진입</b><p>20일 고점 돌파에 가까운 가격만 진입 후보가 됩니다. 돌파가를 크게 넘긴 종목은 추격 매수를 피하기 위해 제외합니다.</p></div></div>
+        <div class="strategy-intro-step"><span class="strategy-intro-number">4</span><div><b>위험 제한과 분할 청산</b><p>초기 손절가로 위험을 제한하고, 2R에서 50%를 부분익절합니다. 나머지는 EMA20·3ATR 추적손절 또는 최대 20일 규칙으로 정리합니다.</p></div></div>
+        {% endif %}
+        <div class="strategy-intro-note">모든 조건을 통과한 종목만 표시되므로, 조건 충족 종목이 없으면 추천도 없습니다. 이 정보는 투자 권유가 아니며 실제 주문 전 가격과 시장 상황을 확인해야 합니다.</div>
+    </section>
+</div>
+<script>
+function openStrategyIntro() { document.getElementById('strategy-intro-backdrop').classList.add('open'); }
+function closeStrategyIntro() { document.getElementById('strategy-intro-backdrop').classList.remove('open'); }
+</script>
