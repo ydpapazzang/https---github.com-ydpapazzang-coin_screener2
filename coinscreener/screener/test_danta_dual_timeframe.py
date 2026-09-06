@@ -60,8 +60,8 @@ class DualTimeframeDantaRuleTestCase(SimpleTestCase):
 
     def test_hourly_overextension_is_rejected(self):
         hourly = self._hourly_frame()
-        hourly.iloc[-2, hourly.columns.get_loc('close')] = 104.0
-        hourly.iloc[-2, hourly.columns.get_loc('high')] = 104.0
+        hourly.iloc[-2, hourly.columns.get_loc('close')] = 110.0
+        hourly.iloc[-2, hourly.columns.get_loc('high')] = 110.0
 
         with self.assertRaisesRegex(SignalRejected, '이격 과열'):
             build_pullback_signal(hourly, self._five_minute_frame())

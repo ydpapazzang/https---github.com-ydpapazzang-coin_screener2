@@ -1,4 +1,5 @@
 import math
+from collections import Counter
 
 import pyupbit
 import requests
@@ -50,6 +51,8 @@ class Command(BaseCommand):
             return
 
         created = []
+        rejected = Counter()
+        data_errors = 0
         for row in candidates:
             ticker = row['market']
             if DailyRecommendation.objects.filter(
@@ -61,9 +64,11 @@ class Command(BaseCommand):
                 hourly = get_ohlcv_with_retry(ticker, 'minute60', count=260, retries=1, delay=0.1, persist_db=False)
                 five_minute = get_ohlcv_with_retry(ticker, 'minute5', count=90, retries=1, delay=0.1, persist_db=False)
                 signal = build_pullback_signal(hourly, five_minute)
-            except SignalRejected:
+            except SignalRejected as exc:
+                rejected[str(exc)] += 1
                 continue
             except Exception as exc:
+                data_errors += 1
                 self.stderr.write(f'[DANTA_DUAL] {ticker} data error: {exc}')
                 continue
 
@@ -104,7 +109,11 @@ class Command(BaseCommand):
                 break
 
         if not created:
-            self.stdout.write('[DANTA_DUAL] no completed-candle pullback signal')
+            summary = ', '.join(f'{reason}={count}' for reason, count in rejected.most_common())
+            self.stdout.write(
+                '[DANTA_DUAL] no completed-candle pullback signal '
+                f'candidates={len(candidates)} rejected=[{summary}] data_errors={data_errors}'
+            )
             return
         lines = ['🔥 <b>1H/5M 눌림목 단타 신호</b>']
         for rec in created:
