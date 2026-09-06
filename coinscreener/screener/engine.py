@@ -134,8 +134,11 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
     # 1. 메모리 캐시 확인 (같은 종목/타임프레임 재요청 시 즉시 반환)
     cache_key = f"ohlcv_{ticker}_{interval}_{count}"
     cached_data = cache.get(cache_key)
+    # 업비트는 한 요청에 최대 200개만 주므로 MA200처럼 200개를 넘겨
+    # 요구하는 호출은 짧은 메모리 캐시를 그대로 반환하면 안 된다.
     if cached_data is not None and len(cached_data) > 0:
-        return cached_data
+        if len(cached_data) >= count or count <= 200:
+            return cached_data
 
     # 1.5. DB 사전 캐시 확인 (Pre-fetching) — 신선하면 그대로 사용
     try:
@@ -155,7 +158,9 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
                     df = pd.read_json(io.StringIO(json_str), orient='split')
                 df.index.name = None
                 df_tail = df.tail(count)
-                if len(df_tail) > 0:
+                # 저장된 크롤러 캐시는 보통 200봉이다. 더 긴 이력이 필요한
+                # 호출은 라이브 페이지네이션으로 보완해야 MA200이 영구 실패하지 않는다.
+                if len(df_tail) > 0 and (len(df_tail) >= count or count <= 200):
                     cache.set(cache_key, df_tail, min(180, max_cache_age(interval)))
                     return df_tail
     except Exception as e:
@@ -172,10 +177,38 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
         import pyupbit
         ex = _resolve_exchange(ticker, exchange)
         for attempt in range(retries):
-            _throttle(ex)  # 실제 API 호출 직전 거래소별 속도 제한
             if ex == 'upbit':
-                df = pyupbit.get_ohlcv(ticker, interval=interval, count=count)
+                # Upbit 캔들 API는 한 번에 최대 200개만 반환한다. 200개를
+                # 넘겨 요청하면 오래된 봉을 페이지로 이어 받아, 마지막 진행 봉을
+                # 제외한 뒤에도 MA200 같은 장기 지표를 계산할 수 있게 한다.
+                pages = []
+                before = None
+                previous_oldest = None
+                while sum(len(page) for page in pages) < count:
+                    already_loaded = sum(len(page) for page in pages)
+                    request_count = min(200, count - already_loaded)
+                    _throttle(ex)
+                    kwargs = {'interval': interval, 'count': request_count}
+                    if before is not None:
+                        kwargs['to'] = before
+                    page = pyupbit.get_ohlcv(ticker, **kwargs)
+                    if page is None or page.empty:
+                        break
+                    page = page.copy()
+                    pages.append(page)
+                    oldest = page.index.min()
+                    # API가 같은 최저 시각을 되풀이하면 무한 루프를 막는다.
+                    if oldest == previous_oldest or len(page) < request_count:
+                        break
+                    previous_oldest = oldest
+                    before = oldest.to_pydatetime() if hasattr(oldest, 'to_pydatetime') else oldest
+                if pages:
+                    df = pd.concat(pages).sort_index()
+                    df = df[~df.index.duplicated(keep='last')].tail(count)
+                else:
+                    df = None
             elif ex == 'bithumb':
+                _throttle(ex)  # 실제 API 호출 직전 거래소별 속도 제한
                 import pybithumb
                 bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
                 btf = bithumb_tf_map.get(interval, 'day')
