@@ -1,5 +1,6 @@
 import math
 import time
+from collections import Counter
 
 import pyupbit
 import requests
@@ -62,6 +63,38 @@ def _format_krw_price(price):
     if value < 100:
         return f"{value:,.2f}".rstrip('0').rstrip('.')
     return f"{value:,.0f}"
+
+
+def _rejection_category(reason):
+    """Collapse per-price rejection text into displayable diagnostic categories."""
+    categories = (
+        ('종가·EMA20·EMA60 상승 정렬', 'EMA20·EMA60 상승 정렬 미충족'),
+        ('최근 20일 모멘텀', '20일 모멘텀 미충족'),
+        ('ATR 변동성', 'ATR 변동성 과다'),
+        ('진입가가 현재가보다', '진입가가 현재가보다 2% 이상 높음'),
+        ('현재가가 진입가를', '돌파가를 1% 넘겨 추격 진입 제외'),
+        ('당일 급등률', '당일 10% 이상 급등'),
+        ('필요 손절 폭', '손절 폭 과다'),
+        ('일봉 데이터', '일봉 데이터 부족'),
+        ('현재가가', '현재가 데이터 오류'),
+    )
+    for prefix, category in categories:
+        if reason.startswith(prefix):
+            return category
+    return reason
+
+
+def _format_no_candidate_reason(candidate_count, rejected, data_error_count):
+    """Return a compact rest-day reason suitable for the public result card."""
+    parts = [
+        f'{reason} {count}건'
+        for reason, count in rejected.most_common(4)
+    ]
+    if data_error_count:
+        parts.append(f'API·데이터 오류 {data_error_count}건')
+    if not parts:
+        return '분석 가능한 후보가 없어 추천을 생성하지 못했습니다.'
+    return f'후보 {candidate_count}개 분석 결과: ' + ' · '.join(parts) + '.'
 
 
 class Command(BaseCommand):
@@ -284,6 +317,7 @@ class Command(BaseCommand):
             )
         )
         liquidity = []
+        liquidity_data_errors = 0
         self.stdout.write("20일 거래대금 상위 스윙 후보를 찾습니다...")
         for ticker in tickers:
             if ticker in excluded_tickers:
@@ -291,6 +325,7 @@ class Command(BaseCommand):
             try:
                 candles = pyupbit.get_ohlcv(ticker, interval='day', count=21)
                 if candles is None or len(candles) < 21 or 'value' not in candles:
+                    liquidity_data_errors += 1
                     continue
                 median_value = float(
                     candles.iloc[:-1]['value'].astype(float).median()
@@ -298,11 +333,14 @@ class Command(BaseCommand):
                 if math.isfinite(median_value) and median_value > 0:
                     liquidity.append((ticker, median_value))
             except Exception:
+                liquidity_data_errors += 1
                 continue
             time.sleep(0.05)
 
         liquidity.sort(key=lambda item: item[1], reverse=True)
         candidates = []
+        rejected = Counter()
+        analysis_data_errors = 0
         for ticker, _median_value in liquidity[:30]:
             try:
                 candles = pyupbit.get_ohlcv(
@@ -328,10 +366,12 @@ class Command(BaseCommand):
                 )
                 candidates.append(recommendation)
             except RecommendationRejected as exc:
+                rejected[_rejection_category(str(exc))] += 1
                 self.stdout.write(self.style.WARNING(
                     f"[{ticker}] 스윙 추천 제외: {exc}"
                 ))
             except Exception as exc:
+                analysis_data_errors += 1
                 self.stdout.write(self.style.ERROR(
                     f"[{ticker}] 스윙 분석 오류: {exc}"
                 ))
@@ -342,7 +382,16 @@ class Command(BaseCommand):
             limit=available_slots,
         )
         if not recommendations:
-            reason = "유동성·추세·진입 괴리·변동성 기준을 통과한 종목이 없습니다."
+            candidate_count = min(len(liquidity), 30)
+            data_error_count = liquidity_data_errors + analysis_data_errors
+            reason = _format_no_candidate_reason(
+                candidate_count, rejected, data_error_count,
+            )
+            market_regime['candidate_diagnostics'] = {
+                'candidate_count': candidate_count,
+                'rejections': dict(rejected),
+                'data_error_count': data_error_count,
+            }
             if self._record_rest_day(
                 today_date, reason, market_regime, data_as_of
             ):

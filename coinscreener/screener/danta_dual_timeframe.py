@@ -16,6 +16,7 @@ ICHIMOKU_SPAN_B = 52
 SETUP_WINDOW_CANDLES = 6
 VOLUME_EXPANSION_MULTIPLIER = 2.0
 SUPPORT_TOUCH_TOLERANCE = 0.002
+SUPPORT_CLOSE_TOLERANCE = 0.002
 MAX_KIJUN_DISTANCE_PCT = 2.5
 MAX_STOP_LOSS_PCT = 1.0
 MIN_RISK_REWARD = 1.8
@@ -113,12 +114,18 @@ def build_pullback_signal(hourly_frame, five_minute_frame):
     rebound = candle_close > candle_open or (
         candle_range > 0 and lower_wick > candle_range * 0.35
     )
+    # A wick at support is only a pullback when the completed candle holds the
+    # level. Checking the low alone accepted candles whose whole body closed
+    # below the moving-average/Kijun support.
     support_touched = candle_low <= support * (1 + SUPPORT_TOUCH_TOLERANCE)
+    support_held = candle_close >= support * (1 - SUPPORT_CLOSE_TOLERANCE)
     volume_contracting = volume.iloc[current] < volume_ma.iloc[current]
     if not volume_contracting:
         raise SignalRejected('5분봉 눌림목 거래량이 아직 감소하지 않았습니다.')
     if not support_touched:
         raise SignalRejected('5분봉 눌림목이 중심선·기준선 지지에 닿지 않았습니다.')
+    if not support_held:
+        raise SignalRejected('5분봉이 중심선·기준선 지지 아래에서 마감했습니다.')
     if not rebound:
         raise SignalRejected('5분봉 반등 마감(양봉/아래꼬리)이 확인되지 않았습니다.')
 

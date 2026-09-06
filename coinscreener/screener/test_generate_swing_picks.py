@@ -1,4 +1,5 @@
 from datetime import timedelta
+from collections import Counter
 from unittest.mock import patch
 
 import pandas as pd
@@ -7,11 +8,28 @@ from django.test import TestCase
 from django.utils import timezone
 from filelock import FileLock
 
-from .management.commands.generate_swing_picks import Command
+from .management.commands.generate_swing_picks import (
+    Command,
+    _format_no_candidate_reason,
+    _rejection_category,
+)
 from .models import DailyRecommendation
 
 
 class GenerateSwingPicksTestCase(TestCase):
+    def test_rest_reason_groups_rejections_and_reports_data_errors(self):
+        rejected = {
+            _rejection_category('현재가가 진입가를 3.4% 초과해 추격 진입을 차단합니다.'): 7,
+            _rejection_category('ATR 변동성(14.2%)이 허용 범위를 초과했습니다.'): 3,
+        }
+
+        reason = _format_no_candidate_reason(30, Counter(rejected), 2)
+
+        self.assertIn('후보 30개 분석 결과', reason)
+        self.assertIn('돌파가를 1% 넘겨 추격 진입 제외 7건', reason)
+        self.assertIn('ATR 변동성 과다 3건', reason)
+        self.assertIn('API·데이터 오류 2건', reason)
+
     def _open_recommendation(self, ticker):
         return DailyRecommendation.objects.create(
             date=timezone.localdate(),

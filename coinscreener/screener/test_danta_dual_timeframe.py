@@ -36,10 +36,13 @@ class DualTimeframeDantaRuleTestCase(SimpleTestCase):
         frame.iloc[-3, frame.columns.get_loc('high')] = 106.0
         frame.iloc[-3, frame.columns.get_loc('volume')] = 300.0
         # First pullback: support touch, reduced volume, and bullish close.
+        # A preceding low keeps the Kijun near the pullback price, making this
+        # a valid touch-and-hold setup rather than a candle entirely below it.
+        frame.iloc[-20, frame.columns.get_loc('low')] = 94.0
         frame.iloc[-2, frame.columns.get_loc('open')] = 99.8
-        frame.iloc[-2, frame.columns.get_loc('high')] = 100.2
+        frame.iloc[-2, frame.columns.get_loc('high')] = 100.3
         frame.iloc[-2, frame.columns.get_loc('low')] = 99.7
-        frame.iloc[-2, frame.columns.get_loc('close')] = 100.0
+        frame.iloc[-2, frame.columns.get_loc('close')] = 100.1
         frame.iloc[-2, frame.columns.get_loc('volume')] = 50.0
         return frame
 
@@ -65,4 +68,14 @@ class DualTimeframeDantaRuleTestCase(SimpleTestCase):
 
         with self.assertRaisesRegex(SignalRejected, '이격 과열'):
             build_pullback_signal(hourly, self._five_minute_frame())
+
+    def test_pullback_closing_below_support_is_rejected(self):
+        five_minute = self._five_minute_frame()
+        five_minute.iloc[-2, five_minute.columns.get_loc('open')] = 99.4
+        five_minute.iloc[-2, five_minute.columns.get_loc('high')] = 99.8
+        five_minute.iloc[-2, five_minute.columns.get_loc('low')] = 99.2
+        five_minute.iloc[-2, five_minute.columns.get_loc('close')] = 99.5
+
+        with self.assertRaisesRegex(SignalRejected, '지지 아래에서 마감'):
+            build_pullback_signal(self._hourly_frame(), five_minute)
 
