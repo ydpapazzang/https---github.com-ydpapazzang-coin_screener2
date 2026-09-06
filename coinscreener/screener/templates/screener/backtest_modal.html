@@ -52,6 +52,16 @@
 }
 .bt-run:hover { opacity:.88; }
 .bt-run:disabled { opacity:.5; cursor:not-allowed; }
+.bt-run.bt-run-all { background:#6d4aff; margin-left:0; }
+.bt-batch-results {
+    display:none; margin:0 0 18px; padding:14px;
+    background:#131722; border:1px solid #363a45; border-radius:8px;
+}
+.bt-batch-title { color:#fff; font-size:13px; font-weight:700; margin-bottom:9px; }
+.bt-batch-row { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-top:1px solid #2a2e39; font-size:12px; color:#d1d4dc; }
+.bt-batch-row:first-of-type { border-top:0; }
+.bt-batch-row .pos { color:#26a69a; font-weight:700; }
+.bt-batch-row .neg { color:#f23645; font-weight:700; }
 
 /* result stats */
 .bt-stats {
@@ -174,6 +184,7 @@
                 <input type="number" class="bt-sel" id="bt-param" value="5" min="1" style="width:80px;">
             </div>
             <button class="bt-run" id="bt-run-btn" onclick="runBT()">▶ 백테스트 실행</button>
+            <button class="bt-run bt-run-all" id="bt-run-all-btn" type="button" onclick="runAllBT()" style="display:none;">▦ 전체 실행</button>
             <button class="bt-run" type="button" style="background:#6d4aff;margin-left:0" onclick="openBTLab()">🧪 연구실</button>
         </div>
 
@@ -183,6 +194,7 @@
             <span>백테스팅 실행 중...</span>
         </div>
 
+        <div class="bt-batch-results" id="bt-batch-results"></div>
         <!-- results (hidden until run) -->
         <div id="bt-results" style="display:none;">
             <!-- stats -->
@@ -227,6 +239,7 @@
 let btStrategyId = null;
 let btStrategyName = '';
 let currentBTTimeframe = 'day';
+let btResultTickers = [];
 
 function getDurationText(count, timeframe) {
     if (timeframe.startsWith('minute')) {
@@ -285,10 +298,15 @@ function updateCandleOptions(timeframe) {
     }
 }
 
-function openBT(strategyId, strategyName, timeframe = 'day') {
+function openBT(strategyId, strategyName, timeframe = 'day', resultTickers = []) {
     btStrategyId   = strategyId;
     btStrategyName = strategyName;
     currentBTTimeframe = timeframe;
+    btResultTickers = Array.from(new Map(
+        resultTickers
+            .filter(item => item && /^KRW-[A-Z0-9]{1,20}$/.test(item.ticker))
+            .map(item => [item.ticker, item])
+    ).values());
 
     document.getElementById('bt-title').textContent = `📈 ${strategyName} 백테스팅`;
     
@@ -310,6 +328,19 @@ function openBT(strategyId, strategyName, timeframe = 'day') {
     document.getElementById('bt-sub').textContent = `전략 타임프레임: ${tfName} 적용`;
 
     updateCandleOptions(timeframe);
+
+    const tickerSelect = document.getElementById('bt-ticker');
+    if (btResultTickers.length) {
+        tickerSelect.replaceChildren();
+        btResultTickers.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.ticker;
+            option.textContent = `${item.name || item.ticker.replace('KRW-', '')} (${item.ticker.replace('KRW-', '')})`;
+            tickerSelect.appendChild(option);
+        });
+    }
+    document.getElementById('bt-run-all-btn').style.display = btResultTickers.length > 1 ? 'inline-block' : 'none';
+    document.getElementById('bt-batch-results').style.display = 'none';
 
     document.getElementById('bt-results').style.display = 'none';
     document.getElementById('bt-modal-backdrop').classList.add('open');
@@ -373,26 +404,87 @@ async function runBT() {
     sub.textContent = `${ticker.replace('KRW-','')} · 최근 ${count}봉${durationPart} · ${document.getElementById('bt-sell-mode').selectedOptions[0].text}`;
 
     try {
-        const res  = await secureFetch(`/strategy/${btStrategyId}/backtest/run/`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                ticker, candle_count: count, sell_mode: sellMode,
-                sell_param: param, fee: fee, slippage: slippage,
-            }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-            showBTError('백테스팅 실패', data.error || '알 수 없는 오류가 발생했습니다.');
-            return;
-        }
+        const data = await requestBT(ticker, count, sellMode, param, fee, slippage);
         renderBT(data);
     } catch(e) {
-        showBTError('네트워크 오류', '백테스팅 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
+        showBTError('백테스팅 실패', e.message || '서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
     } finally {
         btn.disabled = false;
         document.getElementById('bt-loading').style.display = 'none';
     }
+}
+
+async function requestBT(ticker, candleCount, sellMode, sellParam, fee, slippage) {
+    const res = await secureFetch(`/strategy/${btStrategyId}/backtest/run/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            ticker, candle_count: candleCount, sell_mode: sellMode,
+            sell_param: sellParam, fee, slippage,
+        }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '알 수 없는 오류가 발생했습니다.');
+    return data;
+}
+
+async function runAllBT() {
+    if (!btStrategyId || !btResultTickers.length) return;
+    const singleBtn = document.getElementById('bt-run-btn');
+    const allBtn = document.getElementById('bt-run-all-btn');
+    const loading = document.getElementById('bt-loading');
+    const count = parseInt(document.getElementById('bt-count').value);
+    const sellMode = document.getElementById('bt-sell-mode').value;
+    const param = parseFloat(document.getElementById('bt-param').value) || 5;
+    const fee = parseFloat(document.getElementById('bt-fee').value) || 0;
+    const slippage = parseFloat(document.getElementById('bt-slippage').value) || 0;
+    const batchBox = document.getElementById('bt-batch-results');
+    const rows = [];
+
+    singleBtn.disabled = true;
+    allBtn.disabled = true;
+    loading.style.display = 'flex';
+    document.getElementById('bt-results').style.display = 'none';
+    batchBox.style.display = 'none';
+    for (let index = 0; index < btResultTickers.length; index += 1) {
+        const item = btResultTickers[index];
+        loading.querySelector('span').textContent = `전체 백테스팅 ${index + 1}/${btResultTickers.length}: ${item.name || item.ticker.replace('KRW-', '')}`;
+        try {
+            const data = await requestBT(item.ticker, count, sellMode, param, fee, slippage);
+            rows.push({ item, data });
+        } catch (error) {
+            rows.push({ item, error: error.message || '실행 실패' });
+        }
+    }
+    loading.style.display = 'none';
+    singleBtn.disabled = false;
+    allBtn.disabled = false;
+    loading.querySelector('span').textContent = '백테스팅 실행 중...';
+
+    const successCount = rows.filter(row => row.data).length;
+    batchBox.replaceChildren();
+    const title = document.createElement('div');
+    title.className = 'bt-batch-title';
+    title.textContent = `전체 실행 완료 · 성공 ${successCount}/${rows.length}`;
+    batchBox.appendChild(title);
+    rows.forEach(row => {
+        const line = document.createElement('div');
+        line.className = 'bt-batch-row';
+        const name = document.createElement('span');
+        name.textContent = row.item.name || row.item.ticker.replace('KRW-', '');
+        const result = document.createElement('span');
+        if (row.data) {
+            const value = Number(row.data.total_return);
+            result.className = value >= 0 ? 'pos' : 'neg';
+            result.textContent = `${value >= 0 ? '+' : ''}${value}% · ${row.data.total_trades}회`;
+        } else {
+            result.className = 'neg';
+            result.textContent = row.error;
+        }
+        line.append(name, result);
+        batchBox.appendChild(line);
+    });
+    batchBox.style.display = 'block';
 }
 
 function renderBT(d) {
