@@ -1,5 +1,6 @@
 {% extends 'screener/base.html' %}
 {% load humanize %}
+{% load price_filters %}
 
 {% block title %}오늘의 단타 추천{% endblock %}
 
@@ -186,21 +187,21 @@
             
             <div class="price-row">
                 <span class="price-label">진입 추천가</span>
-                <span class="price-val val-entry">{{ rec.entry_price|floatformat:0|intcomma }}</span>
+                <span class="price-val val-entry">{{ rec.entry_price|krw_price }}</span>
             </div>
             {% if rec.current_price %}
             <div class="price-row">
                 <span class="price-label">현재가</span>
-                <span class="price-val">{{ rec.current_price|floatformat:0|intcomma }}</span>
+                <span class="price-val">{{ rec.current_price|krw_price }}</span>
             </div>
             {% endif %}
             <div class="price-row">
                 <span class="price-label">1차 목표가 (BB 상단 · 50%)</span>
-                <span class="price-val val-target">{{ rec.target_price|floatformat:0|intcomma }}</span>
+                <span class="price-val val-target">{{ rec.target_price|krw_price }}</span>
             </div>
             <div class="price-row">
-                <span class="price-label">손절가 (최대 -1.0%)</span>
-                <span class="price-val val-stop">{{ rec.stop_loss|floatformat:0|intcomma }}</span>
+                <span class="price-label">{% if rec.partial_exit_price %}본절 손절가 (TP1 후){% else %}손절가 (최대 -1.0%){% endif %}</span>
+                <span class="price-val val-stop">{{ rec.stop_loss|krw_price }}</span>
             </div>
             {% if rec.strategy_parameters.kijun_distance_pct is not None %}
             <div class="price-row">
@@ -220,13 +221,13 @@
                 <h2>{{ rec.coin_name }} <span style="font-size:14px; color:#999">{{ rec.coin_ticker }}</span></h2>
             </div>
             <div style="margin-top:20px;">
-                <div class="price-row"><span class="price-label">진입가</span><span class="price-val val-entry">{{ rec.entry_price|floatformat:0|intcomma }}</span></div>
-                <div class="price-row"><span class="price-label">1차 목표가 (50%)</span><span class="price-val val-target">{{ rec.target_price|floatformat:0|intcomma }}</span></div>
-                <div class="price-row"><span class="price-label">초기 손절가</span><span class="price-val val-stop">{{ rec.initial_stop_loss|default:rec.stop_loss|floatformat:0|intcomma }}</span></div>
+                <div class="price-row"><span class="price-label">진입가</span><span class="price-val val-entry">{{ rec.entry_price|krw_price }}</span></div>
+                <div class="price-row"><span class="price-label">1차 목표가 (50%)</span><span class="price-val val-target">{{ rec.target_price|krw_price }}</span></div>
+                <div class="price-row"><span class="price-label">초기 손절가</span><span class="price-val val-stop">{{ rec.initial_stop_loss|default:rec.stop_loss|krw_price }}</span></div>
                 <div class="price-row"><span class="price-label">2차 청산</span><span class="price-val" style="color:#aaa">1H 기준선 이탈 또는 전환선·기준선 데드크로스</span></div>
                 {% if rec.strategy_parameters.kijun_distance_pct is not None %}
                 <div class="price-row"><span class="price-label">1H 기준선 이격</span><span class="price-val">{{ rec.strategy_parameters.kijun_distance_pct|floatformat:2 }}%</span></div>
-                <div class="price-row"><span class="price-label">5M 지지선</span><span class="price-val">{{ rec.strategy_parameters.support_level|floatformat:0|intcomma }}</span></div>
+                <div class="price-row"><span class="price-label">5M 지지선</span><span class="price-val">{{ rec.strategy_parameters.support_level|krw_price }}</span></div>
                 {% endif %}
             </div>
             <div class="reason-box">

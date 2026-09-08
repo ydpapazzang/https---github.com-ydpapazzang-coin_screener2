@@ -1,5 +1,6 @@
 {% extends 'screener/base.html' %}
 {% load humanize %}
+{% load price_filters %}
 
 {% block title %}스윙 추천{% endblock %}
 
@@ -154,11 +155,11 @@
                 </div>
                 <div class="price-row">
                     <span class="price-label">진입가 (20일 돌파)</span>
-                    <span class="price-value">{{ rec.entry_price|floatformat:-2|intcomma }}원</span>
+                    <span class="price-value">{{ rec.entry_price|krw_price }}원</span>
                 </div>
                 <div class="price-row">
                     <span class="price-label">1차 목표가 (2R·50%)</span>
-                    <span class="price-value target">{{ rec.target_price|floatformat:-2|intcomma }}원</span>
+                    <span class="price-value target">{{ rec.target_price|krw_price }}원</span>
                 </div>
                 <div class="price-row">
                     <span class="price-label">2차 청산</span>
@@ -166,12 +167,12 @@
                 </div>
                 <div class="price-row">
                     <span class="price-label">초기 손절가</span>
-                    <span class="price-value stop">{% if rec.initial_stop_loss != None %}{{ rec.initial_stop_loss|floatformat:-2|intcomma }}{% else %}{{ rec.stop_loss|floatformat:-2|intcomma }}{% endif %}원</span>
+                    <span class="price-value stop">{% if rec.initial_stop_loss != None %}{{ rec.initial_stop_loss|krw_price }}{% else %}{{ rec.stop_loss|krw_price }}{% endif %}원</span>
                 </div>
                 {% if rec.initial_stop_loss != None and rec.stop_loss != rec.initial_stop_loss %}
                 <div class="price-row">
                     <span class="price-label">현재 추적손절가</span>
-                    <span class="price-value stop">{{ rec.stop_loss|floatformat:-2|intcomma }}원</span>
+                    <span class="price-value stop">{{ rec.stop_loss|krw_price }}원</span>
                 </div>
                 {% endif %}
                 {% if rec.result_pct != None %}
