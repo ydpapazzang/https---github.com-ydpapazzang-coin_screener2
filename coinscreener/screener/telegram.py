@@ -5,6 +5,8 @@ import requests
 from urllib.parse import quote
 import logging
 
+from .price_format import format_krw_price
+
 logger = logging.getLogger(__name__)
 
 
@@ -124,7 +126,7 @@ def send_alert(strategy_name: str, results: list, strategy_id: int = None, excha
         for r in results[:20]:  # 최대 20개
             vol         = r.get('volume_display', '')
             status_icon = '🆕' if r.get('status') == 'new' else '🔁'
-            price_str   = f"{r['price']:,.0f}" if r.get('price') else '-'
+            price_str   = format_krw_price(r['price']) if r.get('price') else '-'
             raw_name    = r.get('name', '')
             name_str    = f"[{_html.escape(raw_name)}] " if raw_name and raw_name != r['symbol'] else ""
             link        = _symbol_link(exchange, r['symbol'], site_url)

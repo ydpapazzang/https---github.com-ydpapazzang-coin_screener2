@@ -15,6 +15,7 @@ from coinscreener.screener.daily_picks import (
     is_stablecoin_ticker,
 )
 from coinscreener.screener.models import DailyRecommendation
+from coinscreener.screener.price_format import format_krw_price
 from coinscreener.screener.recommendation_versioning import (
     SWING_STRATEGY_VERSION,
     json_number,
@@ -56,13 +57,6 @@ SWING_PARAMETERS = {
     'partial_exit_fraction': 0.5,
     'liquidity_candidate_limit': 30,
 }
-
-
-def _format_krw_price(price):
-    value = float(price)
-    if value < 100:
-        return f"{value:,.2f}".rstrip('0').rstrip('.')
-    return f"{value:,.0f}"
 
 
 def _rejection_category(reason):
@@ -427,11 +421,11 @@ class Command(BaseCommand):
             message_lines.append(
                 f"{index}. <b>{recommendation['name']}</b> "
                 f"({recommendation['ticker']})\n"
-                f"   진입가 {_format_krw_price(recommendation['entry_price'])}원\n"
-                f"   1차 목표 {_format_krw_price(recommendation['target_price'])}원 "
+                f"   진입가 {format_krw_price(recommendation['entry_price'])}원\n"
+                f"   1차 목표 {format_krw_price(recommendation['target_price'])}원 "
                 "(2R·50% 익절)\n"
                 "   2차 청산 EMA20·3ATR 추적손절 (최장 20일)\n"
-                f"   초기 손절 {_format_krw_price(recommendation['stop_loss'])}원"
+                f"   초기 손절 {format_krw_price(recommendation['stop_loss'])}원"
             )
         message_lines.append(
             "\n※ 진입 신호는 2일간 유효하며 1회 위험 한도는 자산의 0.5%입니다."

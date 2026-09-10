@@ -12,6 +12,7 @@ from coinscreener.screener.danta_dual_timeframe import (
 )
 from coinscreener.screener.engine import get_ohlcv_with_retry
 from coinscreener.screener.models import DailyRecommendation
+from coinscreener.screener.price_format import format_krw_price
 from coinscreener.screener.recommendation_versioning import json_number, recommendation_snapshot
 from coinscreener.screener.telegram import send_message
 
@@ -100,7 +101,7 @@ class Command(BaseCommand):
                     '1H 장기 추세·일목 필터 통과, 5M 거래량 2배/볼린저 상단 분출 후 '
                     f'{signal["setup_candles_ago"] * 5}분 내 첫 눌림목 지지 확인. '
                     f'1H 기준선 이격 {signal["kijun_distance_pct"]:.2f}%, '
-                    f'지지선 {signal["support_level"]:,.0f}, 손익비 1:{signal["risk_reward"]:.2f}.'
+                    f'지지선 {format_krw_price(signal["support_level"])}, 손익비 1:{signal["risk_reward"]:.2f}.'
                 ),
                 **snapshot,
             )
@@ -119,7 +120,9 @@ class Command(BaseCommand):
         for rec in created:
             lines.append(
                 f'• <b>{rec.coin_name}</b> {rec.coin_ticker}\n'
-                f'  진입 {rec.entry_price:,.0f} / TP1 {rec.target_price:,.0f} / SL {rec.stop_loss:,.0f}'
+                f'  진입 {format_krw_price(rec.entry_price)} / '
+                f'TP1 {format_krw_price(rec.target_price)} / '
+                f'SL {format_krw_price(rec.stop_loss)}'
             )
         lines.append("\n👉 <a href='https://woniiscreener.duckdns.org/danta/'>단타 탭 열기</a>")
         result = send_message('\n'.join(lines))

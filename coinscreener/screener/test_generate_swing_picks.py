@@ -261,9 +261,9 @@ class GenerateSwingPicksTestCase(TestCase):
         self.assertIsNotNone(recommendation.data_as_of)
         self.assertTrue(recommendation.code_version)
         telegram_text = _mock_telegram.call_args.args[0]
-        self.assertIn('진입가 100원', telegram_text)
-        self.assertIn('1차 목표 110원 (2R·50% 익절)', telegram_text)
+        self.assertIn('진입가 100.0원', telegram_text)
+        self.assertIn('1차 목표 110.0원 (2R·50% 익절)', telegram_text)
         self.assertIn('2차 청산 EMA20·3ATR 추적손절', telegram_text)
-        self.assertIn('초기 손절 95원', telegram_text)
+        self.assertIn('초기 손절 95.00원', telegram_text)
         self.assertIn('1회 위험 한도는 자산의 0.5%', telegram_text)
 
