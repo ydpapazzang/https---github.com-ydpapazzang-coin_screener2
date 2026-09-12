@@ -174,7 +174,10 @@ def stats_list(request):
         'selected_status': status,
         'selected_trade_type': trade_type,
         'selected_strategy_version': strategy_version,
-        'strategy_versions': available_strategy_versions,
+        'strategy_versions': [
+            (version, DailyRecommendation.strategy_profile_label_for(version))
+            for version in available_strategy_versions
+        ],
         'date_from': date_from_raw if date_from else '',
         'date_to': date_to_raw if date_to else '',
         'status_choices': DailyRecommendation.status_choices,

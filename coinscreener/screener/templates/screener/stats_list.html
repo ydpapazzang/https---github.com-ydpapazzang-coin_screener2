@@ -383,8 +383,8 @@
             <span class="filter-label">전략 버전</span>
             <select class="filter-input" name="strategy_version">
                 <option value="">전체 버전</option>
-                {% for version in strategy_versions %}
-                    <option value="{{ version }}" {% if selected_strategy_version == version %}selected{% endif %}>{{ version }}</option>
+                {% for version, label in strategy_versions %}
+                    <option value="{{ version }}" {% if selected_strategy_version == version %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
         </label>

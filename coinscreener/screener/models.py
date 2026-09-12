@@ -482,11 +482,15 @@ class DailyRecommendation(models.Model):
 
     @property
     def strategy_profile_label(self):
+        return self.strategy_profile_label_for(self.strategy_version)
+
+    @classmethod
+    def strategy_profile_label_for(cls, strategy_version):
         labels = {
             'danta-1h5m-pullback-v1.0': 'V1 안정형',
             'danta-1h5m-pullback-v2-aggressive': 'V2 공격형',
         }
-        return labels.get(self.strategy_version, self.strategy_version_display)
+        return labels.get(strategy_version, strategy_version or 'legacy (버전 기록 전)')
 
     @property
     def first_take_profit_pct(self):

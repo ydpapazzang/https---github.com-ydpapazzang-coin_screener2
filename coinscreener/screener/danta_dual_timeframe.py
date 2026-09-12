@@ -131,7 +131,10 @@ def build_pullback_signal(hourly_frame, five_minute_frame, profile=V1_PROFILE):
         if volume.iloc[position] >= volume_ma.iloc[position] * profile.volume_expansion_multiplier and high.iloc[position] >= upper.iloc[position]:
             setup_indexes.append(position)
     if not setup_indexes:
-        raise SignalRejected('5분봉 최근 30분 내 거래량·볼린저 분출 셋업이 없습니다.')
+        raise SignalRejected(
+            f'5분봉 최근 {profile.setup_window_candles * 5}분 내 '
+            '거래량·볼린저 분출 셋업이 없습니다.'
+        )
 
     current = len(data) - 1
     support = max(float(mid.iloc[current]), float(kijun.iloc[current]))
