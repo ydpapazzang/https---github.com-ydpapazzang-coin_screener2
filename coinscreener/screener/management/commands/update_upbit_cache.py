@@ -10,6 +10,10 @@ import pandas as pd
 from django.core.management.base import BaseCommand
 from django.core.cache import cache
 from django.conf import settings
+from coinscreener.screener.danta_dual_timeframe import (
+    AGGRESSIVE_DANTA_STRATEGY_VERSION,
+    DUAL_DANTA_STRATEGY_VERSION,
+)
 from coinscreener.screener.models import Condition
 
 class Command(BaseCommand):
@@ -473,7 +477,10 @@ class Command(BaseCommand):
 
     @staticmethod
     def _is_dual_timeframe_danta(rec):
-        return rec.strategy_version == 'danta-1h5m-pullback-v1.0'
+        return rec.strategy_version in {
+            DUAL_DANTA_STRATEGY_VERSION,
+            AGGRESSIVE_DANTA_STRATEGY_VERSION,
+        }
 
     def _close_dual_timeframe_danta(self, rec, exit_price, reason, at):
         rec.exit_price = exit_price
