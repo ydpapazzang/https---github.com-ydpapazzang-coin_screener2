@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Coin Screener V2 aggressive Danta scanner every five minutes
+
+[Timer]
+OnCalendar=*:2/5
+AccuracySec=1min
+Persistent=true
+Unit=coinscreener-danta-v2.service
+
+[Install]
+WantedBy=timers.target

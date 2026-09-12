@@ -483,7 +483,7 @@ class Command(BaseCommand):
         rec.status = 'success' if rec.result_pct > 0 else 'failed'
 
     def _apply_dual_timeframe_danta_candle(self, rec, candle_at, candle, finalize=False):
-        """Track TP1 50%, break-even stop, then the 1H Ichimoku exit for dual-TF danta."""
+        """Track profile-specific TP1, break-even stop, then the 1H exit."""
         values = {field: float(candle[field]) for field in ('open', 'high', 'low', 'close')}
         if not all(math.isfinite(value) and value > 0 for value in values.values()):
             raise ValueError('유효하지 않은 듀얼 타임프레임 단타 봉')
@@ -507,7 +507,8 @@ class Command(BaseCommand):
             # 수수료를 고려해 TP1 후 손절을 약간의 본절 위로 올린다.
             rec.stop_loss = max(rec.stop_loss, rec.entry_price * 1.001)
             self.stdout.write(self.style.SUCCESS(
-                f'[{rec.coin_ticker}] 듀얼 단타 TP1 도달, 50% 익절·본절 이동'
+                f'[{rec.coin_ticker}] 듀얼 단타 TP1 도달, '
+                f'{self._partial_exit_fraction(rec) * 100:.0f}% 익절·본절 이동'
             ))
 
         if rec.status == 'partial':
@@ -650,7 +651,16 @@ class Command(BaseCommand):
             / rec.entry_price
             * 100
         )
-        return partial_return * 0.5 + final_return * 0.5
+        fraction = Command._partial_exit_fraction(rec)
+        return partial_return * fraction + final_return * (1 - fraction)
+
+    @staticmethod
+    def _partial_exit_fraction(rec):
+        try:
+            fraction = float(rec.strategy_parameters.get('first_take_profit_fraction', 0.5))
+        except (AttributeError, TypeError, ValueError):
+            fraction = 0.5
+        return min(max(fraction, 0.0), 1.0)
 
     def _close_swing(self, rec, exit_price, reason, now_kst):
         rec.exit_price = exit_price

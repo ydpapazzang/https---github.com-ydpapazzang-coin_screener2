@@ -4,11 +4,13 @@ This module intentionally contains no database or network code so the rules can
 be tested with fixed OHLCV frames.  The scheduler owns persistence and alerts.
 """
 import math
+from dataclasses import dataclass
 
 import pandas as pd
 
 
 DUAL_DANTA_STRATEGY_VERSION = 'danta-1h5m-pullback-v1.0'
+AGGRESSIVE_DANTA_STRATEGY_VERSION = 'danta-1h5m-pullback-v2-aggressive'
 HOURLY_MA_PERIOD = 200
 ICHIMOKU_TENKAN = 9
 ICHIMOKU_KIJUN = 26
@@ -20,6 +22,34 @@ SUPPORT_CLOSE_TOLERANCE = 0.002
 MAX_KIJUN_DISTANCE_PCT = 2.5
 MAX_STOP_LOSS_PCT = 1.0
 MIN_RISK_REWARD = 1.8
+
+
+@dataclass(frozen=True)
+class DantaProfile:
+    key: str
+    label: str
+    strategy_version: str
+    universe_limit: int
+    setup_window_candles: int
+    volume_expansion_multiplier: float
+    max_kijun_distance_pct: float
+    min_risk_reward: float
+    first_take_profit_fraction: float
+
+
+V1_PROFILE = DantaProfile(
+    key='v1', label='V1 안정형', strategy_version=DUAL_DANTA_STRATEGY_VERSION,
+    universe_limit=30, setup_window_candles=6, volume_expansion_multiplier=2.0,
+    max_kijun_distance_pct=2.5, min_risk_reward=1.8,
+    first_take_profit_fraction=0.5,
+)
+V2_AGGRESSIVE_PROFILE = DantaProfile(
+    key='v2', label='V2 공격형', strategy_version=AGGRESSIVE_DANTA_STRATEGY_VERSION,
+    universe_limit=60, setup_window_candles=12, volume_expansion_multiplier=1.5,
+    max_kijun_distance_pct=4.0, min_risk_reward=1.5,
+    first_take_profit_fraction=0.7,
+)
+DANTA_PROFILES = {profile.key: profile for profile in (V1_PROFILE, V2_AGGRESSIVE_PROFILE)}
 
 
 class SignalRejected(ValueError):
@@ -47,7 +77,7 @@ def _ichimoku(frame):
     return tenkan, kijun, span_a, span_b
 
 
-def hourly_trend(frame):
+def hourly_trend(frame, profile=V1_PROFILE):
     """Return the 1H long-bias snapshot or reject it, using completed candles only."""
     data = _completed(frame, HOURLY_MA_PERIOD, '1시간봉')
     close = data['close']
@@ -73,7 +103,7 @@ def hourly_trend(frame):
         (values['span_a'] > values['span_b'], '음운 상태'),
         (values['tenkan'] >= values['kijun'], '전환선이 기준선 아래'),
         (values['close'] > values['chikou_reference_close'], '후행스팬이 과거 종가 아래'),
-        (distance_pct <= MAX_KIJUN_DISTANCE_PCT, '기준선 이격 과열'),
+        (distance_pct <= profile.max_kijun_distance_pct, '기준선 이격 과열'),
     )
     for passed, reason in checks:
         if not passed:
@@ -82,9 +112,9 @@ def hourly_trend(frame):
     return values
 
 
-def build_pullback_signal(hourly_frame, five_minute_frame):
+def build_pullback_signal(hourly_frame, five_minute_frame, profile=V1_PROFILE):
     """Find the first qualifying 5M pullback after an impulse in the last 30m."""
-    trend = hourly_trend(hourly_frame)
+    trend = hourly_trend(hourly_frame, profile)
     data = _completed(five_minute_frame, 60, '5분봉')
     close, high, low, volume = data['close'], data['high'], data['low'], data['volume']
     mid = close.rolling(20).mean()
@@ -95,10 +125,10 @@ def build_pullback_signal(hourly_frame, five_minute_frame):
 
     # Setup must precede the current pullback candle and be no older than six 5M bars.
     setup_indexes = []
-    for position in range(len(data) - SETUP_WINDOW_CANDLES - 1, len(data) - 1):
+    for position in range(len(data) - profile.setup_window_candles - 1, len(data) - 1):
         if position < 20:
             continue
-        if volume.iloc[position] >= volume_ma.iloc[position] * VOLUME_EXPANSION_MULTIPLIER and high.iloc[position] >= upper.iloc[position]:
+        if volume.iloc[position] >= volume_ma.iloc[position] * profile.volume_expansion_multiplier and high.iloc[position] >= upper.iloc[position]:
             setup_indexes.append(position)
     if not setup_indexes:
         raise SignalRejected('5분봉 최근 30분 내 거래량·볼린저 분출 셋업이 없습니다.')
@@ -136,8 +166,8 @@ def build_pullback_signal(hourly_frame, five_minute_frame):
         raise SignalRejected('손절가가 진입가보다 낮게 계산되지 않았습니다.')
     target_1 = float(upper.iloc[current])
     risk = entry - stop
-    if target_1 <= entry or (target_1 - entry) / risk < MIN_RISK_REWARD:
-        raise SignalRejected('볼린저 상단 기준 손익비가 1:1.8 미만입니다.')
+    if target_1 <= entry or (target_1 - entry) / risk < profile.min_risk_reward:
+        raise SignalRejected(f'볼린저 상단 기준 손익비가 1:{profile.min_risk_reward:.1f} 미만입니다.')
 
     return {
         'entry_price': entry,
@@ -151,5 +181,6 @@ def build_pullback_signal(hourly_frame, five_minute_frame):
         'hourly_close': trend['close'],
         'risk_reward': (target_1 - entry) / risk,
         'trend': trend,
+        'profile': profile,
     }
 

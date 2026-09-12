@@ -380,6 +380,15 @@
             </select>
         </label>
         <label class="filter-field">
+            <span class="filter-label">전략 버전</span>
+            <select class="filter-input" name="strategy_version">
+                <option value="">전체 버전</option>
+                {% for version in strategy_versions %}
+                    <option value="{{ version }}" {% if selected_strategy_version == version %}selected{% endif %}>{{ version }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="filter-field">
             <span class="filter-label">시작일</span>
             <input class="filter-input" type="date" name="date_from" value="{{ date_from }}">
         </label>
@@ -409,6 +418,7 @@
                 <div class="rec-left">
                     <div class="rec-date">
                         <span class="trade-type-badge trade-type-{{ rec.trade_type }}">{{ rec.get_trade_type_display }}</span>
+                        {% if rec.trade_type == 'danta' %}<span class="trade-type-badge {% if rec.strategy_parameters.profile == 'v2' %}trade-type-swing{% else %}trade-type-danta{% endif %}">{{ rec.strategy_profile_label }}</span>{% endif %}
                         {{ rec.date|date:"y.m.d" }} KST
                     </div>
                     <div class="rec-name">

@@ -76,6 +76,9 @@
     .status-success { background: #f23645; color: #fff; }
     .status-failed { background: #2962ff; color: #fff; }
     .status-closed { background: #555; color: #ccc; }
+    .profile-badge { margin-right:6px; padding:4px 7px; border-radius:4px; font-size:10px; font-weight:700; }
+    .profile-v1 { background:#374151; color:#d1d5db; }
+    .profile-v2 { background:#7c3aed; color:#fff; }
 
     .price-row {
         display: flex;
@@ -150,7 +153,7 @@
 {% block content %}
 <div class="danta-header">
     <div class="danta-title">🔥 1H/5M 눌림목 단타</div>
-    <div class="danta-subtitle">마감봉 기준 · 5분 주기 탐색 · TP1 50% + 1H 추세 청산</div>
+    <div class="danta-subtitle">마감봉 기준 · 5분 주기 탐색 · TP1 부분익절 + 1H 추세 청산</div>
     {% include 'screener/partials/strategy_intro_modal.html' with strategy_kind='danta' %}
 </div>
 
@@ -178,6 +181,7 @@
                     <span class="coin-ticker">{{ rec.coin_ticker }}</span>
                 </div>
                 <div class="status-badge status-{{ rec.status }}">
+                    <span class="profile-badge {% if rec.strategy_parameters.profile == 'v2' %}profile-v2{% else %}profile-v1{% endif %}">{{ rec.strategy_profile_label }}</span>
                     {{ rec.get_status_display }}
                     {% if rec.result_pct %}
                         ({{ rec.result_pct|floatformat:1 }}%)
@@ -196,7 +200,7 @@
             </div>
             {% endif %}
             <div class="price-row">
-                <span class="price-label">1차 목표가 (BB 상단 · 50%)</span>
+                <span class="price-label">1차 목표가 (BB 상단 · {{ rec.first_take_profit_pct }}%)</span>
                 <span class="price-val val-target">{{ rec.target_price|krw_price }}</span>
             </div>
             <div class="price-row">
@@ -222,7 +226,7 @@
             </div>
             <div style="margin-top:20px;">
                 <div class="price-row"><span class="price-label">진입가</span><span class="price-val val-entry">{{ rec.entry_price|krw_price }}</span></div>
-                <div class="price-row"><span class="price-label">1차 목표가 (50%)</span><span class="price-val val-target">{{ rec.target_price|krw_price }}</span></div>
+                <div class="price-row"><span class="price-label">1차 목표가 ({{ rec.first_take_profit_pct }}%)</span><span class="price-val val-target">{{ rec.target_price|krw_price }}</span></div>
                 <div class="price-row"><span class="price-label">초기 손절가</span><span class="price-val val-stop">{{ rec.initial_stop_loss|default:rec.stop_loss|krw_price }}</span></div>
                 <div class="price-row"><span class="price-label">2차 청산</span><span class="price-val" style="color:#aaa">1H 기준선 이탈 또는 전환선·기준선 데드크로스</span></div>
                 {% if rec.strategy_parameters.kijun_distance_pct is not None %}

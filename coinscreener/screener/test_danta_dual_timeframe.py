@@ -3,7 +3,9 @@ from datetime import datetime, timedelta
 import pandas as pd
 from django.test import SimpleTestCase
 
-from .danta_dual_timeframe import SignalRejected, build_pullback_signal
+from .danta_dual_timeframe import (
+    SignalRejected, V2_AGGRESSIVE_PROFILE, build_pullback_signal,
+)
 
 
 class DualTimeframeDantaRuleTestCase(SimpleTestCase):
@@ -78,4 +80,12 @@ class DualTimeframeDantaRuleTestCase(SimpleTestCase):
 
         with self.assertRaisesRegex(SignalRejected, '지지 아래에서 마감'):
             build_pullback_signal(self._hourly_frame(), five_minute)
+
+    def test_aggressive_profile_is_recorded_in_signal(self):
+        signal = build_pullback_signal(
+            self._hourly_frame(), self._five_minute_frame(),
+            profile=V2_AGGRESSIVE_PROFILE,
+        )
+        self.assertEqual(signal['profile'].key, 'v2')
+        self.assertGreaterEqual(signal['risk_reward'], V2_AGGRESSIVE_PROFILE.min_risk_reward)
 

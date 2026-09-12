@@ -80,6 +80,7 @@ def stats_list(request):
     status = request.GET.get('status', '').strip()
     raw_trade_type = request.GET.get('trade_type')
     trade_type = raw_trade_type.strip() if raw_trade_type is not None else 'danta'
+    strategy_version = request.GET.get('strategy_version', '').strip()[:80]
     date_from_raw = request.GET.get('date_from', '').strip()
     date_to_raw = request.GET.get('date_to', '').strip()
     date_from = _parse_filter_date(date_from_raw)
@@ -101,6 +102,14 @@ def stats_list(request):
         recommendations = recommendations.filter(trade_type=trade_type)
     else:
         trade_type = 'danta' if raw_trade_type is None else ''
+    available_strategy_versions = list(
+        DailyRecommendation.objects.exclude(strategy_version='')
+        .values_list('strategy_version', flat=True).distinct().order_by('strategy_version')
+    )
+    if strategy_version in available_strategy_versions:
+        recommendations = recommendations.filter(strategy_version=strategy_version)
+    else:
+        strategy_version = ''
     if date_from:
         recommendations = recommendations.filter(date__gte=date_from)
     if date_to:
@@ -164,6 +173,8 @@ def stats_list(request):
         'query': query,
         'selected_status': status,
         'selected_trade_type': trade_type,
+        'selected_strategy_version': strategy_version,
+        'strategy_versions': available_strategy_versions,
         'date_from': date_from_raw if date_from else '',
         'date_to': date_to_raw if date_to else '',
         'status_choices': DailyRecommendation.status_choices,

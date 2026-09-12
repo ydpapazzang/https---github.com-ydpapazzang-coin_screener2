@@ -481,6 +481,21 @@ class DailyRecommendation(models.Model):
         return self.strategy_version or 'legacy (버전 기록 전)'
 
     @property
+    def strategy_profile_label(self):
+        labels = {
+            'danta-1h5m-pullback-v1.0': 'V1 안정형',
+            'danta-1h5m-pullback-v2-aggressive': 'V2 공격형',
+        }
+        return labels.get(self.strategy_version, self.strategy_version_display)
+
+    @property
+    def first_take_profit_pct(self):
+        try:
+            return int(float(self.strategy_parameters.get('first_take_profit_fraction', 0.5)) * 100)
+        except (TypeError, ValueError):
+            return 50
+
+    @property
     def code_version_short(self):
         if not self.code_version:
             return '-'
@@ -494,7 +509,12 @@ class DailyRecommendation(models.Model):
 
     class Meta:
         ordering = ['-date', 'trade_type', 'coin_ticker']
-        unique_together = ('date', 'coin_ticker', 'trade_type')
+        constraints = [
+            models.UniqueConstraint(
+                fields=('date', 'coin_ticker', 'trade_type', 'strategy_version'),
+                name='unique_daily_recommendation_strategy_version',
+            ),
+        ]
 
     def __str__(self):
         return (
