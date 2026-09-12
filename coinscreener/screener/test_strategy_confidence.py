@@ -5,6 +5,10 @@ from django.urls import reverse
 
 from .models import DailyRecommendation
 from .strategy_confidence import build_confidence_report
+from .danta_dual_timeframe import (
+    AGGRESSIVE_DANTA_STRATEGY_VERSION,
+    DUAL_DANTA_STRATEGY_VERSION,
+)
 
 
 class StrategyConfidenceTestCase(TestCase):
@@ -42,6 +46,24 @@ class StrategyConfidenceTestCase(TestCase):
 
         self.assertEqual(report['strategy_version'], 'new')
         self.assertEqual(report['sample_count'], 0)
+
+    def test_explicit_danta_profile_keeps_v1_and_v2_results_separate(self):
+        today = date(2026, 8, 28)
+        self._record(today, 2, version=DUAL_DANTA_STRATEGY_VERSION)
+        self._record(today, -2, version=AGGRESSIVE_DANTA_STRATEGY_VERSION)
+
+        v1 = build_confidence_report(
+            'danta', today=today, strategy_version=DUAL_DANTA_STRATEGY_VERSION,
+        )
+        v2 = build_confidence_report(
+            'danta', today=today,
+            strategy_version=AGGRESSIVE_DANTA_STRATEGY_VERSION,
+        )
+
+        self.assertEqual(v1['strategy_version'], 'V1 안정형')
+        self.assertEqual(v2['strategy_version'], 'V2 공격형')
+        self.assertAlmostEqual(v1['expectancy_pct'], 1.8)
+        self.assertAlmostEqual(v2['expectancy_pct'], -2.2)
 
     def test_metrics_include_cost_mdd_streak_period_and_regime(self):
         today = date(2026, 8, 28)

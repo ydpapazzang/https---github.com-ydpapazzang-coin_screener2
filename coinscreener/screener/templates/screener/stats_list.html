@@ -330,7 +330,7 @@
     <div class="confidence-heading">전략 신뢰도</div>
     {% for report in confidence_reports %}
     <div class="confidence-card">
-        <div class="confidence-top"><div><b>{{ report.trade_type_label }}</b><div class="confidence-version">{{ report.strategy_version }}</div></div><span class="confidence-grade grade-{{ report.grade|cut:' ' }}">{{ report.grade }}</span></div>
+        <div class="confidence-top"><div><b>{{ report.trade_type_label }} · {{ report.strategy_version }}</b><div class="confidence-version">전략 코드 · {{ report.strategy_code }}</div></div><span class="confidence-grade grade-{{ report.grade|cut:' ' }}">{{ report.grade }}</span></div>
         <div class="confidence-grid">
             <div class="confidence-metric"><div class="confidence-value">{{ report.sample_count }}건</div><div class="confidence-label">확정 표본</div></div>
             <div class="confidence-metric"><div class="confidence-value">{% if report.expectancy_pct != None %}{{ report.expectancy_pct|floatformat:2 }}%{% else %}-{% endif %}</div><div class="confidence-label">비용 후 기대수익</div></div>

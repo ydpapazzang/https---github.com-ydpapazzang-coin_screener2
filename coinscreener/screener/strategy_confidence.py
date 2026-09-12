@@ -64,15 +64,15 @@ def _grade(sample_count, span_days, expectancy, mdd, recent_90):
     return '검증 완료', '표본·기간·기대수익·MDD·최근 성과 기준 통과'
 
 
-def build_confidence_report(trade_type, today=None):
-    """현재 기록 중인 최신 전략 버전만 대상으로 신뢰도를 계산한다."""
+def build_confidence_report(trade_type, today=None, strategy_version=None):
+    """한 전략 버전만 대상으로 신뢰도를 계산한다."""
     today = today or timezone.localdate()
     all_records = DailyRecommendation.objects.filter(trade_type=trade_type)
     latest = all_records.exclude(strategy_version='').order_by(
         '-date', '-created_at', '-id'
     ).first()
-    version = latest.strategy_version if latest else ''
-    version_label = version or 'legacy (버전 기록 전)'
+    version = strategy_version or (latest.strategy_version if latest else '')
+    version_label = DailyRecommendation.strategy_profile_label_for(version)
     base = all_records.exclude(status='skipped')
     versioned = base.filter(strategy_version=version)
     records = list(
@@ -118,6 +118,7 @@ def build_confidence_report(trade_type, today=None):
         'trade_type': trade_type,
         'trade_type_label': dict(DailyRecommendation.trade_type_choices)[trade_type],
         'strategy_version': version_label,
+        'strategy_code': version or 'legacy (버전 기록 전)',
         **overall,
         'span_days': span_days,
         'mdd_pct': mdd,

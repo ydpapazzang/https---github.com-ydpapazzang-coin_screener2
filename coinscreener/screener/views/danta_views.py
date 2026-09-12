@@ -5,6 +5,7 @@ from django.db.models import Q
 from django.shortcuts import render
 from django.utils import timezone
 
+from ..danta_dual_timeframe import DANTA_PROFILES
 from ..models import DailyRecommendation
 from ..strategy_confidence import build_confidence_report
 
@@ -43,6 +44,7 @@ def danta_list(request):
 
     return render(request, 'screener/danta_list.html', {
         'recommendations': recommendations,
+        'danta_profiles': list(DANTA_PROFILES.values()),
         'date': display_date,
     })
 
@@ -184,7 +186,9 @@ def stats_list(request):
         'trade_type_choices': DailyRecommendation.trade_type_choices,
         'filter_query': query_params.urlencode(),
         'confidence_reports': [
-            build_confidence_report('danta'),
+            *(build_confidence_report(
+                'danta', strategy_version=profile.strategy_version,
+            ) for profile in DANTA_PROFILES.values()),
             build_confidence_report('swing'),
         ],
     }
