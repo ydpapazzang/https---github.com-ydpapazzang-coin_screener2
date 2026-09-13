@@ -97,11 +97,11 @@ class StrategyConfidenceTestCase(TestCase):
             '관찰',
         )
 
-    def test_stats_page_displays_both_strategy_reports(self):
+    def test_stats_page_displays_both_danta_profile_reports(self):
         response = self.client.get(reverse('stats_list'))
 
         self.assertContains(response, '전략 신뢰도')
-        self.assertContains(response, '단타')
-        self.assertContains(response, '스윙')
+        self.assertContains(response, 'V1 안정형')
+        self.assertContains(response, 'V2 공격형')
         self.assertContains(response, '데이터 부족')
 

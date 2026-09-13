@@ -42,8 +42,10 @@ urlpatterns = [
     path('cron/scan-debug/',                         views.cron_scan,      name='cron_scan_debug'),
     path('cron/prefetch/',                           views.cron_prefetch,  name='cron_prefetch'),
     
-    # 단타·스윙 추천 및 통계 탭
+    # 단타 V1·V2 추천 및 통계 탭
     path('danta/', views.danta_list, name='danta_list'),
+    path('danta/v1/', views.danta_list, {'profile_key': 'v1'}, name='danta_v1'),
+    path('danta/v2/', views.danta_list, {'profile_key': 'v2'}, name='danta_v2'),
     path('swing/', views.swing_list, name='swing_list'),
     path('stats/', views.stats_list, name='stats_list'),
     path('portfolio/', views.portfolio_list, name='portfolio_list'),

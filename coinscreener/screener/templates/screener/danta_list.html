@@ -155,12 +155,10 @@
 
 {% block content %}
 <div class="danta-header">
-    <div class="danta-title">🔥 1H/5M 눌림목 단타</div>
-    <div class="danta-subtitle">V1 안정형 · V2 공격형 병렬 탐색 · 마감봉 기준</div>
+    <div class="danta-title">{% if profile.key == 'v2' %}🚀{% else %}🔥{% endif %} {{ profile.label }} 1H/5M 눌림목 단타</div>
+    <div class="danta-subtitle">거래대금 상위 {{ profile.universe_limit }}종목 · 마감봉 기준 · 5분 주기 탐색</div>
     <div class="profile-overview" aria-label="운영 중인 단타 전략">
-        {% for profile in danta_profiles %}
-        <span class="{% if profile.key == 'v2' %}overview-v2{% endif %}">{{ profile.label }} · {{ profile.universe_size }}종목</span>
-        {% endfor %}
+        <span class="{% if profile.key == 'v2' %}overview-v2{% endif %}">1차 익절 {{ profile_first_take_profit_pct }}% · 1H 추세 청산</span>
     </div>
     {% include 'screener/partials/strategy_intro_modal.html' with strategy_kind='danta' %}
 </div>
@@ -176,7 +174,7 @@
 <div class="card-list">
     {% if not recommendations %}
         <div style="text-align: center; color: var(--text-secondary); margin-top: 40px;">
-            V1 안정형과 V2 공격형 모두 현재 조건을 만족한 종목이 없습니다.<br>다음 5분봉 마감 뒤 다시 탐색합니다.
+            {{ profile.label }} 조건을 만족한 종목이 없습니다.<br>다음 5분봉 마감 뒤 다시 탐색합니다.
         </div>
     {% elif recommendations.0.status == 'skipped' %}
         {# 휴식/차단 사유 카드는 단타 화면에 표시하지 않는다. #}

@@ -2,7 +2,7 @@ from datetime import date
 
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.utils import timezone
 
 from ..danta_dual_timeframe import DANTA_PROFILES
@@ -19,13 +19,18 @@ def _display_date():
     return display_date
 
 
-def danta_list(request):
-    """오늘의 단타 추천 탭."""
+def danta_list(request, profile_key='v1'):
+    """선택한 단타 프로필(V1 또는 V2)의 오늘 추천 탭."""
     display_date = _display_date()
+    profile = DANTA_PROFILES.get(profile_key, DANTA_PROFILES['v1'])
+    profile_filter = Q(strategy_version=profile.strategy_version)
+    # 버전 기록 전의 과거 단타는 보수적인 V1 화면에서만 조회한다.
+    if profile.key == 'v1':
+        profile_filter |= Q(strategy_version='')
     recommendations = list(DailyRecommendation.objects.filter(
         date=display_date,
         trade_type='danta',
-    ).order_by('-created_at'))
+    ).filter(profile_filter).order_by('-created_at'))
 
     # 탭의 현재가는 저장된 진입가와 구분해 가볍게 일괄 보강한다.
     active_tickers = [
@@ -44,25 +49,17 @@ def danta_list(request):
 
     return render(request, 'screener/danta_list.html', {
         'recommendations': recommendations,
-        'danta_profiles': list(DANTA_PROFILES.values()),
+        'profile': profile,
+        'profile_first_take_profit_pct': round(
+            profile.first_take_profit_fraction * 100,
+        ),
         'date': display_date,
     })
 
 
 def swing_list(request):
-    """스윙 전략 확정을 위한 빈 화면과 향후 저장 데이터의 표시 기반."""
-    display_date = _display_date()
-    recent_cutoff = display_date - timezone.timedelta(days=30)
-    recommendations = DailyRecommendation.objects.filter(
-        Q(status__in=['pending', 'active', 'partial'])
-        | Q(date__gte=recent_cutoff),
-        trade_type='swing',
-    ).order_by('-date', 'coin_ticker')
-
-    return render(request, 'screener/swing_list.html', {
-        'recommendations': recommendations,
-        'date': display_date,
-    })
+    """중지한 스윙 화면의 기존 주소는 단타 V1으로 보낸다."""
+    return redirect('danta_v1')
 
 
 def _parse_filter_date(raw_value):
@@ -189,7 +186,6 @@ def stats_list(request):
             *(build_confidence_report(
                 'danta', strategy_version=profile.strategy_version,
             ) for profile in DANTA_PROFILES.values()),
-            build_confidence_report('swing'),
         ],
     }
     return render(request, 'screener/stats_list.html', context)

@@ -8,6 +8,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .management.commands.update_upbit_cache import Command
+from .danta_dual_timeframe import (
+    AGGRESSIVE_DANTA_STRATEGY_VERSION,
+    DUAL_DANTA_STRATEGY_VERSION,
+)
 from .models import DailyRecommendation
 
 
@@ -149,11 +153,39 @@ class StatsListViewTestCase(TestCase):
             for rec in response.context['recommendations']
         ))
 
+    @patch(
+        'coinscreener.screener.views.danta_views._display_date',
+        return_value=timezone.localdate(),
+    )
+    def test_danta_v1_and_v2_pages_show_only_their_profile(self, _mock_display_date):
+        self._recommendation(
+            coin_ticker='KRW-V1', strategy_version=DUAL_DANTA_STRATEGY_VERSION,
+        )
+        self._recommendation(
+            coin_ticker='KRW-V2',
+            strategy_version=AGGRESSIVE_DANTA_STRATEGY_VERSION,
+        )
+
+        v1 = self.client.get(reverse('danta_v1'))
+        v2 = self.client.get(reverse('danta_v2'))
+
+        self.assertContains(v1, 'V1 안정형')
+        self.assertContains(v2, 'V2 공격형')
+        self.assertIn(
+            'KRW-V1', [rec.coin_ticker for rec in v1.context['recommendations']],
+        )
+        self.assertNotIn(
+            'KRW-V1', [rec.coin_ticker for rec in v2.context['recommendations']],
+        )
+        self.assertEqual(
+            [rec.coin_ticker for rec in v2.context['recommendations']], ['KRW-V2'],
+        )
+
     def test_existing_records_default_to_danta(self):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
         self.assertEqual(recommendation.trade_type, 'danta')
 
-    def test_swing_page_describes_live_strategy(self):
+    def test_disabled_swing_page_redirects_to_danta_v1(self):
         DailyRecommendation.objects.create(
             date=timezone.localdate(),
             trade_type='swing',
@@ -169,13 +201,7 @@ class StatsListViewTestCase(TestCase):
         )
         response = self.client.get(reverse('swing_list'))
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '일봉 추세 돌파')
-        self.assertContains(response, '진입가 (20일 돌파)')
-        self.assertContains(response, '1차 목표가 (2R·50%)')
-        self.assertContains(response, 'EMA20·3ATR 추적')
-        self.assertContains(response, '초기 손절가')
-        self.assertContains(response, '1회 위험 한도 자산의 0.5%')
+        self.assertRedirects(response, reverse('danta_v1'))
 
     def test_max_profit_property_uses_highest_observed_price(self):
         recommendation = DailyRecommendation.objects.get(coin_ticker='KRW-BTC')
