@@ -96,23 +96,28 @@ class StatsListViewTestCase(TestCase):
         self.assertEqual(response.context['selected_trade_type'], '')
         self.assertEqual(response.context['date_from'], '')
 
-    def test_trade_type_filter_distinguishes_danta_and_swing(self):
+    def test_trade_type_filter_distinguishes_danta_v1_v2_and_all(self):
         self._recommendation(
-            trade_type='swing',
-            status='pending',
-            result_pct=None,
-            highest_price=None,
+            coin_ticker='KRW-V1', strategy_version=DUAL_DANTA_STRATEGY_VERSION,
+        )
+        self._recommendation(
+            coin_ticker='KRW-V2',
+            strategy_version=AGGRESSIVE_DANTA_STRATEGY_VERSION,
         )
 
-        response = self.client.get(reverse('stats_list'), {
-            'trade_type': 'swing',
-        })
+        v1 = self.client.get(reverse('stats_list'), {'trade_type': 'danta_v1'})
+        v2 = self.client.get(reverse('stats_list'), {'trade_type': 'danta_v2'})
+        all_profiles = self.client.get(
+            reverse('stats_list'), {'trade_type': 'danta_all'},
+        )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['total'], 1)
-        recommendation = response.context['recommendations'][0]
-        self.assertEqual(recommendation.trade_type, 'swing')
-        self.assertContains(response, '스윙')
+        self.assertEqual(v1.context['selected_trade_type'], 'danta_v1')
+        self.assertIn('KRW-V1', [rec.coin_ticker for rec in v1.context['recommendations']])
+        self.assertNotIn('KRW-V2', [rec.coin_ticker for rec in v1.context['recommendations']])
+        self.assertEqual(
+            [rec.coin_ticker for rec in v2.context['recommendations']], ['KRW-V2'],
+        )
+        self.assertEqual(all_profiles.context['total'], 5)
 
     def test_skipped_recommendation_shows_rest_reason_in_summary(self):
         self._recommendation(

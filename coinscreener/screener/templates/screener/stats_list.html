@@ -373,7 +373,9 @@
         <label class="filter-field">
             <span class="filter-label">매매 유형</span>
             <select class="filter-input" name="trade_type">
-                <option value="danta" selected>단타 V1 + V2</option>
+                <option value="danta_v1" {% if selected_trade_type == 'danta_v1' %}selected{% endif %}>단타 V1</option>
+                <option value="danta_v2" {% if selected_trade_type == 'danta_v2' %}selected{% endif %}>단타 V2</option>
+                <option value="danta_all" {% if selected_trade_type == 'danta_all' %}selected{% endif %}>모두</option>
             </select>
         </label>
         <label class="filter-field">
@@ -395,7 +397,7 @@
         </label>
         <div class="filter-actions">
             <button class="filter-button" type="submit">조회</button>
-            <button id="stats-filter-reset" class="filter-reset" type="button" data-reset-url="{% url 'stats_list' %}?trade_type=danta">초기화</button>
+            <button id="stats-filter-reset" class="filter-reset" type="button" data-reset-url="{% url 'stats_list' %}?trade_type=danta_all">초기화</button>
         </div>
     </div>
     <div class="filter-count">조건에 맞는 성적 {{ total }}건</div>

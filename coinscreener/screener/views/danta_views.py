@@ -78,7 +78,7 @@ def stats_list(request):
     query = request.GET.get('q', '').strip()[:50]
     status = request.GET.get('status', '').strip()
     raw_trade_type = request.GET.get('trade_type')
-    trade_type = raw_trade_type.strip() if raw_trade_type is not None else 'danta'
+    trade_type = raw_trade_type.strip() if raw_trade_type is not None else 'danta_all'
     strategy_version = request.GET.get('strategy_version', '').strip()[:80]
     date_from_raw = request.GET.get('date_from', '').strip()
     date_to_raw = request.GET.get('date_to', '').strip()
@@ -86,9 +86,6 @@ def stats_list(request):
     date_to = _parse_filter_date(date_to_raw)
 
     valid_statuses = {value for value, _label in DailyRecommendation.status_choices}
-    valid_trade_types = {
-        value for value, _label in DailyRecommendation.trade_type_choices
-    }
     if query:
         recommendations = recommendations.filter(
             Q(coin_name__icontains=query) | Q(coin_ticker__icontains=query)
@@ -97,12 +94,22 @@ def stats_list(request):
         recommendations = recommendations.filter(status=status)
     else:
         status = ''
-    if trade_type in valid_trade_types:
-        recommendations = recommendations.filter(trade_type=trade_type)
-    else:
-        trade_type = 'danta' if raw_trade_type is None else ''
+    # 스윙은 운영을 중지했으므로 성적표도 단타 V1·V2만 제공한다.
+    danta_profiles = DANTA_PROFILES
+    recommendations = recommendations.filter(trade_type='danta')
+    if trade_type == 'danta_v1':
+        recommendations = recommendations.filter(
+            Q(strategy_version=danta_profiles['v1'].strategy_version)
+            | Q(strategy_version=''),
+        )
+    elif trade_type == 'danta_v2':
+        recommendations = recommendations.filter(
+            strategy_version=danta_profiles['v2'].strategy_version,
+        )
+    elif trade_type != 'danta_all':
+        trade_type = ''
     available_strategy_versions = list(
-        DailyRecommendation.objects.exclude(strategy_version='')
+        DailyRecommendation.objects.filter(trade_type='danta').exclude(strategy_version='')
         .values_list('strategy_version', flat=True).distinct().order_by('strategy_version')
     )
     if strategy_version in available_strategy_versions:
@@ -180,7 +187,6 @@ def stats_list(request):
         'date_from': date_from_raw if date_from else '',
         'date_to': date_to_raw if date_to else '',
         'status_choices': DailyRecommendation.status_choices,
-        'trade_type_choices': DailyRecommendation.trade_type_choices,
         'filter_query': query_params.urlencode(),
         'confidence_reports': [
             *(build_confidence_report(
