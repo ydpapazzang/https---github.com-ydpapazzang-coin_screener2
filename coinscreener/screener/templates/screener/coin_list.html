@@ -302,7 +302,7 @@
 
 <!-- List Controls -->
 <div class="list-controls">
-    <div class="stats">포착: {{ results|length }}개{% if elapsed_time %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">({{ elapsed_time }}초 소요)</span>{% endif %}{% if data_freshness != None %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">데이터 최신 {{ data_freshness }}%</span>{% endif %}</div>
+    <div class="stats">포착: {{ results|length }}개{% if is_fast_result %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">최근 결과 즉시 표시</span>{% elif elapsed_time %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">({{ elapsed_time }}초 소요)</span>{% endif %}{% if data_freshness != None %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">데이터 최신 {{ data_freshness }}%</span>{% endif %}</div>
     <div style="display:flex; align-items:center; gap:10px;">
         {% if request.GET.exchange != 'kospi' and request.GET.exchange != 'bithumb' and results %}
         <button type="button" class="results-backtest-btn" onclick="openResultsBacktest()">📈 백테스팅</button>

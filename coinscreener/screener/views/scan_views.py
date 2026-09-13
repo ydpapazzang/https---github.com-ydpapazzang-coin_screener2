@@ -3,8 +3,11 @@ import logging
 import traceback
 import concurrent.futures
 from datetime import datetime
+from urllib.parse import urlencode
 from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 from django.http import JsonResponse, StreamingHttpResponse, HttpResponseForbidden, HttpResponse
 from django.utils import timezone
 from django.contrib import messages
@@ -47,6 +50,10 @@ _PARSED_OHLCV_MAX = 450  # 티커×타임프레임 상한(1GB 서버 메모리 �
 #   vol_limit=0(전체)로 들어와도, 거래대금 정렬을 신뢰할 수 있는 거래소는
 #   상위 N개만 스캔해 속도를 높인다. full=1이면 진짜 전체를 스캔한다.
 DEFAULT_SCAN_LIMIT = 150
+# 기본 검색은 최근 결과를 먼저 보여 주고, 화면의 업데이트/자동 스캔(refresh=1)는
+# 항상 새로 계산한다. 분봉 전략도 오래된 결과를 보이지 않게 실제 봉 주기보다
+# 길게 저장하지 않는다.
+RESULT_CACHE_MAX_SECONDS = 300
 
 
 def _exchange_is_enabled(exchange):
@@ -62,6 +69,35 @@ def _effective_scan_limit(exchange, vol_limit, full=False):
     if vol_limit == 0 and not full and exchange in ('upbit', 'kospi'):
         return DEFAULT_SCAN_LIMIT
     return vol_limit
+
+
+def _result_cache_max_age(conditions):
+    """전략이 사용하는 가장 짧은 봉 주기 안에서만 결과를 빠르게 재사용한다."""
+    from ..engine import max_cache_age
+
+    if not conditions:
+        return 0
+    return min(
+        RESULT_CACHE_MAX_SECONDS,
+        *(max_cache_age(condition.timeframe) for condition in conditions),
+    )
+
+
+def _has_recent_saved_result(cache_key, conditions):
+    """DB에 저장된 최근 스캔 결과가 빠른 조회에 사용 가능한지 판정한다."""
+    try:
+        payload = OHLCVCache.objects.only('data').get(
+            ticker=cache_key, timeframe='RESULT',
+        ).data
+        completed_at = parse_datetime(payload.get('last_updated', ''))
+        if completed_at is None:
+            return False
+        if timezone.is_naive(completed_at):
+            completed_at = timezone.make_aware(completed_at)
+        age_seconds = (timezone.now() - completed_at).total_seconds()
+        return 0 <= age_seconds <= _result_cache_max_age(conditions)
+    except (OHLCVCache.DoesNotExist, TypeError, ValueError):
+        return False
 
 
 
@@ -319,9 +355,20 @@ def coin_search(request, strategy_id):
     tf_override = request.GET.get('timeframe')
     tf_suffix = f"_{tf_override}" if tf_override else ""
 
-    # 무조건 새로 검색하기 위해 캐시 조회를 제거하고 로딩 페이지로 바로 진입합니다.
+    cache_key = f"strategy_results_{strategy_id}_{exchange}_{vol_limit}{tf_suffix}"
+    # 일반 조회는 최근 계산 결과를 즉시 표시한다. 사용자가 업데이트를 누르거나
+    # 자동 스캔을 쓰면 refresh=1로 이 분기를 건너뛰어 항상 새로 계산한다.
+    if request.GET.get('refresh') != '1' and _has_recent_saved_result(
+        cache_key, conditions,
+    ):
+        query = {'exchange': exchange, 'vol_limit': vol_limit, 'cached': '1'}
+        if tf_override:
+            query['timeframe'] = tf_override
+        return redirect(
+            f"{reverse('coin_search_results', args=[strategy_id])}?{urlencode(query)}"
+        )
 
-    # 캐시 없음 → 로딩 페이지 (JS가 SSE로 진행)
+    # 새 결과가 없거나 명시적으로 갱신한 경우 로딩 페이지(JS가 SSE로 진행).
     send_telegram = request.GET.get('send_telegram', '0')
     if send_telegram == '1':
         # 텔레그램은 사이트의 단일 봇/채팅방으로 전송되므로, 공용 샘플이나
@@ -691,9 +738,9 @@ def coin_search_stream(request, strategy_id):
         scan_limit = _effective_scan_limit(exchange, vol_limit, full_scan)
         _t_tickers0 = time.perf_counter()
         tickers_data = _get_tickers(exchange, scan_limit)
-        # 목록 캐시가 적중해도 검색 결과는 현재 가격·등락률·24시간 거래대금을 사용한다.
-        if exchange == 'upbit':
-            _enrich_upbit_ticker_snapshot(tickers_data)
+        # _get_tickers는 원본 조회 때 이미 업비트 시세 스냅샷을 보강하고, 그 결과를
+        # 짧게 캐시한다. 여기서 다시 API를 호출하면 한 번의 수동 검색에 같은 요청이
+        # 두 번 발생해 4~5초가 낭비된다.
         t_tickers = time.perf_counter() - _t_tickers0
         total   = len(tickers_data)
 
@@ -947,6 +994,7 @@ def coin_search_results(request, strategy_id):
         'strategy':           strategy,
         'rate_limit_warning': cached_data['rate_limit_warning'],
         'is_cached':          False,
+        'is_fast_result':     request.GET.get('cached') == '1',
         'last_updated':       cached_data.get('last_updated'),
         'elapsed_time':       cached_data.get('elapsed_time'),
         'data_freshness':     cached_data.get('data_freshness'),
