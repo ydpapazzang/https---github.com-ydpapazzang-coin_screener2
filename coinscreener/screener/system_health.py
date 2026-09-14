@@ -13,7 +13,10 @@ from .models import OHLCVCache
 
 CACHE_CRITICAL_MINUTES = 60
 MEMORY_CRITICAL_PCT = 8
-MEMORY_WARNING_PCT = 15
+# 1GB VM에서는 헬스체크용 Django 프로세스 자체가 약 100MB를 잠시 사용한다.
+# 경고 기준을 15%로 두면 그 일시적인 사용량만으로 정상 복구 알림이 반복된다.
+# 10% 아래부터 경고하고 8% 아래는 즉시 장애로 처리해, 실제 메모리 압박은 계속 알린다.
+MEMORY_WARNING_PCT = 10
 DISK_CRITICAL_PCT = 10
 
 
