@@ -129,7 +129,57 @@
     .card-left {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 12px;
+    }
+    .favorite-star-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.25);
+        transition: color 0.15s ease, transform 0.15s ease;
+        border-radius: 4px;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .favorite-star-btn:hover {
+        color: rgba(255, 255, 255, 0.6);
+    }
+    .favorite-star-btn.active {
+        color: #f59e0b;
+    }
+    .favorite-star-btn:active {
+        transform: scale(1.25);
+    }
+    .favorite-star-btn .star-icon {
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
+    }
+    .toast-popup {
+        position: fixed;
+        bottom: 75px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(24, 26, 32, 0.95);
+        color: #fff;
+        padding: 10px 18px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+        border: 1px solid rgba(255,255,255,0.12);
+        z-index: 2000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        white-space: nowrap;
+    }
+    .toast-popup.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-4px);
     }
     .rank {
         color: var(--primary-color);
@@ -317,6 +367,14 @@
         {% for r in results %}
         <div class="coin-card" data-ticker="{{ r.symbol }}" data-volume="{{ r.volume|default:0 }}" data-change="{{ r.change_rate|default:0 }}" data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}" onclick="window.open('{% if request.GET.exchange == "kospi" %}https://stock.naver.com/domestic/stock/{{ r.symbol }}/price{% elif request.GET.exchange == "bithumb" %}https://www.bithumb.com/react/trade/order/{{ r.symbol }}_KRW{% else %}https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}{% endif %}', '_blank')">
             <div class="card-left">
+                <button type="button" class="favorite-star-btn {% if r.symbol in favorite_tickers %}active{% endif %}"
+                        data-ticker="{{ r.symbol }}"
+                        data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}"
+                        data-exchange="{{ exchange|default:'upbit' }}"
+                        onclick="toggleFavorite(event, this)"
+                        title="즐겨찾기">
+                    <svg class="star-icon" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                </button>
                 <div class="rank">{{ forloop.counter }}</div>
                 <div class="coin-info">
                     <div class="coin-name">
@@ -356,6 +414,8 @@
 {% if request.GET.exchange != 'kospi' and request.GET.exchange != 'bithumb' and results %}
 {% include "screener/backtest_modal.html" %}
 {% endif %}
+
+<div id="toast-msg" class="toast-popup" style="display:none;"></div>
 {% endblock %}
 
 {% block extra_js %}
@@ -506,6 +566,52 @@
                 }
             }
         }, 200);
+    }
+
+    /* ──── 즐겨찾기 (Favorite) 토글 ──── */
+    let toastTimer = null;
+    function showToast(msg) {
+        const toast = document.getElementById('toast-msg');
+        if (!toast) return;
+        toast.textContent = msg;
+        toast.style.display = 'block';
+        setTimeout(() => toast.classList.add('show'), 10);
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.style.display = 'none', 200);
+        }, 2000);
+    }
+
+    async function toggleFavorite(e, btn) {
+        e.stopPropagation();
+        const ticker = btn.dataset.ticker;
+        const name = btn.dataset.name;
+        const exchange = btn.dataset.exchange || 'upbit';
+        
+        btn.disabled = true;
+        try {
+            const resp = await secureFetch('/favorites/toggle/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ticker: ticker, name: name, exchange: exchange })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                if (data.favorited) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+                showToast(data.message);
+            } else {
+                showToast(data.error || '즐겨찾기 처리 실패');
+            }
+        } catch (err) {
+            showToast('네트워크 오류가 발생했습니다.');
+        } finally {
+            btn.disabled = false;
+        }
     }
 </script>
 {% endblock %}

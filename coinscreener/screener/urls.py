@@ -42,6 +42,14 @@ urlpatterns = [
     path('cron/scan-debug/',                         views.cron_scan,      name='cron_scan_debug'),
     path('cron/prefetch/',                           views.cron_prefetch,  name='cron_prefetch'),
     
+    # 즐겨찾기
+    path('favorites/',                               views.favorite_list,           name='favorite_list'),
+    path('favorites/toggle/',                        views.favorite_toggle,         name='favorite_toggle'),
+    path('favorites/add/',                           views.favorite_add,            name='favorite_add'),
+    path('favorites/<int:favorite_id>/update/',      views.favorite_update,         name='favorite_update'),
+    path('favorites/<int:favorite_id>/delete/',      views.favorite_delete,         name='favorite_delete'),
+    path('favorites/search-tickers/',                views.favorite_search_tickers, name='favorite_search_tickers'),
+
     # 모의 포트폴리오
     path('portfolio/', views.portfolio_list, name='portfolio_list'),
     path('portfolio/add/<int:recommendation_id>/', views.portfolio_add, name='portfolio_add'),

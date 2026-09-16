@@ -1010,6 +1010,12 @@ def coin_search_results(request, strategy_id):
     if not cached_data:
         return redirect('coin_search', strategy_id=strategy_id)
 
+    from ..models import Favorite
+    owner_key = get_owner_key(request)
+    favorite_tickers = set(
+        Favorite.objects.filter(owner_key=owner_key).values_list('ticker', flat=True)
+    )
+
     return render(request, 'screener/coin_list.html', {
         'results':            cached_data['results'],
         'strategy':           strategy,
@@ -1019,5 +1025,6 @@ def coin_search_results(request, strategy_id):
         'last_updated':       cached_data.get('last_updated'),
         'elapsed_time':       cached_data.get('elapsed_time'),
         'data_freshness':     cached_data.get('data_freshness'),
+        'favorite_tickers':   favorite_tickers,
     })
 

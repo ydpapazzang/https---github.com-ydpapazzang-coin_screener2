@@ -197,6 +197,10 @@
                 <svg class="nav-icon" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
                 <span>홈</span>
             </a>
+            <a href="{% url 'favorite_list' %}" class="nav-item {% if request.resolver_match.url_name == 'favorite_list' %}active{% endif %}">
+                <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                <span>즐겨찾기</span>
+            </a>
             <a href="{% url 'strategy_trading_root' %}" class="nav-item {% if request.resolver_match.url_name == 'strategy_trading_root' or request.resolver_match.url_name == 'strategy_trading' %}active{% endif %}">
                 <svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H4V5h16v14zM14 7h4v2h-4V7zm0 4h4v2h-4v-2zM6 7h6v6H6V7zm0 8h12v2H6v-2z"/></svg>
                 <span>백테스팅</span>

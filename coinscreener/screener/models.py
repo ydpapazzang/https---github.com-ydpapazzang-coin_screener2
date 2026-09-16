@@ -589,3 +589,33 @@ class PaperPosition(models.Model):
     def __str__(self):
         return f"{self.coin_ticker} {self.get_status_display()}"
 
+
+class Favorite(models.Model):
+    """사용자별 관심(즐겨찾기) 종목"""
+    owner_key = models.CharField(max_length=64, db_index=True, verbose_name="소유자 세션키")
+    exchange = models.CharField(max_length=20, default='upbit', verbose_name="거래소")
+    ticker = models.CharField(max_length=50, db_index=True, verbose_name="티커")
+    name = models.CharField(max_length=100, verbose_name="종목명")
+    memo = models.CharField(max_length=200, blank=True, default='', verbose_name="메모")
+    target_price = models.FloatField(null=True, blank=True, verbose_name="목표가")
+    order = models.IntegerField(default=0, verbose_name="정렬 순서")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="등록일시")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일시")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=('owner_key', 'exchange', 'ticker'),
+                name='unique_owner_exchange_ticker_favorite',
+            ),
+        ]
+        ordering = ['order', '-created_at']
+        indexes = [
+            models.Index(fields=['owner_key', 'exchange']),
+            models.Index(fields=['owner_key', 'ticker']),
+        ]
+
+    def __str__(self):
+        return f"[{self.exchange}] {self.name} ({self.ticker})"
+
+

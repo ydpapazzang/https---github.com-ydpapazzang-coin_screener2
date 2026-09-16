@@ -1,0 +1,781 @@
+{% extends 'screener/base.html' %}
+{% load static %}
+
+{% block title %}즐겨찾기 - wonii screener{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Top App Bar */
+    .top-app-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-color);
+        background-color: var(--bg-color);
+        position: sticky;
+        top: 0;
+        z-index: 90;
+    }
+    .top-app-bar .title {
+        font-size: 18px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .btn-add-favorite {
+        background: var(--primary-color);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: opacity 0.15s ease;
+    }
+    .btn-add-favorite:active { opacity: 0.8; }
+
+    /* Search Bar */
+    .result-search-bar {
+        padding: 12px 20px;
+        background: var(--bg-color);
+        border-bottom: 1px solid var(--border-color);
+    }
+    .result-search-input {
+        width: 100%;
+        background: var(--surface-color);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 10px 14px;
+        border-radius: 8px;
+        font-size: 14px;
+        outline: none;
+        box-sizing: border-box;
+    }
+    .result-search-input:focus {
+        border-color: var(--primary-color);
+    }
+
+    /* Tabs */
+    .tabs {
+        display: flex;
+        border-bottom: 1px solid var(--border-color);
+        background-color: var(--bg-color);
+    }
+    .tab {
+        flex: 1;
+        text-align: center;
+        padding: 12px 0;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        position: relative;
+        text-decoration: none;
+    }
+    .tab.active {
+        color: var(--text-primary);
+    }
+    .tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        background-color: var(--text-primary);
+    }
+
+    /* List Controls */
+    .list-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 20px;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    /* Coin List */
+    .coin-list {
+        display: flex;
+        flex-direction: column;
+        padding-bottom: 80px;
+    }
+    .fav-card {
+        display: flex;
+        flex-direction: column;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        background: var(--bg-color);
+        transition: background 0.15s ease;
+    }
+    .fav-card-main {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 20px;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .fav-card-main:active {
+        background-color: var(--surface-color);
+    }
+    .card-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .favorite-star-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #f59e0b;
+        transition: transform 0.15s ease;
+        border-radius: 4px;
+    }
+    .favorite-star-btn:active { transform: scale(1.25); }
+    .favorite-star-btn .star-icon {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+    }
+    .coin-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .coin-name-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .coin-name {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .coin-symbol {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+    .badge-exchange {
+        font-size: 10px;
+        font-weight: 600;
+        padding: 2px 5px;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.08);
+        color: var(--text-secondary);
+        text-transform: uppercase;
+    }
+    .card-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+    }
+    .memo-tag {
+        color: var(--primary-color);
+        background: rgba(45, 123, 254, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        max-width: 140px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .target-tag {
+        color: #10b981;
+        background: rgba(16, 185, 129, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+    .card-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+    }
+    .price-change {
+        font-size: 14px;
+        font-weight: 700;
+    }
+    .price-change.up { color: var(--up-color); }
+    .price-change.down { color: var(--down-color); }
+    .current-price {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+
+    /* Actions Bar */
+    .fav-card-actions {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 20px 12px;
+        background: var(--bg-color);
+    }
+    .btn-action-small {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        color: var(--text-secondary);
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: background 0.15s ease, color 0.15s ease;
+    }
+    .btn-action-small:hover {
+        background: rgba(255,255,255,0.12);
+        color: var(--text-primary);
+    }
+    .btn-action-small.btn-delete:hover {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+        border-color: rgba(239, 68, 68, 0.3);
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 70px 20px;
+        color: var(--text-secondary);
+    }
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state .title { font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+    .empty-state .desc { font-size: 13px; line-height: 1.5; margin-bottom: 20px; }
+
+    /* Modals */
+    .modal-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.65);
+        backdrop-filter: blur(4px);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 1200;
+        padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal-box {
+        background: var(--surface-color);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        width: 100%;
+        max-width: 420px;
+        padding: 24px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .modal-header h3 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .modal-close {
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        font-size: 20px;
+        cursor: pointer;
+        padding: 0;
+    }
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        position: relative;
+    }
+    .form-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+    .form-input, .form-select {
+        background: var(--bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 10px 12px;
+        color: var(--text-primary);
+        font-size: 14px;
+        outline: none;
+    }
+    .form-input:focus, .form-select:focus {
+        border-color: var(--primary-color);
+    }
+    .autocomplete-list {
+        position: absolute;
+        top: 100%;
+        left: 0; right: 0;
+        background: var(--surface-color);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        max-height: 180px;
+        overflow-y: auto;
+        z-index: 1300;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        display: none;
+    }
+    .autocomplete-item {
+        padding: 10px 14px;
+        display: flex;
+        justify-content: space-between;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(255,255,255,0.03);
+        font-size: 13px;
+    }
+    .autocomplete-item:hover {
+        background: rgba(255,255,255,0.06);
+    }
+    .btn-submit {
+        background: var(--primary-color);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: opacity 0.15s ease;
+        margin-top: 6px;
+    }
+    .btn-submit:active { opacity: 0.8; }
+
+    /* Toast */
+    .toast-popup {
+        position: fixed;
+        bottom: 75px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(24, 26, 32, 0.95);
+        color: #fff;
+        padding: 10px 18px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 600;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+        border: 1px solid rgba(255,255,255,0.12);
+        z-index: 2000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        white-space: nowrap;
+    }
+    .toast-popup.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-4px);
+    }
+</style>
+{% endblock %}
+
+{% block topbar %}
+<header class="top-app-bar">
+    <div class="title">⭐ 즐겨찾기</div>
+    <button type="button" class="btn-add-favorite" onclick="openAddModal()">
+        <span>+ 종목 추가</span>
+    </button>
+</header>
+{% endblock %}
+
+{% block content %}
+<!-- Search Filter -->
+<div class="result-search-bar">
+    <input type="text" id="fav-search" class="result-search-input" placeholder="즐겨찾기 종목 검색..." onkeyup="filterFavorites()">
+</div>
+
+<!-- Exchange Filter Tabs -->
+<div class="tabs">
+    <a href="{% url 'favorite_list' %}" class="tab {% if not selected_exchange %}active{% endif %}">전체</a>
+    <a href="{% url 'favorite_list' %}?exchange=upbit" class="tab {% if selected_exchange == 'upbit' %}active{% endif %}">업비트</a>
+    <a href="{% url 'favorite_list' %}?exchange=bithumb" class="tab {% if selected_exchange == 'bithumb' %}active{% endif %}">빗썸</a>
+    <a href="{% url 'favorite_list' %}?exchange=kospi" class="tab {% if selected_exchange == 'kospi' %}active{% endif %}">코스피</a>
+</div>
+
+<!-- List Controls -->
+<div class="list-controls">
+    <div id="fav-count">총 {{ total_count }}개 관심 종목</div>
+    <div style="font-size:11px; color:var(--text-secondary);">카드를 누르면 차트가 열립니다</div>
+</div>
+
+<!-- Favorite List -->
+<div class="coin-list" id="fav-container">
+    {% if favorites %}
+        {% for f in favorites %}
+        <div class="fav-card" id="fav-row-{{ f.id }}" data-id="{{ f.id }}" data-ticker="{{ f.ticker }}" data-name="{{ f.name }}" data-memo="{{ f.memo|default:'' }}" data-target="{{ f.target_price|default:'' }}">
+            <div class="fav-card-main" onclick="openChart('{{ f.exchange }}', '{{ f.ticker }}')">
+                <div class="card-left">
+                    <button type="button" class="favorite-star-btn active" onclick="deleteFavorite(event, {{ f.id }}, '{{ f.name|escapejs }}')" title="즐겨찾기 해제">
+                        <svg class="star-icon" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                    </button>
+                    <div class="coin-info">
+                        <div class="coin-name-row">
+                            <span class="coin-name">{{ f.name }}</span>
+                            <span class="coin-symbol">{{ f.ticker }}</span>
+                            <span class="badge-exchange">{{ f.exchange }}</span>
+                        </div>
+                        <div class="card-meta">
+                            {% if f.memo %}
+                            <span class="memo-tag" title="{{ f.memo }}">📝 {{ f.memo }}</span>
+                            {% endif %}
+                            {% if f.target_price %}
+                            <span class="target-tag">🎯 목표가 {{ f.target_price|floatformat:0 }}원</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="card-right">
+                    {% if f.current_price %}
+                    <div class="price-change {% if f.change_rate > 0 %}up{% elif f.change_rate < 0 %}down{% endif %}">
+                        {% if f.change_rate > 0 %}+{% endif %}{{ f.change_rate|default:0|floatformat:2 }}%
+                    </div>
+                    <div class="current-price">{{ f.current_price|floatformat:0 }}원</div>
+                    {% else %}
+                    <div class="current-price" style="font-size:12px;">시세 조회</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="fav-card-actions">
+                <button type="button" class="btn-action-small" onclick="openEditModal({{ f.id }}, '{{ f.name|escapejs }}', '{{ f.ticker }}', '{{ f.memo|escapejs }}', '{{ f.target_price|default:'' }}')">
+                    ✏️ 메모/목표가 수정
+                </button>
+                <button type="button" class="btn-action-small btn-delete" onclick="deleteFavorite(event, {{ f.id }}, '{{ f.name|escapejs }}')">
+                    🗑️ 삭제
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">
+            <div class="icon">⭐</div>
+            <div class="title">등록된 즐겨찾기 종목이 없습니다</div>
+            <div class="desc">전략 검색 결과 화면에서 별표(★)를 누르거나,<br>상단의 [+ 종목 추가] 버튼으로 관심 종목을 등록해보세요!</div>
+            <button type="button" class="btn-add-favorite" style="margin: 0 auto;" onclick="openAddModal()">
+                + 종목 직접 추가하기
+            </button>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Modal: Add Favorite -->
+<div class="modal-overlay" id="modal-add" onclick="closeModalOnBg(event, 'modal-add')">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>⭐ 관심 종목 추가</h3>
+            <button type="button" class="modal-close" onclick="closeModal('modal-add')">✕</button>
+        </div>
+        <div class="form-group">
+            <label class="form-label">거래소 선택</label>
+            <select id="add-exchange" class="form-select" onchange="onExchangeChange()">
+                <option value="upbit">업비트 (Upbit)</option>
+                <option value="bithumb">빗썸 (Bithumb)</option>
+                <option value="kospi">코스피/ETF (KOSPI)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">종목 검색</label>
+            <input type="text" id="add-ticker-search" class="form-input" placeholder="비트코인, KRW-BTC, 삼성전자 등..." autocomplete="off" oninput="searchTickersLive(this.value)">
+            <input type="hidden" id="add-ticker-val">
+            <input type="hidden" id="add-name-val">
+            <div class="autocomplete-list" id="autocomplete-box"></div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">메모 (선택사항)</label>
+            <input type="text" id="add-memo" class="form-input" placeholder="예: 5분봉 골든크로스 매수 대기" maxlength="100">
+        </div>
+        <div class="form-group">
+            <label class="form-label">목표가 (선택사항)</label>
+            <input type="number" id="add-target-price" class="form-input" placeholder="예: 95000000">
+        </div>
+        <button type="button" class="btn-submit" onclick="submitAddFavorite()">즐겨찾기에 추가</button>
+    </div>
+</div>
+
+<!-- Modal: Edit Favorite -->
+<div class="modal-overlay" id="modal-edit" onclick="closeModalOnBg(event, 'modal-edit')">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3 id="edit-modal-title">✏️ 즐겨찾기 수정</h3>
+            <button type="button" class="modal-close" onclick="closeModal('modal-edit')">✕</button>
+        </div>
+        <input type="hidden" id="edit-fav-id">
+        <div class="form-group">
+            <label class="form-label">메모</label>
+            <input type="text" id="edit-memo" class="form-input" placeholder="관심 사유나 진입 전략 메모" maxlength="100">
+        </div>
+        <div class="form-group">
+            <label class="form-label">목표가 (원)</label>
+            <input type="number" id="edit-target-price" class="form-input" placeholder="목표 가격">
+        </div>
+        <button type="button" class="btn-submit" onclick="submitEditFavorite()">저장하기</button>
+    </div>
+</div>
+
+<!-- Toast Popup -->
+<div id="toast-msg" class="toast-popup" style="display:none;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    /* ──── Toast Message ──── */
+    let toastTimer = null;
+    function showToast(msg) {
+        const toast = document.getElementById('toast-msg');
+        if (!toast) return;
+        toast.textContent = msg;
+        toast.style.display = 'block';
+        setTimeout(() => toast.classList.add('show'), 10);
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.style.display = 'none', 200);
+        }, 2000);
+    }
+
+    /* ──── Chart Link ──── */
+    function openChart(exchange, ticker) {
+        let url = '';
+        if (exchange === 'kospi') {
+            url = `https://stock.naver.com/domestic/stock/${ticker}/price`;
+        } else if (exchange === 'bithumb') {
+            url = `https://www.bithumb.com/react/trade/order/${ticker}_KRW`;
+        } else {
+            url = `https://upbit.com/exchange?code=CRIX.UPBIT.${ticker}`;
+        }
+        window.open(url, '_blank');
+    }
+
+    /* ──── Filter Favorites ──── */
+    function filterFavorites() {
+        const q = document.getElementById('fav-search').value.toLowerCase().trim();
+        const rows = document.querySelectorAll('.fav-card');
+        let visibleCount = 0;
+        rows.forEach(r => {
+            const name = (r.dataset.name || '').toLowerCase();
+            const ticker = (r.dataset.ticker || '').toLowerCase();
+            const memo = (r.dataset.memo || '').toLowerCase();
+            if (name.includes(q) || ticker.includes(q) || memo.includes(q)) {
+                r.style.display = 'flex';
+                visibleCount++;
+            } else {
+                r.style.display = 'none';
+            }
+        });
+        const cntEl = document.getElementById('fav-count');
+        if (cntEl) {
+            cntEl.textContent = q ? `검색결과 ${visibleCount}개` : `총 {{ total_count }}개 관심 종목`;
+        }
+    }
+
+    /* ──── Modal Controls ──── */
+    function openAddModal() {
+        document.getElementById('add-ticker-search').value = '';
+        document.getElementById('add-ticker-val').value = '';
+        document.getElementById('add-name-val').value = '';
+        document.getElementById('add-memo').value = '';
+        document.getElementById('add-target-price').value = '';
+        document.getElementById('autocomplete-box').style.display = 'none';
+        document.getElementById('modal-add').classList.add('show');
+    }
+
+    function openEditModal(id, name, ticker, memo, targetPrice) {
+        document.getElementById('edit-fav-id').value = id;
+        document.getElementById('edit-modal-title').textContent = `✏️ ${name} (${ticker}) 설정`;
+        document.getElementById('edit-memo').value = memo || '';
+        document.getElementById('edit-target-price').value = targetPrice || '';
+        document.getElementById('modal-edit').classList.add('show');
+    }
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) modal.classList.remove('show');
+    }
+
+    function closeModalOnBg(e, modalId) {
+        if (e.target.id === modalId) closeModal(modalId);
+    }
+
+    /* ──── Search Autocomplete ──── */
+    let searchDebounce = null;
+    function searchTickersLive(q) {
+        clearTimeout(searchDebounce);
+        const box = document.getElementById('autocomplete-box');
+        if (!q.trim()) {
+            box.style.display = 'none';
+            return;
+        }
+        searchDebounce = setTimeout(async () => {
+            const ex = document.getElementById('add-exchange').value;
+            try {
+                const resp = await fetch(`/favorites/search-tickers/?q=${encodeURIComponent(q.trim())}&exchange=${ex}`);
+                const data = await resp.json();
+                if (data.ok && data.tickers.length > 0) {
+                    box.innerHTML = '';
+                    data.tickers.forEach(t => {
+                        const item = document.createElement('div');
+                        item.className = 'autocomplete-item';
+                        item.innerHTML = `<strong>${t.name}</strong><span style="color:var(--text-secondary);">${t.ticker}</span>`;
+                        item.onclick = () => {
+                            document.getElementById('add-ticker-search').value = `${t.name} (${t.ticker})`;
+                            document.getElementById('add-ticker-val').value = t.ticker;
+                            document.getElementById('add-name-val').value = t.name;
+                            box.style.display = 'none';
+                        };
+                        box.appendChild(item);
+                    });
+                    box.style.display = 'block';
+                } else {
+                    box.style.display = 'none';
+                }
+            } catch (err) {
+                box.style.display = 'none';
+            }
+        }, 180);
+    }
+
+    function onExchangeChange() {
+        document.getElementById('add-ticker-search').value = '';
+        document.getElementById('add-ticker-val').value = '';
+        document.getElementById('add-name-val').value = '';
+        document.getElementById('autocomplete-box').style.display = 'none';
+    }
+
+    /* ──── Submit Add Favorite ──── */
+    async function submitAddFavorite() {
+        let ticker = document.getElementById('add-ticker-val').value.trim();
+        let name = document.getElementById('add-name-val').value.trim();
+        const searchVal = document.getElementById('add-ticker-search').value.trim();
+        const exchange = document.getElementById('add-exchange').value;
+        const memo = document.getElementById('add-memo').value.trim();
+        const targetPrice = document.getElementById('add-target-price').value.trim();
+
+        if (!ticker && searchVal) {
+            ticker = searchVal.toUpperCase();
+            name = searchVal;
+        }
+        if (!ticker) {
+            alert('종목을 검색하여 선택해주세요.');
+            return;
+        }
+
+        try {
+            const resp = await secureFetch('/favorites/add/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ticker: ticker,
+                    name: name,
+                    exchange: exchange,
+                    memo: memo,
+                    target_price: targetPrice || null
+                })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                closeModal('modal-add');
+                showToast(data.message);
+                setTimeout(() => window.location.reload(), 400);
+            } else {
+                alert(data.error || '등록에 실패했습니다.');
+            }
+        } catch (err) {
+            alert('네트워크 오류가 발생했습니다.');
+        }
+    }
+
+    /* ──── Submit Edit Favorite ──── */
+    async function submitEditFavorite() {
+        const id = document.getElementById('edit-fav-id').value;
+        const memo = document.getElementById('edit-memo').value.trim();
+        const targetPrice = document.getElementById('edit-target-price').value.trim();
+
+        try {
+            const resp = await secureFetch(`/favorites/${id}/update/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    memo: memo,
+                    target_price: targetPrice || null
+                })
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                closeModal('modal-edit');
+                showToast(data.message);
+                // 즉시 카드 뷰 업데이트
+                const row = document.getElementById(`fav-row-${id}`);
+                if (row) {
+                    row.dataset.memo = memo;
+                    row.dataset.target = targetPrice;
+                    const metaBox = row.querySelector('.card-meta');
+                    if (metaBox) {
+                        metaBox.innerHTML = '';
+                        if (memo) {
+                            metaBox.innerHTML += `<span class="memo-tag" title="${memo}">📝 ${memo}</span>`;
+                        }
+                        if (targetPrice) {
+                            metaBox.innerHTML += `<span class="target-tag">🎯 목표가 ${Number(targetPrice).toLocaleString()}원</span>`;
+                        }
+                    }
+                }
+            } else {
+                alert(data.error || '수정에 실패했습니다.');
+            }
+        } catch (err) {
+            alert('네트워크 오류가 발생했습니다.');
+        }
+    }
+
+    /* ──── Delete Favorite ──── */
+    async function deleteFavorite(e, id, name) {
+        if (e) e.stopPropagation();
+        if (!confirm(`[${name}] 즐겨찾기에서 삭제하시겠습니까?`)) return;
+
+        try {
+            const resp = await secureFetch(`/favorites/${id}/delete/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                showToast(data.message);
+                const row = document.getElementById(`fav-row-${id}`);
+                if (row) {
+                    row.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                    row.style.opacity = '0';
+                    row.style.transform = 'translateY(-8px)';
+                    setTimeout(() => row.remove(), 200);
+                }
+            } else {
+                alert(data.error || '삭제에 실패했습니다.');
+            }
+        } catch (err) {
+            alert('네트워크 오류가 발생했습니다.');
+        }
+    }
+</script>
+{% endblock %}
