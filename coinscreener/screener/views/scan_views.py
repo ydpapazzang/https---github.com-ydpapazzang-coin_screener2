@@ -49,7 +49,7 @@ _PARSED_OHLCV_MAX = 450  # 티커×타임프레임 상한(1GB 서버 메모리 �
 # (B) 상호작용 검색 기본 스캔 범위
 #   vol_limit=0(전체)로 들어와도, 거래대금 정렬을 신뢰할 수 있는 거래소는
 #   상위 N개만 스캔해 속도를 높인다. full=1이면 진짜 전체를 스캔한다.
-DEFAULT_SCAN_LIMIT = 150
+DEFAULT_SCAN_LIMIT = 100
 # 기본 검색은 최근 결과를 먼저 보여 주고, 화면의 업데이트/자동 스캔(refresh=1)는
 # 항상 새로 계산한다. 분봉 전략도 오래된 결과를 보이지 않게 실제 봉 주기보다
 # 길게 저장하지 않는다.
@@ -113,6 +113,7 @@ def _enrich_upbit_ticker_snapshot(tickers):
 
     종목 목록은 짧게 캐시해도, 이 스냅샷은 검색 직전에 다시 받아야 화면의
     등락률/거래대금이 0으로 굳지 않는다. API 장애 시에는 기존 캐시 값을 보존한다.
+    동일 시세 스냅샷은 20초간 캐시하여 반복 검색 시 네트워크 왕복(2초)을 제거한다.
     """
     if not tickers:
         return tickers
@@ -128,27 +129,44 @@ def _enrich_upbit_ticker_snapshot(tickers):
                 }
                 cache.set('upbit_valid_markets', valid_markets, 3600)
 
-        ticker_codes = [item.get('ticker') for item in tickers if item.get('ticker')]
         if valid_markets:
-            ticker_codes = [ticker for ticker in ticker_codes if ticker in valid_markets]
+            tickers[:] = [item for item in tickers if item.get('ticker') in valid_markets]
 
-        snapshots = {}
-        for start in range(0, len(ticker_codes), 100):
-            chunk = ticker_codes[start:start + 100]
-            if not chunk:
-                continue
-            response = requests.get(
-                'https://api.upbit.com/v1/ticker',
-                params={'markets': ','.join(chunk)}, timeout=5,
-            )
-            payload = response.json()
-            if not isinstance(payload, list):
-                logger.warning('Upbit ticker snapshot skipped: unexpected response')
-                continue
-            for item in payload:
-                market = item.get('market')
-                if market:
-                    snapshots[market] = item
+        snapshots = cache.get('upbit_ticker_snapshots_map')
+        if snapshots is None:
+            ticker_codes = [item.get('ticker') for item in tickers if item.get('ticker')]
+
+            chunks = [
+                ticker_codes[start:start + 100]
+                for start in range(0, len(ticker_codes), 100)
+                if ticker_codes[start:start + 100]
+            ]
+
+            def _fetch_chunk(chunk):
+                try:
+                    response = requests.get(
+                        'https://api.upbit.com/v1/ticker',
+                        params={'markets': ','.join(chunk)}, timeout=5,
+                    )
+                    payload = response.json()
+                    return payload if isinstance(payload, list) else []
+                except Exception:
+                    return []
+
+            snapshots = {}
+            if chunks:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
+                    for chunk_payload in executor.map(_fetch_chunk, chunks):
+                        for item in chunk_payload:
+                            market = item.get('market')
+                            if market:
+                                snapshots[market] = item
+
+            if snapshots:
+                cache.set('upbit_ticker_snapshots_map', snapshots, 20)
+                cache.set('upbit_ticker_snapshots_lastgood', snapshots, 300)
+            else:
+                snapshots = cache.get('upbit_ticker_snapshots_lastgood') or {}
 
         for ticker in tickers:
             snapshot = snapshots.get(ticker.get('ticker'))
@@ -568,6 +586,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
             max_cache_age,
             save_ohlcv_cache,
         )
+        from ..freshness import allowed_cache_age
         from django.utils import timezone
 
         req_count = get_max_required_len(conditions)
@@ -589,11 +608,12 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
             key = (m['ticker'], m['timeframe'])
             present_keys.add(key)
 
-            # DB 행이 존재하더라도 해당 캔들 주기보다 오래됐다면 스캔 캐시에
-            # 다시 넣지 않는다. 메모리/파싱 캐시도 제거한 뒤 아래 라이브 갱신
-            # 대상으로 넘겨, 크롤러 장애가 오래된 신호로 위장되지 않게 한다.
+            # DB 행이 존재하더라도 허용 수명(allowed_cache_age, 분봉 기준 20분 플로어)보다
+            # 오래됐다면 스캔 캐시에 다시 넣지 않는다. 5분 주기 크롤러의 봉 히스토리는
+            # 200봉 중 199봉이 동일하므로 지표 계산 신뢰도를 해치지 않으면서
+            # 150개 코인의 불필요한 실시간 API 직렬 대기(19초)를 방지한다.
             age_seconds = (now - m['updated_at']).total_seconds()
-            if age_seconds >= max_cache_age(m['timeframe']):
+            if age_seconds >= allowed_cache_age(m['timeframe']):
                 stale_keys.add(key)
                 with _PARSED_OHLCV_LOCK:
                     _PARSED_OHLCV.pop(key, None)
@@ -648,7 +668,7 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
             cache.set(
                 cache_key,
                 df.tail(req_count).copy(),
-                min(180, max_cache_age(key[1])),
+                min(180, allowed_cache_age(key[1])),
             )
 
         # 4) DB에 없거나 오래된 항목은 라이브로 채운다.
@@ -771,6 +791,7 @@ def coin_search_stream(request, strategy_id):
                     current_change_rate=fast_change_rate,
                     exchange=exchange,
                     persist_db=False,
+                    cache_only=True,
                 )
                 if price is None:
                     return "API_ERROR"

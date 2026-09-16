@@ -420,10 +420,12 @@ def get_max_required_len(conditions):
 
 
 def check_strategy(ticker, conditions, current_price=None, current_change_rate=None,
-                   exchange=None, persist_db=True):
+                   exchange=None, persist_db=True, cache_only=False):
     """
     특정 코인이 주어진 전략(조건 리스트)을 모두 만족하는지 확인.
     조건이 비어있으면 매칭하지 않음. exchange 명시 시 거래소 라우팅이 정확해짐(빗썸).
+    cache_only=True 이면 DB/메모리 캐시가 없을 때 외부 라이브 API 조회를 건너뛰어
+    대화형 스캔 시 누락 코인으로 인한 워커 스레드 블로킹을 방지한다.
     
     Returns:
         (is_match, details, last_price, volume, change_rate, status)
@@ -436,7 +438,7 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
     try:
         data_cache = {}
         details = []
-        last_price = None
+        last_price = current_price
         volume = 0
         change_rate = 0.0
 
@@ -448,6 +450,7 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
                     df = get_ohlcv_with_retry(
                         ticker, interval=cond.timeframe, count=req_count,
                         exchange=exchange, persist_db=persist_db,
+                        cache_only=cache_only,
                     )
                     if df is None: return False
                     data_cache[cond.timeframe] = df
@@ -553,6 +556,7 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
                     day_df = get_ohlcv_with_retry(
                         ticker, interval='day', count=req_count,
                         exchange=exchange, persist_db=persist_db,
+                        cache_only=cache_only,
                     )
                     if day_df is not None:
                         data_cache['day'] = day_df

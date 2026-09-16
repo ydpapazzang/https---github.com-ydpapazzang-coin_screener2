@@ -188,6 +188,7 @@ def strategy_scan_count(request, strategy_id):
                 current_change_rate=fast_change_rate,
                 exchange=exchange,
                 persist_db=False,
+                cache_only=True,
             )
             if price is None:
                 return "API_ERROR"
