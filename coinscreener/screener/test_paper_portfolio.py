@@ -12,7 +12,7 @@ from .models import DailyRecommendation, PaperPosition
 class PaperPortfolioViewTestCase(TestCase):
     def setUp(self):
         self.recommendation = DailyRecommendation.objects.create(
-            date=timezone.localdate(), trade_type='danta',
+            date=timezone.localdate(), trade_type='swing',
             coin_ticker='KRW-BTC', coin_name='BTC', entry_price=100,
             target_price=102, stop_loss=98.5, reason='test', status='pending',
         )
@@ -53,7 +53,7 @@ class PaperPortfolioViewTestCase(TestCase):
     def test_positions_are_private_to_browser_session(self):
         PaperPosition.objects.create(
             owner_key='owner-a', recommendation=self.recommendation,
-            trade_type='danta', coin_ticker='KRW-BTC', coin_name='BTC',
+            trade_type='swing', coin_ticker='KRW-BTC', coin_name='BTC',
             entry_price=100, invested_amount=100000, target_price=102,
             stop_loss=98.5, current_price=101,
         )
@@ -77,7 +77,7 @@ class PaperPortfolioViewTestCase(TestCase):
 class PaperPortfolioMonitorTestCase(TestCase):
     def _position(self):
         return PaperPosition.objects.create(
-            owner_key='owner', trade_type='danta', coin_ticker='KRW-BTC',
+            owner_key='owner', trade_type='swing', coin_ticker='KRW-BTC',
             coin_name='BTC', entry_price=100, invested_amount=100000,
             target_price=102, stop_loss=98.5, current_price=100,
             highest_price=100, lowest_price=100,

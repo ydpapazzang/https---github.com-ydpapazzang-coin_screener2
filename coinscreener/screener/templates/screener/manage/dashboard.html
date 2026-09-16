@@ -36,23 +36,6 @@
         <div class="foot">이용 세션 {{ scan_usage_today.sessions }}개 · 광고 보상 {{ scan_usage_today.rewards }}회</div>
     </div>
     <div class="card">
-        <div class="label">오늘 단타 추천</div>
-        <div class="value">{{ danta_today }}<small> 종목</small></div>
-        <div class="foot">마지막 추천일 {{ last_pick|default:"-" }}</div>
-    </div>
-    <div class="card">
-        <div class="label">단타 누적 승률</div>
-        <div class="value">{{ danta.win_rate }}<small> %</small></div>
-        <div class="foot">{{ danta.wins }}승 {{ danta.losses }}패 / 총 {{ danta.total }}건</div>
-    </div>
-    <div class="card">
-        <div class="label">단타 누적 수익률</div>
-        <div class="value {% if danta.cum_pct >= 0 %}pos{% else %}neg{% endif %}">
-            {{ danta.cum_pct }}<small> %</small>
-        </div>
-        <div class="foot">확정 손익 합계</div>
-    </div>
-    <div class="card">
         <div class="label">크롤러 상태</div>
         {% if crawler_mins is None %}
             <div class="value warn">데이터 없음</div>
@@ -83,19 +66,8 @@
         <div class="chart-wrap"><canvas id="chartVisits"></canvas></div>
     </div>
     <div class="chart-card">
-        <h2>단타 누적 수익률 곡선</h2>
-        <div class="chart-wrap"><canvas id="chartEquity"></canvas></div>
-    </div>
-    <div class="chart-card">
         <h2>알람 발생 추이 (최근 14일)</h2>
         <div class="chart-wrap"><canvas id="chartAlerts"></canvas></div>
-    </div>
-    <div class="chart-card">
-        <h2>단타 승/패 · 상태 분포</h2>
-        <div class="donut-row">
-            <div class="donut-wrap"><canvas id="chartWinLoss"></canvas></div>
-            <div class="donut-wrap"><canvas id="chartStatus"></canvas></div>
-        </div>
     </div>
 </div>
 
@@ -103,11 +75,6 @@
 {{ pv_series|json_script:"d-pv" }}
 {{ uv_series|json_script:"d-uv" }}
 {{ alert_series|json_script:"d-alert" }}
-{{ equity_labels|json_script:"d-eqlabels" }}
-{{ equity_series|json_script:"d-eq" }}
-{{ winloss_series|json_script:"d-winloss" }}
-{{ status_labels|json_script:"d-statuslabels" }}
-{{ status_series|json_script:"d-status" }}
 
 <script>
 (function () {
@@ -137,37 +104,11 @@
         options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: axes, plugins: { legend: { labels: { boxWidth: 12 } } } }
     });
 
-    // 2) 누적 수익률 곡선
-    var eq = J('d-eq');
-    var eqUp = eq.length && eq[eq.length - 1] >= 0;
-    new Chart(document.getElementById('chartEquity'), {
-        type: 'line',
-        data: {
-            labels: J('d-eqlabels'),
-            datasets: [{ label: '누적 수익률(%)', data: eq, borderColor: eqUp ? RED : BLUE, backgroundColor: eqUp ? 'rgba(242,54,69,0.12)' : 'rgba(45,123,254,0.12)', fill: true, tension: 0.25, pointRadius: 0 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, scales: { x: axes.x, y: { grid: { color: grid } } }, plugins: { legend: { display: false } } }
-    });
-
-    // 3) 알람 발생 추이 (막대)
+    // 2) 알람 발생 추이 (막대)
     new Chart(document.getElementById('chartAlerts'), {
         type: 'bar',
         data: { labels: J('d-labels'), datasets: [{ label: '알람 건수', data: J('d-alert'), backgroundColor: BLUE, borderRadius: 4 }] },
         options: { responsive: true, maintainAspectRatio: false, scales: axes, plugins: { legend: { display: false } } }
-    });
-
-    // 4a) 승/패 도넛
-    new Chart(document.getElementById('chartWinLoss'), {
-        type: 'doughnut',
-        data: { labels: ['성공', '실패'], datasets: [{ data: J('d-winloss'), backgroundColor: [GREEN, RED], borderColor: '#181b21', borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } }, title: { display: true, text: '승/패' } } }
-    });
-
-    // 4b) 상태 분포 도넛
-    new Chart(document.getElementById('chartStatus'), {
-        type: 'doughnut',
-        data: { labels: J('d-statuslabels'), datasets: [{ data: J('d-status'), backgroundColor: [GRAY, BLUE, GREEN, RED, '#33383f', AMBER], borderColor: '#181b21', borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }, title: { display: true, text: '상태 분포' } } }
     });
 })();
 </script>

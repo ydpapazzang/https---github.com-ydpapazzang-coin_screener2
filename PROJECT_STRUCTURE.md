@@ -42,12 +42,9 @@
 | 타이머 | 실행 시각(KST) | 역할 |
 |---|---:|---|
 | `coinscreener-backup.timer` | 03:30 | 검증된 SQLite 온라인 백업, 최근 14개 보관 |
-| `coinscreener-daily-picks.timer` | 09:00, 09:10 | 단타 추천 생성과 실패 재시도 |
 | `coinscreener-swing-picks.timer` | 09:20, 09:35, 09:50 | 스윙 추천 생성과 실패 재시도 |
 | `coinscreener-scheduled-scans.timer` | 매시 00분·30분 | 사용자 전략 알림 스캔을 Gunicorn 밖에서 실행 |
 | `coinscreener-health.timer` | 5분 간격 | DB·시세 지연·메모리·스왑·디스크·웹 상태 감시 및 상태 변화 텔레그램 알림 |
-
-단타와 스윙의 시작 시간을 분리해 e2-micro에서 두 분석 작업이 동시에 실행되지 않게 합니다.
 
 ### 외부 cron-job.org
 
@@ -58,7 +55,7 @@
 - `/cron/daily-picks/`
 - `/cron/swing-picks/`
 
-서버 사용자 crontab에는 방문 로그 정리만 남깁니다. 매분 `git pull`과 `generate_daily_picks` 항목은 사용하지 않습니다. 배포는 항상 명시적으로 수행합니다.
+서버 사용자 crontab에는 방문 로그 정리만 남깁니다. 매분 `git pull` 항목은 사용하지 않습니다. 배포는 항상 명시적으로 수행합니다.
 
 세부 절차: `deploy/SCHEDULING.md`
 
@@ -179,7 +176,6 @@ systemd 파일이 변경된 배포에서는 해당 파일을 `/etc/systemd/syste
 sudo systemctl daemon-reload
 sudo systemctl enable --now \
   coinscreener-backup.timer \
-  coinscreener-daily-picks.timer \
   coinscreener-swing-picks.timer \
   coinscreener-scheduled-scans.timer \
   coinscreener-health.timer
@@ -229,7 +225,6 @@ systemctl --no-pager --full status \
 # 타이머
 systemctl list-timers \
   coinscreener-backup.timer \
-  coinscreener-daily-picks.timer \
   coinscreener-swing-picks.timer \
   coinscreener-scheduled-scans.timer \
   coinscreener-health.timer \

@@ -11,11 +11,8 @@ class OperationalConfigurationTestCase(SimpleTestCase):
             'django.db.models.AutoField',
         )
 
-    def test_danta_and_swing_timer_slots_do_not_overlap(self):
+    def test_swing_timer_slot_is_configured(self):
         systemd_dir = Path(settings.BASE_DIR) / 'deploy' / 'systemd'
-        daily = (
-            systemd_dir / 'coinscreener-daily-picks.timer'
-        ).read_text(encoding='utf-8')
         swing = (
             systemd_dir / 'coinscreener-swing-picks.timer'
         ).read_text(encoding='utf-8')
@@ -27,11 +24,7 @@ class OperationalConfigurationTestCase(SimpleTestCase):
                 if line.startswith('OnCalendar=')
             }
 
-        self.assertTrue(calendar_lines(daily))
         self.assertTrue(calendar_lines(swing))
-        self.assertTrue(
-            calendar_lines(daily).isdisjoint(calendar_lines(swing))
-        )
 
     def test_operations_document_describes_current_runtime(self):
         document = (
@@ -43,7 +36,6 @@ class OperationalConfigurationTestCase(SimpleTestCase):
             'SQLite',
             'WAL',
             'coinscreener-backup.timer',
-            'coinscreener-daily-picks.timer',
             'coinscreener-swing-picks.timer',
         ):
             with self.subTest(expected=expected):

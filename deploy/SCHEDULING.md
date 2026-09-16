@@ -5,7 +5,6 @@ Production uses one scheduler per responsibility.
 | Job | Scheduler | Schedule |
 |---|---|---|
 | Strategy alert scan | systemd | Every 30 minutes, isolated management-command process |
-| Danta recommendations | systemd | 09:00, 09:10 KST |
 | Swing recommendations | systemd | 09:20, 09:35, 09:50 KST |
 | SQLite backup | systemd | 03:30 KST |
 | Health monitor | systemd | Every 5 minutes, Telegram on status transitions |
@@ -17,12 +16,6 @@ The legacy HTTP route `/cron/scan/` remains authenticated for compatibility but 
 
 ```bash
 cd ~/myapp
-sudo install -o root -g root -m 0644 \
-  deploy/systemd/coinscreener-daily-picks.service \
-  /etc/systemd/system/coinscreener-daily-picks.service
-sudo install -o root -g root -m 0644 \
-  deploy/systemd/coinscreener-daily-picks.timer \
-  /etc/systemd/system/coinscreener-daily-picks.timer
 sudo install -o root -g root -m 0644 \
   deploy/systemd/coinscreener-swing-picks.service \
   /etc/systemd/system/coinscreener-swing-picks.service
@@ -58,13 +51,11 @@ sudo install -o root -g root -m 0644 \
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now \
-  coinscreener-daily-picks.timer \
   coinscreener-swing-picks.timer \
   coinscreener-backup.timer \
   coinscreener-scheduled-scans.timer \
   coinscreener-health.timer
 systemctl list-timers \
-  coinscreener-daily-picks.timer \
   coinscreener-swing-picks.timer \
   coinscreener-backup.timer \
   coinscreener-scheduled-scans.timer \
@@ -105,14 +96,12 @@ Automatic `git pull` is intentionally removed. Production deployment must be an 
 
 ```bash
 systemctl list-timers \
-  coinscreener-daily-picks.timer \
   coinscreener-swing-picks.timer \
   coinscreener-backup.timer \
   coinscreener-scheduled-scans.timer \
   coinscreener-health.timer \
   --all --no-pager
 
-sudo journalctl -u coinscreener-daily-picks.service -n 50 --no-pager
 sudo journalctl -u coinscreener-swing-picks.service -n 50 --no-pager
 sudo journalctl -u coinscreener-backup.service -n 50 --no-pager
 sudo journalctl -u coinscreener-scheduled-scans.service -n 100 --no-pager

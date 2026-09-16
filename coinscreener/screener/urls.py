@@ -42,12 +42,7 @@ urlpatterns = [
     path('cron/scan-debug/',                         views.cron_scan,      name='cron_scan_debug'),
     path('cron/prefetch/',                           views.cron_prefetch,  name='cron_prefetch'),
     
-    # 단타 V1·V2 추천 및 통계 탭
-    path('danta/', views.danta_list, name='danta_list'),
-    path('danta/v1/', views.danta_list, {'profile_key': 'v1'}, name='danta_v1'),
-    path('danta/v2/', views.danta_list, {'profile_key': 'v2'}, name='danta_v2'),
-    path('swing/', views.swing_list, name='swing_list'),
-    path('stats/', views.stats_list, name='stats_list'),
+    # 모의 포트폴리오
     path('portfolio/', views.portfolio_list, name='portfolio_list'),
     path('portfolio/add/<int:recommendation_id>/', views.portfolio_add, name='portfolio_add'),
     path('portfolio/<int:position_id>/close/', views.portfolio_close, name='portfolio_close'),
@@ -65,7 +60,6 @@ urlpatterns = [
     # 백오피스 (PC 관리자용, 슈퍼유저 로그인 필요)
     path('manage/',        views.manage_dashboard, name='manage_dashboard'),
     path('manage/alerts/', views.manage_alerts,    name='manage_alerts'),
-    path('manage/danta/',  views.manage_danta,     name='manage_danta'),
     path('manage/visits/', views.manage_visits,    name='manage_visits'),
 ]
 

@@ -5,7 +5,6 @@ from functools import lru_cache
 from django.conf import settings
 
 
-DANTA_STRATEGY_VERSION = 'danta-breakout-v2.0'
 SWING_STRATEGY_VERSION = 'swing-trend-v1.0'
 
 

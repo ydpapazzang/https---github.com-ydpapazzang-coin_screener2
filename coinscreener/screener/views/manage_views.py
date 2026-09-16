@@ -10,23 +10,9 @@ from django.db.models import Count, Sum, Avg
 from django.db.models.functions import TruncDate
 
 from ..models import (
-    AlertHistory, DailyRecommendation, VisitLog, OHLCVCache, ScanUsage, Strategy,
+    AlertHistory, VisitLog, OHLCVCache, ScanUsage, Strategy,
 )
 from ..system_health import collect_health
-
-
-def _danta_stats(qs):
-    """단타 추천 QuerySet에서 승/패/승률/누적수익률 요약."""
-    total = qs.count()
-    wins = qs.filter(status='success').count()
-    losses = qs.filter(status='failed').count()
-    decided = wins + losses
-    win_rate = round(wins / decided * 100, 1) if decided else 0.0
-    cum = qs.filter(result_pct__isnull=False).aggregate(s=Sum('result_pct'))['s'] or 0.0
-    return {
-        'total': total, 'wins': wins, 'losses': losses,
-        'win_rate': win_rate, 'cum_pct': round(cum, 2),
-    }
 
 
 @staff_member_required
@@ -38,11 +24,6 @@ def manage_dashboard(request):
     # ── 알람 ──
     alerts_today = AlertHistory.objects.filter(created_at__date=today).count()
     alerts_total = AlertHistory.objects.count()
-
-    # ── 단타 ──
-    danta_all = _danta_stats(DailyRecommendation.objects.filter(trade_type='danta'))
-    danta_today_qs = DailyRecommendation.objects.filter(date=today, trade_type='danta')
-    danta_today = danta_today_qs.count()
 
     # ── 방문 ──
     visits_today = VisitLog.objects.filter(created_at__date=today).count()
@@ -71,8 +52,6 @@ def manage_dashboard(request):
     cache_count = OHLCVCache.objects.count()
     cache_tickers = OHLCVCache.objects.values('ticker').distinct().count()
 
-    last_pick = DailyRecommendation.objects.filter(trade_type='danta').order_by('-date').values_list('date', flat=True).first()
-
     # ─────────── 차트 데이터 (Chart.js, 브라우저 렌더링) ───────────
     chart_days = 14
     since = timezone.now() - timezone.timedelta(days=chart_days)
@@ -97,35 +76,10 @@ def manage_dashboard(request):
     amap = {row['d']: row['c'] for row in alert_daily}
     alert_series = [amap.get(d, 0) for d in date_range]
 
-    # 단타 누적 수익률 곡선 (확정 손익만, 날짜순 누적)
-    decided = (
-        DailyRecommendation.objects.filter(trade_type='danta', result_pct__isnull=False)
-        .order_by('date').values('date', 'result_pct')
-    )
-    day_sum = {}
-    for row in decided:
-        day_sum[row['date']] = day_sum.get(row['date'], 0.0) + (row['result_pct'] or 0.0)
-    equity_labels, equity_series, _cum = [], [], 0.0
-    for d in sorted(day_sum):
-        _cum += day_sum[d]
-        equity_labels.append(d.strftime('%m/%d'))
-        equity_series.append(round(_cum, 2))
-
-    # 단타 승/패 도넛 + 상태 분포 도넛
-    winloss_series = [danta_all['wins'], danta_all['losses']]
-    smap = dict(
-        DailyRecommendation.objects.filter(trade_type='danta').values('status')
-        .annotate(c=Count('id')).values_list('status', 'c')
-    )
-    status_labels = [lbl for val, lbl in DailyRecommendation.status_choices]
-    status_series = [smap.get(val, 0) for val, lbl in DailyRecommendation.status_choices]
-
     ctx = {
         'now': now,
         'alerts_today': alerts_today,
         'alerts_total': alerts_total,
-        'danta': danta_all,
-        'danta_today': danta_today,
         'visits_today': visits_today,
         'visits_uniq_today': visits_uniq_today,
         'visits_total': visits_total,
@@ -138,7 +92,6 @@ def manage_dashboard(request):
         'crawler_stale': crawler_stale,
         'cache_count': cache_count,
         'cache_tickers': cache_tickers,
-        'last_pick': last_pick,
         'system_health': system_health,
         'active': 'dashboard',
         # 차트
@@ -146,11 +99,6 @@ def manage_dashboard(request):
         'pv_series': pv_series,
         'uv_series': uv_series,
         'alert_series': alert_series,
-        'equity_labels': equity_labels,
-        'equity_series': equity_series,
-        'winloss_series': winloss_series,
-        'status_labels': status_labels,
-        'status_series': status_series,
     }
     return render(request, 'screener/manage/dashboard.html', ctx)
 
@@ -179,35 +127,6 @@ def manage_alerts(request):
         'active': 'alerts',
     }
     return render(request, 'screener/manage/alerts.html', ctx)
-
-
-@staff_member_required
-def manage_danta(request):
-    qs = DailyRecommendation.objects.filter(trade_type='danta')
-
-    status = request.GET.get('status')
-    if status:
-        qs = qs.filter(status=status)
-
-    days = request.GET.get('days')
-    if days and days.isdigit():
-        since = timezone.localdate() - timezone.timedelta(days=int(days))
-        qs = qs.filter(date__gte=since)
-
-    stats = _danta_stats(qs)
-
-    paginator = Paginator(qs, 50)
-    page = paginator.get_page(request.GET.get('page'))
-
-    ctx = {
-        'page': page,
-        'stats': stats,
-        'status_choices': DailyRecommendation.status_choices,
-        'cur_status': status or '',
-        'cur_days': days or '',
-        'active': 'danta',
-    }
-    return render(request, 'screener/manage/danta.html', ctx)
 
 
 @staff_member_required

@@ -287,51 +287,6 @@ class AlertHistory(models.Model):
         return f"{self.strategy.name} - {self.symbol} ({self.created_at})"
 
 
-class IntradayObservation(models.Model):
-    """Paper-only records for the real-time danta momentum experiment."""
-
-    status_choices = [
-        ('open', '관찰중'),
-        ('target_1', '1차 목표 도달'),
-        ('target_2', '2차 목표 도달'),
-        ('stopped', '손절'),
-        ('expired', '시간 만료'),
-    ]
-
-    detected_at = models.DateTimeField(db_index=True, verbose_name="신호 시각")
-    ticker = models.CharField(max_length=50, db_index=True, verbose_name="티커")
-    name = models.CharField(max_length=100, blank=True, verbose_name="종목명")
-    entry_price = models.FloatField(verbose_name="관찰 진입가")
-    target_1_price = models.FloatField(verbose_name="1차 목표가")
-    target_2_price = models.FloatField(verbose_name="2차 목표가")
-    stop_loss = models.FloatField(verbose_name="초기 손절가")
-    status = models.CharField(max_length=20, choices=status_choices, default='open')
-    reason = models.TextField(blank=True, verbose_name="신호 근거")
-    strategy_version = models.CharField(max_length=64, db_index=True)
-    last_checked_at = models.DateTimeField(null=True, blank=True)
-    highest_price = models.FloatField(null=True, blank=True)
-    lowest_price = models.FloatField(null=True, blank=True)
-    exit_price = models.FloatField(null=True, blank=True)
-    result_pct = models.FloatField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['status', 'detected_at']),
-            models.Index(fields=['ticker', 'strategy_version']),
-        ]
-        ordering = ['-detected_at', '-id']
-
-    @property
-    def max_profit_pct(self):
-        if not self.entry_price or self.highest_price is None:
-            return None
-        return (self.highest_price / self.entry_price - 1) * 100
-
-    def __str__(self):
-        return f"{self.ticker} {self.detected_at:%Y-%m-%d %H:%M}"
-
-
 class VisitLog(models.Model):
     """방문 기록 (백오피스 접속자 추적용). 페이지뷰만 가벼운 미들웨어로 기록."""
     path = models.CharField(max_length=300, db_index=True, verbose_name="경로")
@@ -354,7 +309,7 @@ class VisitLog(models.Model):
 
 
 class DailyRecommendation(models.Model):
-    """단타·스윙 추천과 성적을 함께 저장하는 모델."""
+    """추천과 성적을 함께 저장하는 모델."""
 
     ESTIMATED_ROUND_TRIP_COST_PCT = 0.20
 
@@ -367,7 +322,7 @@ class DailyRecommendation(models.Model):
     trade_type = models.CharField(
         max_length=10,
         choices=trade_type_choices,
-        default='danta',
+        default='swing',
         db_index=True,
         verbose_name="매매 유형",
     )
