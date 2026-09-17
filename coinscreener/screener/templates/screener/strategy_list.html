@@ -285,7 +285,6 @@
     <div class="sheet-title">거래소 선택</div>
     
     <div class="sheet-opt ex-opt selected" onclick="selectEx('upbit', '업비트')">업비트</div>
-    <div class="sheet-opt ex-opt" onclick="selectEx('bithumb', '빗썸')">빗썸</div>
     <div class="sheet-opt ex-opt" onclick="selectEx('kospi', '코스피')">코스피</div>
 </div>
 
@@ -324,7 +323,6 @@
         <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">스캔 범위 설정</div>
         <select id="alert-exchange" style="width:100%; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); color:#fff; padding:10px; border-radius:8px; margin-bottom:16px;">
             <option value="upbit">업비트</option>
-            <option value="bithumb">빗썸</option>
             <option value="kospi">코스피 (주식/ETF)</option>
         </select>
         <div id="tg-status" style="margin-bottom:16px; font-size:12px; padding:10px; border-radius:8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color);">상태 불러오는 중...</div>
@@ -366,7 +364,7 @@
         document.querySelectorAll('.bottom-sheet').forEach(s => s.classList.remove('open'));
     }
 
-    const EX_LABELS = { upbit: '업비트', bithumb: '빗썸', kospi: '코스피' };
+    const EX_LABELS = { upbit: '업비트', kospi: '코스피' };
 
     function selectEx(val, text) {
         if(!targetStrategyId) return;
@@ -380,7 +378,12 @@
         document.querySelectorAll('[id^="ex-val-"]').forEach(input => {
             const id = input.id.replace('ex-val-', '');
             const saved = localStorage.getItem('strategy_exchange_' + id);
-            if (saved && EX_LABELS[saved]) {
+            if (saved === 'bithumb') {
+                localStorage.setItem('strategy_exchange_' + id, 'upbit');
+                input.value = 'upbit';
+                const label = document.getElementById('extf-label-' + id);
+                if (label) label.textContent = '업비트';
+            } else if (saved && EX_LABELS[saved]) {
                 input.value = saved;
                 const label = document.getElementById('extf-label-' + id);
                 if (label) label.textContent = EX_LABELS[saved];

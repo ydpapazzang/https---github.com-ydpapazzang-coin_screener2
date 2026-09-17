@@ -150,3 +150,16 @@ class FavoriteTests(TestCase):
         res = self.client.get(reverse('coin_search_results', args=[strategy.id]))
         self.assertEqual(res.status_code, 200)
         self.assertIn('KRW-BTC', res.context['favorite_tickers'])
+
+    def test_bithumb_removed_from_ui(self):
+        # 1. Favorite list does not include Bithumb tab or option
+        res = self.client.get(reverse('favorite_list'))
+        self.assertEqual(res.status_code, 200)
+        self.assertNotContains(res, 'exchange=bithumb')
+        self.assertNotContains(res, '빗썸')
+
+        # 2. Strategy list does not include Bithumb sheet option or alert select
+        res = self.client.get(reverse('strategy_list'))
+        self.assertEqual(res.status_code, 200)
+        self.assertNotContains(res, 'selectEx(\'bithumb\'')
+        self.assertNotContains(res, '<option value="bithumb">')

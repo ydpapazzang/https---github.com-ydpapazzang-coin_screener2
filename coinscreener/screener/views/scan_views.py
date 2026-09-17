@@ -505,7 +505,7 @@ def cron_prefetch(request):
                     active_timeframes.add(c.timeframe)
 
             tasks = []
-            for ex in ['upbit', 'bithumb', 'kospi']:
+            for ex in ['upbit', 'kospi']:
                 tickers_info = _get_tickers(ex, 0)
                 for t_info in tickers_info:
                     for tf in active_timeframes:

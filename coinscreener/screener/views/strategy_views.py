@@ -132,7 +132,7 @@ def strategy_detail(request, strategy_id):
         'strategy':   strategy,
         'conditions': conditions,
         'histories':  histories,
-        'bithumb_enabled': 'bithumb' in settings.ENABLED_CRYPTO_EXCHANGES,
+        'bithumb_enabled': False,
     })
 
 

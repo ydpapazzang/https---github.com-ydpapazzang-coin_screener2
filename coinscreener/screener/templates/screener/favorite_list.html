@@ -412,7 +412,6 @@
 <div class="tabs">
     <a href="{% url 'favorite_list' %}" class="tab {% if not selected_exchange %}active{% endif %}">전체</a>
     <a href="{% url 'favorite_list' %}?exchange=upbit" class="tab {% if selected_exchange == 'upbit' %}active{% endif %}">업비트</a>
-    <a href="{% url 'favorite_list' %}?exchange=bithumb" class="tab {% if selected_exchange == 'bithumb' %}active{% endif %}">빗썸</a>
     <a href="{% url 'favorite_list' %}?exchange=kospi" class="tab {% if selected_exchange == 'kospi' %}active{% endif %}">코스피</a>
 </div>
 
@@ -492,7 +491,6 @@
             <label class="form-label">거래소 선택</label>
             <select id="add-exchange" class="form-select" onchange="onExchangeChange()">
                 <option value="upbit">업비트 (Upbit)</option>
-                <option value="bithumb">빗썸 (Bithumb)</option>
                 <option value="kospi">코스피/ETF (KOSPI)</option>
             </select>
         </div>
@@ -561,8 +559,6 @@
         let url = '';
         if (exchange === 'kospi') {
             url = `https://stock.naver.com/domestic/stock/${ticker}/price`;
-        } else if (exchange === 'bithumb') {
-            url = `https://www.bithumb.com/react/trade/order/${ticker}_KRW`;
         } else {
             url = `https://upbit.com/exchange?code=CRIX.UPBIT.${ticker}`;
         }

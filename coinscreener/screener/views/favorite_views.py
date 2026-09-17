@@ -38,7 +38,7 @@ def favorite_list(request):
     selected_exchange = request.GET.get('exchange', '').strip()
 
     qs = Favorite.objects.filter(owner_key=owner_key)
-    if selected_exchange in ('upbit', 'bithumb', 'kospi'):
+    if selected_exchange in ('upbit', 'kospi'):
         qs = qs.filter(exchange=selected_exchange)
 
     favorites = list(qs)

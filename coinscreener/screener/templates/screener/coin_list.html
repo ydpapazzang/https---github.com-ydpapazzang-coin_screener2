@@ -354,7 +354,7 @@
 <div class="list-controls">
     <div class="stats">포착: {{ results|length }}개{% if is_fast_result %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">최근 결과 즉시 표시</span>{% elif elapsed_time %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">({{ elapsed_time }}초 소요)</span>{% endif %}{% if data_freshness != None %}<span style="font-size:12px; color:var(--text-secondary); margin-left:6px; font-weight:normal;">데이터 최신 {{ data_freshness }}%</span>{% endif %}</div>
     <div style="display:flex; align-items:center; gap:10px;">
-        {% if request.GET.exchange != 'kospi' and request.GET.exchange != 'bithumb' and results %}
+        {% if request.GET.exchange != 'kospi' and results %}
         <button type="button" class="results-backtest-btn" onclick="openResultsBacktest()">📈 백테스팅</button>
         {% endif %}
         <div style="font-size:12px; color:var(--text-secondary);">{{ exchange|default:"업비트" }}</div>
@@ -365,7 +365,7 @@
 <div class="coin-list">
     {% if results %}
         {% for r in results %}
-        <div class="coin-card" data-ticker="{{ r.symbol }}" data-volume="{{ r.volume|default:0 }}" data-change="{{ r.change_rate|default:0 }}" data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}" onclick="window.open('{% if request.GET.exchange == "kospi" %}https://stock.naver.com/domestic/stock/{{ r.symbol }}/price{% elif request.GET.exchange == "bithumb" %}https://www.bithumb.com/react/trade/order/{{ r.symbol }}_KRW{% else %}https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}{% endif %}', '_blank')">
+        <div class="coin-card" data-ticker="{{ r.symbol }}" data-volume="{{ r.volume|default:0 }}" data-change="{{ r.change_rate|default:0 }}" data-name="{% if r.name %}{{ r.name }}{% else %}{{ r.symbol }}{% endif %}" onclick="window.open('{% if request.GET.exchange == "kospi" %}https://stock.naver.com/domestic/stock/{{ r.symbol }}/price{% else %}https://upbit.com/exchange?code=CRIX.UPBIT.{{ r.symbol }}{% endif %}', '_blank')">
             <div class="card-left">
                 <button type="button" class="favorite-star-btn {% if r.symbol in favorite_tickers %}active{% endif %}"
                         data-ticker="{{ r.symbol }}"
@@ -411,7 +411,7 @@
     <div id="countdown-text" style="font-family: monospace; font-size: 14px; font-weight: bold; color: var(--primary-color);">00:00</div>
 </div>
 
-{% if request.GET.exchange != 'kospi' and request.GET.exchange != 'bithumb' and results %}
+{% if request.GET.exchange != 'kospi' and results %}
 {% include "screener/backtest_modal.html" %}
 {% endif %}
 
