@@ -128,6 +128,89 @@
     border-radius:50%; animation:btspin .7s linear infinite;
 }
 @keyframes btspin { to { transform:rotate(360deg); } }
+
+/* ── TIMEFRAME COMPARISON MODAL ── */
+#bt-tf-modal-backdrop {
+    display:none; position:fixed; inset:0;
+    background:rgba(10,12,20,.85); backdrop-filter:blur(6px);
+    z-index:650; align-items:center; justify-content:center;
+}
+#bt-tf-modal-backdrop.open { display:flex; }
+#bt-tf-modal {
+    background:#141721; border:1px solid #2a2e39;
+    border-radius:14px; width:min(980px,96vw);
+    max-height:92vh; overflow-y:auto;
+    padding:24px 22px 20px; position:relative;
+    box-shadow:0 24px 60px rgba(0,0,0,.65);
+    color:#d1d4dc;
+}
+.bt-tf-header {
+    display:flex; justify-content:space-between; align-items:flex-start;
+    margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #242834;
+}
+.bt-tf-title {
+    font-size:17px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;
+}
+.bt-tf-meta {
+    font-size:12px; color:#868993; margin-top:5px;
+}
+.bt-tf-meta b { color:#d1d4dc; font-weight:600; }
+.bt-tf-close {
+    background:#242834; border:none; color:#868993;
+    width:28px; height:28px; border-radius:50%;
+    font-size:14px; cursor:pointer; display:grid; place-items:center;
+}
+.bt-tf-close:hover { background:#363a45; color:#fff; }
+
+.bt-tf-table-wrap {
+    overflow-x:auto; background:#0f1118; border:1px solid #242834;
+    border-radius:10px; margin-bottom:14px;
+}
+.bt-tf-table {
+    width:100%; border-collapse:collapse; font-size:12.5px; text-align:center;
+    white-space:nowrap;
+}
+.bt-tf-table th {
+    background:#181b26; color:#8c91a0; font-weight:700;
+    padding:12px 10px; border-bottom:1px solid #2a2e39; font-size:11.5px;
+    letter-spacing:.2px;
+}
+.bt-tf-table td {
+    padding:12px 10px; border-bottom:1px solid #1f2330; color:#d1d4dc;
+    vertical-align:middle;
+}
+.bt-tf-table tr:last-child td { border-bottom:none; }
+.bt-tf-table tr:hover td { background:rgba(255,255,255,0.035); }
+
+/* Best row highlight */
+.bt-tf-table tr.best-row {
+    background:rgba(234, 179, 8, 0.08);
+}
+.bt-tf-table tr.best-row td {
+    border-bottom:1px solid rgba(234, 179, 8, 0.2);
+}
+.bt-tf-badge-star {
+    display:inline-flex; align-items:center; gap:4px;
+    color:#eab308; font-weight:800;
+}
+.bt-tf-tf-name {
+    text-align:left; padding-left:14px !important; font-weight:600;
+}
+
+/* Value colors */
+.val-pos { color:#26a69a; font-weight:700; }
+.val-neg { color:#f23645; font-weight:700; }
+.val-bold { font-weight:700; }
+
+.bt-tf-note {
+    font-size:11.5px; color:#787b86; line-height:1.5;
+    margin-top:8px; display:flex; justify-content:space-between; align-items:center;
+    flex-wrap:wrap; gap:10px;
+}
+.bt-tf-loading-box {
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:60px 20px; gap:14px; color:#868993; font-size:13px; font-weight:600;
+}
 </style>
 
 <!-- MODAL -->
@@ -185,6 +268,7 @@
             </div>
             <button class="bt-run" id="bt-run-btn" onclick="runBT()">▶ 백테스트 실행</button>
             <button class="bt-run bt-run-all" id="bt-run-all-btn" type="button" onclick="runAllBT()" style="display:none;">▦ 전체 실행</button>
+            <button class="bt-run" id="bt-tf-btn" type="button" style="background:#0284c7; margin-left:0;" onclick="openTimeframeComparison()">📊 타임프레임 비교</button>
             <button class="bt-run" type="button" style="background:#6d4aff;margin-left:0" onclick="openBTLab()">🧪 연구실</button>
         </div>
 
@@ -230,6 +314,53 @@
                     </thead>
                     <tbody id="bt-tbody"></tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     타임프레임별 데이터 비교 팝업 모달
+     ══════════════════════════════════════════ -->
+<div id="bt-tf-modal-backdrop">
+    <div id="bt-tf-modal">
+        <div class="bt-tf-header">
+            <div>
+                <div class="bt-tf-title">📊 1. 타임프레임별 백테스트 시뮬레이션 결과 요약</div>
+                <div class="bt-tf-meta" id="bt-tf-meta-sub">현재 전략으로 15분봉부터 월봉까지 7개 주기를 비교합니다.</div>
+            </div>
+            <button class="bt-tf-close" onclick="closeTimeframeComparison()">✕</button>
+        </div>
+
+        <div id="bt-tf-loading" class="bt-tf-loading-box" style="display:none;">
+            <div class="bt-spinner"></div>
+            <span id="bt-tf-loading-text">15분봉 ~ 월봉 (7개 구간) 시뮬레이션 실행 중...</span>
+        </div>
+
+        <div id="bt-tf-content">
+            <div class="bt-tf-table-wrap">
+                <table class="bt-tf-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left; padding-left:14px;">타임프레임</th>
+                            <th>총 거래수</th>
+                            <th>승리 / 패배</th>
+                            <th>승률</th>
+                            <th>평균 익절</th>
+                            <th>평균 손절</th>
+                            <th>손익비</th>
+                            <th>누적 손익률</th>
+                            <th>최대 낙폭 (MDD)</th>
+                            <th>Profit Factor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bt-tf-tbody">
+                    </tbody>
+                </table>
+            </div>
+            <div class="bt-tf-note">
+                <span>💡 신호 확정 다음 봉 시가 체결 · 수수료/슬리피지 양방향 반영 · 행을 클릭하면 해당 타임프레임 상세 백테스트를 실행합니다.</span>
+                <span id="bt-tf-time-badge" style="color:#2962ff; font-weight:700;"></span>
             </div>
         </div>
     </div>
@@ -384,8 +515,11 @@ function showBTError(title, message) {
     resultsDiv.style.display = 'block';
 }
 
-async function runBT() {
+async function runBT(overrideTf = null) {
     if (!btStrategyId) return;
+    if (overrideTf) {
+        currentBTTimeframe = overrideTf;
+    }
     const btn = document.getElementById('bt-run-btn');
     btn.disabled = true;
     document.getElementById('bt-loading').style.display = 'flex';
@@ -404,7 +538,7 @@ async function runBT() {
     sub.textContent = `${ticker.replace('KRW-','')} · 최근 ${count}봉${durationPart} · ${document.getElementById('bt-sell-mode').selectedOptions[0].text}`;
 
     try {
-        const data = await requestBT(ticker, count, sellMode, param, fee, slippage);
+        const data = await requestBT(ticker, count, sellMode, param, fee, slippage, overrideTf);
         renderBT(data);
     } catch(e) {
         showBTError('백테스팅 실패', e.message || '서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.');
@@ -414,14 +548,18 @@ async function runBT() {
     }
 }
 
-async function requestBT(ticker, candleCount, sellMode, sellParam, fee, slippage) {
+async function requestBT(ticker, candleCount, sellMode, sellParam, fee, slippage, timeframeOverride = null) {
+    const payload = {
+        ticker, candle_count: candleCount, sell_mode: sellMode,
+        sell_param: sellParam, fee, slippage,
+    };
+    if (timeframeOverride) {
+        payload.timeframe = timeframeOverride;
+    }
     const res = await secureFetch(`/strategy/${btStrategyId}/backtest/run/`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            ticker, candle_count: candleCount, sell_mode: sellMode,
-            sell_param: sellParam, fee, slippage,
-        }),
+        body: JSON.stringify(payload),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '알 수 없는 오류가 발생했습니다.');
@@ -610,6 +748,170 @@ function drawEquityChart(curve) {
     for (let i = 0; i < vals.length; i += step) {
         ctx.fillText(dates[i], toX(i), H - 6);
     }
+}
+
+/* ──── Timeframe Comparison Modal Logic ──── */
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function openTimeframeComparison() {
+    if (!btStrategyId) {
+        alert('전략을 먼저 선택해주세요.');
+        return;
+    }
+    const ticker = document.getElementById('bt-ticker').value;
+    const count = parseInt(document.getElementById('bt-count').value) || 200;
+    const sellMode = document.getElementById('bt-sell-mode').value;
+    const sellParam = parseFloat(document.getElementById('bt-param').value) || 5;
+    const fee = parseFloat(document.getElementById('bt-fee').value) || 0.05;
+    const slippage = parseFloat(document.getElementById('bt-slippage').value) || 0.05;
+
+    const tickerText = document.getElementById('bt-ticker').options[document.getElementById('bt-ticker').selectedIndex]?.text || ticker;
+    const modeText = document.getElementById('bt-sell-mode').options[document.getElementById('bt-sell-mode').selectedIndex]?.text || sellMode;
+
+    document.getElementById('bt-tf-meta-sub').innerHTML = 
+        `전략: <b>${escapeHtml(btStrategyName || '현재 전략')}</b> · 코인: <b>${escapeHtml(tickerText)}</b> · 기간: <b>최근 ${count}봉</b> · 매도: <b>${escapeHtml(modeText)}</b>`;
+
+    document.getElementById('bt-tf-modal-backdrop').classList.add('open');
+    document.getElementById('bt-tf-loading').style.display = 'flex';
+    document.getElementById('bt-tf-content').style.display = 'none';
+
+    const startTime = performance.now();
+
+    secureFetch(`/strategy/${btStrategyId}/backtest/timeframes/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            ticker: ticker,
+            candle_count: count,
+            sell_mode: sellMode,
+            sell_param: sellParam,
+            fee: fee,
+            slippage: slippage,
+        })
+    })
+    .then(res => res.json().then(data => ({ ok: res.ok, data })))
+    .then(({ ok, data }) => {
+        document.getElementById('bt-tf-loading').style.display = 'none';
+        document.getElementById('bt-tf-content').style.display = 'block';
+
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+        document.getElementById('bt-tf-time-badge').textContent = `⏱ ${elapsed}초 소요`;
+
+        if (!ok || !data.ok) {
+            document.getElementById('bt-tf-tbody').innerHTML = `<tr><td colspan="10" style="padding:30px; color:#f23645;">⚠️ ${escapeHtml(data.error || '시뮬레이션 실행 실패')}</td></tr>`;
+            return;
+        }
+
+        renderTimeframeTable(data.results);
+    })
+    .catch(err => {
+        document.getElementById('bt-tf-loading').style.display = 'none';
+        document.getElementById('bt-tf-content').style.display = 'block';
+        document.getElementById('bt-tf-tbody').innerHTML = `<tr><td colspan="10" style="padding:30px; color:#f23645;">⚠️ 오류: ${escapeHtml(err.message)}</td></tr>`;
+    });
+}
+
+function closeTimeframeComparison() {
+    document.getElementById('bt-tf-modal-backdrop').classList.remove('open');
+}
+
+document.getElementById('bt-tf-modal-backdrop')?.addEventListener('click', function(e) {
+    if (e.target === this) closeTimeframeComparison();
+});
+
+function renderTimeframeTable(results) {
+    const tbody = document.getElementById('bt-tf-tbody');
+    tbody.innerHTML = '';
+
+    if (!results || results.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="10" style="padding:30px; color:#868993;">비교 데이터가 없습니다.</td></tr>`;
+        return;
+    }
+
+    results.forEach(r => {
+        const tr = document.createElement('tr');
+        if (r.is_best) {
+            tr.className = 'best-row';
+        }
+
+        let tfDisplay = '';
+        if (r.is_best) {
+            tfDisplay = `<span class="bt-tf-badge-star">⭐ ${escapeHtml(r.timeframe_name)}</span> <span style="color:#868993; font-size:11px;">(${r.timeframe})</span>`;
+        } else {
+            tfDisplay = `<span>${escapeHtml(r.timeframe_name)}</span> <span style="color:#868993; font-size:11px;">(${r.timeframe})</span>`;
+        }
+
+        if (r.status !== 'ok') {
+            tr.innerHTML = `
+                <td class="bt-tf-tf-name">${tfDisplay}</td>
+                <td colspan="9" style="color:#868993; font-size:11.5px;">데이터 부족 (신호 계산 불가)</td>
+            `;
+            tbody.appendChild(tr);
+            return;
+        }
+
+        const tradesDisplay = `${r.total_trades}회`;
+        const winLossDisplay = `${r.win_count}승 ${r.loss_count}패`;
+        const winRateDisplay = `${r.win_rate.toFixed(1)}%`;
+
+        const avgWinDisplay = r.avg_win > 0 ? `<span class="val-pos">+${r.avg_win.toFixed(2)}%</span>` : `${r.avg_win.toFixed(2)}%`;
+        const avgLossDisplay = r.avg_loss < 0 ? `<span class="val-neg">${r.avg_loss.toFixed(2)}%</span>` : `${r.avg_loss.toFixed(2)}%`;
+        const payoffDisplay = `${r.payoff_ratio.toFixed(2)}배`;
+
+        const totRetClass = r.total_return > 0 ? 'val-pos' : (r.total_return < 0 ? 'val-neg' : '');
+        const totRetSign = r.total_return > 0 ? '+' : '';
+        const totRetDisplay = `<span class="${totRetClass}">${totRetSign}${r.total_return.toFixed(2)}%</span>`;
+
+        const mddDisplay = r.mdd > 0 ? `<span class="val-neg">-${r.mdd.toFixed(2)}%</span>` : `0.00%`;
+        const pfDisplay = `<span class="val-bold">${r.profit_factor >= 99 ? '∞' : r.profit_factor.toFixed(2)}</span>`;
+
+        tr.innerHTML = `
+            <td class="bt-tf-tf-name">${tfDisplay}</td>
+            <td>${tradesDisplay}</td>
+            <td>${winLossDisplay}</td>
+            <td>${winRateDisplay}</td>
+            <td>${avgWinDisplay}</td>
+            <td>${avgLossDisplay}</td>
+            <td>${payoffDisplay}</td>
+            <td>${totRetDisplay}</td>
+            <td>${mddDisplay}</td>
+            <td>${pfDisplay}</td>
+        `;
+
+        tr.style.cursor = 'pointer';
+        tr.title = `${r.timeframe_name} 상세 백테스트 실행하기`;
+        tr.onclick = () => {
+            closeTimeframeComparison();
+            runBTWithTimeframe(r.timeframe);
+        };
+
+        tbody.appendChild(tr);
+    });
+}
+
+function runBTWithTimeframe(timeframe) {
+    currentBTTimeframe = timeframe;
+    const timeframeNames = {
+        'minute15': '15분봉',
+        'minute30': '30분봉',
+        'minute60': '1시간봉',
+        'minute240': '4시간봉',
+        'day': '일봉',
+        'week': '주봉',
+        'month': '월봉'
+    };
+    const tfName = timeframeNames[timeframe] || timeframe;
+    document.getElementById('bt-sub').textContent = `전략 타임프레임: ${tfName} 적용`;
+    updateCandleOptions(timeframe);
+    runBT(timeframe);
 }
 </script>
 

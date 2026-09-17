@@ -36,6 +36,7 @@ urlpatterns = [
     # 백테스팅 API
     path('backtest/coins/',                          views.backtest_coins, name='backtest_coins'),
     path('strategy/<int:strategy_id>/backtest/run/', views.backtest_run,   name='backtest_run'),
+    path('strategy/<int:strategy_id>/backtest/timeframes/', views.backtest_timeframe_comparison, name='backtest_timeframe_comparison'),
     path('strategy/<int:strategy_id>/backtest/lab/', views.backtest_lab, name='backtest_lab'),
     path('strategy/<int:strategy_id>/backtest/lab/run/', views.backtest_lab_run, name='backtest_lab_run'),
     path('cron/scan/',                               views.cron_scan,      name='cron_scan'),

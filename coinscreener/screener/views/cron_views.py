@@ -69,6 +69,16 @@ def backtest_run(request, strategy_id):
     if not _re.match(r'^KRW-[A-Z0-9]{1,20}$', ticker):
         return JsonResponse({'error': '올바르지 않은 티커 형식'}, status=400)
 
+    timeframe_override = body.get('timeframe')
+    if timeframe_override in ('minute1', 'minute3', 'minute5', 'minute10', 'minute15', 'minute30', 'minute60', 'minute240', 'day', 'week', 'month'):
+        import copy
+        tf_conditions = []
+        for c in conditions:
+            c_copy = copy.copy(c)
+            c_copy.timeframe = timeframe_override
+            tf_conditions.append(c_copy)
+        conditions = tf_conditions
+
     result = run_backtest(
         ticker, conditions, candle_count, sell_mode, sell_param,
         fee_pct, slippage_pct,
