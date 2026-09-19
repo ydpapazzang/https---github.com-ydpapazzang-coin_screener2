@@ -11,7 +11,7 @@ Group=i_am_psw86
 WorkingDirectory=/home/i_am_psw86/myapp
 EnvironmentFile=-/home/i_am_psw86/myapp/.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/i_am_psw86/myapp/venv/bin/python manage.py backup_sqlite --keep 14
+ExecStart=/home/i_am_psw86/myapp/venv/bin/python manage.py backup_sqlite --keep 3
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
