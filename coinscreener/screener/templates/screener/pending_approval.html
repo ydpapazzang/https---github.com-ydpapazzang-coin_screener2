@@ -1,0 +1,109 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>승인 대기 중 - Coin Screener</title>
+    <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #2d7bfe;
+            --text-primary: #ffffff;
+            --text-secondary: #9e9e9e;
+            --border-color: #2c2c2c;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Pretendard', sans-serif;
+            background-color: #0a0a0a;
+            color: var(--text-primary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .pending-card {
+            width: 100%;
+            max-width: 440px;
+            padding: 40px 28px;
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            margin: 20px;
+        }
+        .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        h1 {
+            font-size: 20px;
+            font-weight: 800;
+            margin: 0 0 12px;
+            letter-spacing: -0.5px;
+        }
+        p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin: 0 0 20px;
+        }
+        .user-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-color);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #8bb4fe;
+            margin-bottom: 24px;
+        }
+        .btn-reload {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: var(--primary-color);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-bottom: 12px;
+            text-decoration: none;
+        }
+        .btn-logout {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+        .btn-logout:hover {
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+<div class="pending-card">
+    <div class="icon">⏳</div>
+    <h1>관리자 승인 대기 중입니다</h1>
+    <div class="user-badge">
+        {{ user.email|default:user.username }}
+    </div>
+    <p>
+        Coin Screener는 비공개 전용 시스템입니다.<br>
+        관리자가 회원님의 계정을 승인한 후 이용하실 수 있습니다.<br>
+        승인이 완료되면 아래 버튼을 눌러 새로고침해 주세요.
+    </p>
+    <button class="btn-reload" onclick="window.location.reload()">승인 상태 새로고침</button>
+    <div>
+        <a href="{% url 'logout' %}" class="btn-logout">다른 계정으로 로그인 (로그아웃)</a>
+    </div>
+</div>
+</body>
+</html>

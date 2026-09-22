@@ -619,3 +619,27 @@ class Favorite(models.Model):
         return f"[{self.exchange}] {self.name} ({self.ticker})"
 
 
+class UserProfile(models.Model):
+    """사용자 계정 승인 및 프로필 관리"""
+    user = models.OneToOneField(
+        'auth.User',
+        on_delete=models.CASCADE,
+        related_name='profile',
+        verbose_name="사용자",
+    )
+    is_approved = models.BooleanField(default=False, db_index=True, verbose_name="관리자 승인 여부")
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name="승인 일시")
+    approved_by = models.CharField(max_length=150, blank=True, default='', verbose_name="승인자")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="가입 일시")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정 일시")
+
+    class Meta:
+        verbose_name = "사용자 프로필"
+        verbose_name_plural = "사용자 프로필 목록"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        status = "승인됨" if self.is_approved else "대기중"
+        return f"{self.user.email or self.user.username} ({status})"
+
+

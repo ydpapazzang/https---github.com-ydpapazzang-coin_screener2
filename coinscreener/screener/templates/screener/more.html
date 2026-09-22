@@ -33,10 +33,47 @@
     <a class="menu-item" href="{% url 'contact' %}">✉️ 문의하기 <span class="arrow">›</span></a>
 </div>
 
-<div class="menu-section">약관 및 정책</div>
+<div class="menu-section">계정 및 시스템</div>
 <div class="menu-list">
-    <a class="menu-item" href="{% url 'privacy' %}">🔒 개인정보처리방침 <span class="arrow">›</span></a>
-    <a class="menu-item" href="{% url 'terms' %}">📄 이용약관 <span class="arrow">›</span></a>
+    {% if user.is_authenticated %}
+        <div class="menu-item" style="cursor: default;">
+            <span>👤 {{ user.email|default:user.username }}</span>
+            <span style="font-size: 12px; color: #26a17b;">로그인됨</span>
+        </div>
+        {% if user.is_staff or user.is_superuser %}
+            <a class="menu-item" href="{% url 'manage_users' %}">👥 회원 승인 관리 <span class="arrow">›</span></a>
+            <a class="menu-item" href="{% url 'manage_dashboard' %}">📊 관리자 백오피스 <span class="arrow">›</span></a>
+            <div class="menu-item" onclick="flushCache()" style="cursor: pointer; color: #ff737d;">
+                <span>🧹 캐시 전체 비우기 (Flush Cache)</span>
+                <span class="arrow" id="flush-status">실행</span>
+            </div>
+        {% endif %}
+        <a class="menu-item" href="{% url 'logout' %}" style="color: var(--text-secondary);">🚪 로그아웃 <span class="arrow">›</span></a>
+    {% else %}
+        <a class="menu-item" href="{% url 'login' %}">🔑 로그인 <span class="arrow">›</span></a>
+    {% endif %}
 </div>
+
+{% csrf_token %}
+<script>
+async function flushCache() {
+    if (!confirm('저장된 시세 메모리 캐시 및 이전 검색 결과를 모두 초기화하시겠습니까?')) return;
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    const statusEl = document.getElementById('flush-status');
+    statusEl.textContent = '처리 중...';
+    try {
+        const resp = await fetch('{% url "manage_flush_cache" %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken }
+        });
+        const data = await resp.json();
+        alert(data.msg || '캐시가 초기화되었습니다.');
+        statusEl.textContent = '완료 ✓';
+    } catch(e) {
+        alert('캐시 초기화 실패: ' + e.message);
+        statusEl.textContent = '실행';
+    }
+}
+</script>
 {% endblock %}
 

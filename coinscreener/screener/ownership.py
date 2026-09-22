@@ -14,8 +14,38 @@ SESSION_OWNER_KEY = 'owner_key'
 _ONE_YEAR = 60 * 60 * 24 * 365
 
 
+def _migrate_session_data_to_user(old_key, new_key):
+    """익명 세션 시절 작성한 전략/즐겨찾기 데이터를 로그인한 사용자 키로 이전."""
+    if not old_key or old_key == new_key:
+        return
+    try:
+        from .models import Strategy, Favorite, ScanUsage, PaperPosition
+        Strategy.objects.filter(owner_key=old_key).update(owner_key=new_key)
+        for fav in Favorite.objects.filter(owner_key=old_key):
+            if not Favorite.objects.filter(owner_key=new_key, exchange=fav.exchange, ticker=fav.ticker).exists():
+                fav.owner_key = new_key
+                fav.save(update_fields=['owner_key'])
+            else:
+                fav.delete()
+        ScanUsage.objects.filter(owner_key=old_key).update(owner_key=new_key)
+        PaperPosition.objects.filter(owner_key=old_key).update(owner_key=new_key)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Error migrating data from {old_key} to {new_key}: {e}")
+
+
 def get_owner_key(request):
-    """현재 세션의 owner_key를 반환(없으면 생성)."""
+    """현재 세션/사용자의 owner_key를 반환.
+    로그인한 사용자는 f"usr_{user.id}"를 사용하며, 기존 익명 세션의 데이터가 있다면 자동 이관한다."""
+    user = getattr(request, 'user', None)
+    if user and user.is_authenticated:
+        user_key = f"usr_{user.id}"
+        old_session_key = request.session.get(SESSION_OWNER_KEY)
+        if old_session_key and old_session_key != user_key:
+            _migrate_session_data_to_user(old_session_key, user_key)
+            request.session[SESSION_OWNER_KEY] = user_key
+        return user_key
+
     key = request.session.get(SESSION_OWNER_KEY)
     if not key:
         key = uuid.uuid4().hex

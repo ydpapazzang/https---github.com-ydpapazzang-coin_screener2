@@ -66,9 +66,19 @@ urlpatterns = [
     path('guide/',            views.guide_list,   name='guide_list'),
     path('guide/<slug:slug>/', views.guide_detail, name='guide_detail'),
 
-    # 백오피스 (PC 관리자용, 슈퍼유저 로그인 필요)
-    path('manage/',        views.manage_dashboard, name='manage_dashboard'),
-    path('manage/alerts/', views.manage_alerts,    name='manage_alerts'),
-    path('manage/visits/', views.manage_visits,    name='manage_visits'),
+    # 인증 및 구글 소셜 로그인
+    path('login/',                views.login_view,           name='login'),
+    path('auth/google/login/',    views.google_login,         name='google_login'),
+    path('auth/google/callback/', views.google_callback,      name='google_callback'),
+    path('auth/pending/',         views.pending_approval,     name='auth_pending'),
+    path('auth/logout/',          views.logout_view,          name='logout'),
+
+    # 백오피스 (PC 관리자용, 슈퍼유저/스태프 로그인 필요)
+    path('manage/',                           views.manage_dashboard,      name='manage_dashboard'),
+    path('manage/users/',                     views.manage_users,          name='manage_users'),
+    path('manage/users/<int:user_id>/toggle/',views.toggle_user_approval,  name='toggle_user_approval'),
+    path('manage/flush-cache/',               views.manage_flush_cache,    name='manage_flush_cache'),
+    path('manage/alerts/',                    views.manage_alerts,         name='manage_alerts'),
+    path('manage/visits/',                    views.manage_visits,         name='manage_visits'),
 ]
 

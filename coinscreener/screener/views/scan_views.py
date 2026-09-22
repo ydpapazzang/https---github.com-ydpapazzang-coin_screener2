@@ -776,6 +776,16 @@ def coin_search_stream(request, strategy_id):
         done    = 0
         error_occurred = False
 
+        # 화면에 즉시 초기 진행 상태를 전달해 0/0 멈춤 현상을 없앤다.
+        yield "data: " + json.dumps({
+            "type": "progress",
+            "done": 0,
+            "total": total,
+            "pct": 2,
+            "matched": 0,
+            "stage": "시세 데이터 준비 중...",
+        }) + "\n\n"
+
         def process_ticker(t_data):
             ticker = t_data['ticker']
             name = t_data['name']

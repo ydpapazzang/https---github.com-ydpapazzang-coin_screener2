@@ -16,6 +16,7 @@ class Command(BaseCommand):
     help = '코인 OHLCV 캐시를 반복 수집하고 모의 포지션 및 추천 성적을 독립적으로 추적합니다.'
 
     MONITOR_INTERVAL_SECONDS = 60
+    CORE_TIMEFRAMES = {'minute15', 'minute30', 'minute60', 'minute240', 'day'}
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS("Starting 24/7 Crypto & ETF Cache Bot..."))
@@ -70,14 +71,9 @@ class Command(BaseCommand):
             stop_event.wait(wait_seconds)
 
     def _run_crawler(self):
-        active_timeframes = sorted(set(
-            Condition.objects.values_list('timeframe', flat=True).distinct()
-        ))
-        if not active_timeframes:
-            self.stdout.write(
-                "활성화된 조건식이 없어 시세 캐시 수집만 생략합니다."
-            )
-            return
+        active_timeframes = sorted(
+            self.CORE_TIMEFRAMES | set(Condition.objects.values_list('timeframe', flat=True).distinct())
+        )
 
         from coinscreener.screener.engine import indicator_specs_by_timeframe
 

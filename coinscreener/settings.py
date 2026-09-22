@@ -83,6 +83,8 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    # 비인가자 접근 차단 및 관리자 승인제 미들웨어
+    'coinscreener.screener.middleware_auth.PrivateAccessMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # 백오피스 방문 기록 (페이지뷰만 가볍게 기록)
@@ -169,4 +171,20 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # 기존 테이블의 PK 타입을 유지하면서 Django의 암시적 PK 경고를 제거한다.
 DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
+# ────────────────────────────────────────────
+# 사용자 인증 및 구글 소셜 로그인 설정
+# ────────────────────────────────────────────
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/login/'
+
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', '').strip().lower()
+
+# 비인가자 전체 차단 활성화 여부 (운영 환경 기본 True, 테스트 시 기본 False)
+import sys
+TESTING = 'test' in sys.argv
+PRIVATE_ACCESS_ENABLED = (os.environ.get('PRIVATE_ACCESS_ENABLED', '1') == '1') and not TESTING
 

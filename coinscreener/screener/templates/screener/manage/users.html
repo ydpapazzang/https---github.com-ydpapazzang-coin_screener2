@@ -1,0 +1,166 @@
+{% extends 'screener/manage/base_manage.html' %}
+{% load humanize %}
+
+{% block title %}회원 승인 관리{% endblock %}
+
+{% block extra_head %}
+<style>
+    .badge-approved {
+        display: inline-block;
+        padding: 4px 10px;
+        background: rgba(38, 161, 123, 0.15);
+        color: #26a17b;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .badge-pending {
+        display: inline-block;
+        padding: 4px 10px;
+        background: rgba(245, 166, 35, 0.15);
+        color: #f5a623;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .btn-action {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: background 0.15s;
+    }
+    .btn-approve {
+        background: #26a17b;
+        color: #fff;
+    }
+    .btn-approve:hover {
+        background: #1f8564;
+    }
+    .btn-revoke {
+        background: rgba(242, 54, 69, 0.15);
+        border-color: rgba(242, 54, 69, 0.4);
+        color: #ff737d;
+    }
+    .btn-revoke:hover {
+        background: rgba(242, 54, 69, 0.3);
+    }
+    .user-info .email {
+        font-weight: 600;
+        font-size: 14px;
+        color: var(--text);
+    }
+    .user-info .sub {
+        font-size: 12px;
+        color: var(--text-dim);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>👥 회원 승인 관리</h1>
+        <div class="sub">구글 소셜 로그인으로 가입한 사용자를 관리합니다. 승인된 사용자만 스크리너를 이용할 수 있습니다.</div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>가입 회원 목록 (총 {{ users|length }}명)</h2>
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border); text-align: left; color: var(--text-dim);">
+                    <th style="padding: 12px 10px;">사용자 계정</th>
+                    <th style="padding: 12px 10px;">가입 일시</th>
+                    <th style="padding: 12px 10px;">권한</th>
+                    <th style="padding: 12px 10px;">승인 상태</th>
+                    <th style="padding: 12px 10px; text-align: right;">관리 작업</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr id="row-user-{{ u.id }}" style="border-bottom: 1px solid var(--border);">
+                    <td style="padding: 14px 10px;">
+                        <div class="user-info">
+                            <div class="email">{{ u.email|default:u.username }}</div>
+                            <div class="sub">
+                                {% if u.first_name %}{{ u.first_name }} · {% endif %}ID: {{ u.username }}
+                            </div>
+                        </div>
+                    </td>
+                    <td style="padding: 14px 10px; color: var(--text-dim);">
+                        {{ u.date_joined|date:"Y-m-d H:i" }}
+                    </td>
+                    <td style="padding: 14px 10px;">
+                        {% if u.is_superuser %}
+                            <span style="color: #6ea8ff; font-weight: 600;">👑 최고관리자</span>
+                        {% elif u.is_staff %}
+                            <span style="color: #8bb4fe;">스태프</span>
+                        {% else %}
+                            <span style="color: var(--text-dim);">일반회원</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 14px 10px;" id="status-col-{{ u.id }}">
+                        {% if u.is_staff or u.is_superuser or u.profile.is_approved %}
+                            <span class="badge-approved">● 승인 완료</span>
+                        {% else %}
+                            <span class="badge-pending">⏳ 승인 대기</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 14px 10px; text-align: right;" id="action-col-{{ u.id }}">
+                        {% if u == request.user %}
+                            <span style="color: var(--text-dim); font-size: 12px;">현재 로그인 계정</span>
+                        {% elif u.profile.is_approved %}
+                            <button class="btn-action btn-revoke" onclick="toggleApproval({{ u.id }})">승인 취소</button>
+                        {% else %}
+                            <button class="btn-action btn-approve" onclick="toggleApproval({{ u.id }})">승인하기</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="empty">가입된 회원이 없습니다.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% csrf_token %}
+<script>
+    async function toggleApproval(userId) {
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        const btnCol = document.getElementById(`action-col-${userId}`);
+        const statusCol = document.getElementById(`status-col-${userId}`);
+
+        try {
+            const resp = await fetch(`/manage/users/${userId}/toggle/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/json',
+                },
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) {
+                alert(data.error || '상태 변경에 실패했습니다.');
+                return;
+            }
+
+            if (data.is_approved) {
+                statusCol.innerHTML = '<span class="badge-approved">● 승인 완료</span>';
+                btnCol.innerHTML = `<button class="btn-action btn-revoke" onclick="toggleApproval(${userId})">승인 취소</button>`;
+            } else {
+                statusCol.innerHTML = '<span class="badge-pending">⏳ 승인 대기</span>';
+                btnCol.innerHTML = `<button class="btn-action btn-approve" onclick="toggleApproval(${userId})">승인하기</button>`;
+            }
+        } catch (err) {
+            alert('요청 중 오류가 발생했습니다: ' + err.message);
+        }
+    }
+</script>
+{% endblock %}

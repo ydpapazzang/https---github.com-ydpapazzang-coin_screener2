@@ -415,8 +415,11 @@ def get_max_required_len(conditions):
         if req > max_len:
             max_len = req
 
-    # 업비트 1회 요청 한도(200)에 정확히 맞도록. 200 이하이면 1회 호출로 끝난다.
-    return min(max_len, 200) if max_len <= 200 else max_len
+    # 업비트 1회 요청 한도(200)에 맞추어 200~202개 수준의 단기 초과분은 200으로 캡(Cap)하여
+    # API 호출이 2배(2페이지)로 늘어나는 130초 지연 문제를 방지한다.
+    if 200 <= max_len <= 202:
+        return 200
+    return max_len
 
 
 def check_strategy(ticker, conditions, current_price=None, current_change_rate=None,
@@ -453,6 +456,23 @@ def check_strategy(ticker, conditions, current_price=None, current_change_rate=N
                         cache_only=cache_only,
                     )
                     if df is None: return False
+                    
+                    # 실시간 현재가가 전달되었을 때, 마지막 진행 봉에 실시간 시세를 주입하여
+                    # 과거 캐시된 봉의 종가로 잘못 판정되는 현상(캐시 왜곡)을 완벽히 방지한다.
+                    df = df.copy()
+                    if current_price and current_price > 0 and len(df) > 0:
+                        last_idx = df.index[-1]
+                        old_close = df.loc[last_idx, 'close']
+                        if old_close != current_price:
+                            df.loc[last_idx, 'close'] = float(current_price)
+                            if 'high' in df.columns:
+                                df.loc[last_idx, 'high'] = max(df.loc[last_idx, 'high'], float(current_price))
+                            if 'low' in df.columns:
+                                df.loc[last_idx, 'low'] = min(df.loc[last_idx, 'low'], float(current_price))
+                            # 종가 변동에 따라 과거 사전 계산되었던 지표 컬럼들을 리셋하여 실시간 재계산
+                            for col in list(df.columns):
+                                if col.startswith(('MA_', 'EMA_', 'WMA_', 'RSI_', 'BB_', 'HA_')):
+                                    del df[col]
                     data_cache[cond.timeframe] = df
                 
                 df = data_cache[cond.timeframe]
@@ -806,4 +826,21 @@ def get_indicator_value(df, indicator_type, param, offset, bb_std=2.0):
 
     val = df[col_name].iloc[target_idx]
     return None if pd.isna(val) else float(val)
+
+
+def clear_all_screener_caches():
+    """모든 메모리 캐시 및 검색 결과 캐시를 강제 초기화."""
+    from django.core.cache import cache
+    cache.clear()
+    try:
+        from .models import OHLCVCache
+        OHLCVCache.objects.filter(timeframe='RESULT').delete()
+    except Exception:
+        pass
+    try:
+        from .views.scan_views import _PARSED_OHLCV, _PARSED_OHLCV_LOCK
+        with _PARSED_OHLCV_LOCK:
+            _PARSED_OHLCV.clear()
+    except Exception:
+        pass
 

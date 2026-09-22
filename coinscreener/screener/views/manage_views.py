@@ -171,3 +171,16 @@ def manage_visits(request):
     }
     return render(request, 'screener/manage/visits.html', ctx)
 
+
+@staff_member_required
+def manage_flush_cache(request):
+    """관리자용 캐시 전체 초기화 API."""
+    if request.method != 'POST':
+        from django.http import HttpResponseNotAllowed
+        return HttpResponseNotAllowed(['POST'])
+
+    from django.http import JsonResponse
+    from ..engine import clear_all_screener_caches
+    clear_all_screener_caches()
+    return JsonResponse({'ok': True, 'msg': '전체 시세/결과 캐시가 초기화되었습니다.'})
+

@@ -122,6 +122,7 @@
         <div class="brand">wonii <small>백오피스</small></div>
         <nav class="nav">
             <a href="{% url 'manage_dashboard' %}" class="{% if active == 'dashboard' %}active{% endif %}">📊 대시보드</a>
+            <a href="{% url 'manage_users' %}" class="{% if active == 'users' %}active{% endif %}">👥 회원 승인 관리</a>
             <a href="{% url 'manage_alerts' %}" class="{% if active == 'alerts' %}active{% endif %}">🔔 알람 이력</a>
             <a href="{% url 'manage_visits' %}" class="{% if active == 'visits' %}active{% endif %}">👣 방문 기록</a>
         </nav>

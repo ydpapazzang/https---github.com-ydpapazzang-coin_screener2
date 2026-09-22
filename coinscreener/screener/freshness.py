@@ -9,7 +9,7 @@ from .engine import max_cache_age
 from .models import OHLCVCache
 
 
-MINUTE_FLOOR_SECONDS = 20 * 60
+MINUTE_FLOOR_SECONDS = 8 * 60
 MIN_FRESH_RATIO = 0.80
 
 

@@ -9,4 +9,5 @@ from .info_views import *
 from .portfolio_views import *
 from .research_views import *
 from .favorite_views import *
+from .auth_views import *
 

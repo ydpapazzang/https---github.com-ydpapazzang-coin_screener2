@@ -328,10 +328,17 @@
             statLeft.textContent  = `${data.done.toLocaleString()} / ${data.total.toLocaleString()} 검사 중`;
             statRight.textContent = `✓ ${data.matched}개 매칭`;
 
-            if (pct < 30)       subText.textContent = '데이터를 분석하고 있습니다';
-            else if (pct < 70)  subText.textContent = '절반 넘었어요, 조금만 기다려 주세요 ☕';
-            else if (pct < 95)  subText.textContent = '거의 다 왔습니다!';
-            else                subText.textContent = '마무리 중...';
+            if (data.stage) {
+                subText.textContent = data.stage;
+            } else if (pct < 30) {
+                subText.textContent = '데이터를 분석하고 있습니다';
+            } else if (pct < 70) {
+                subText.textContent = '절반 넘었어요, 조금만 기다려 주세요 ☕';
+            } else if (pct < 95) {
+                subText.textContent = '거의 다 왔습니다!';
+            } else {
+                subText.textContent = '마무리 중...';
+            }
 
             if (data.last_match) {
                 const prevMatched = tickerItems.filter(t => t.classList.contains('match')).length;
