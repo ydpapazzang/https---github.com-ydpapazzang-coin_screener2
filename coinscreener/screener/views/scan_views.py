@@ -111,9 +111,10 @@ _TICKERS_FRESH_TTL = 30
 def _enrich_upbit_ticker_snapshot(tickers):
     """현재 검색에 사용할 업비트 가격·등락률·24시간 거래대금을 일괄 보강한다.
 
-    종목 목록은 짧게 캐시해도, 이 스냅샷은 검색 직전에 다시 받아야 화면의
-    등락률/거래대금이 0으로 굳지 않는다. API 장애 시에는 기존 캐시 값을 보존한다.
-    동일 시세 스냅샷은 20초간 캐시하여 반복 검색 시 네트워크 왕복(2초)을 제거한다.
+    1순위: WebSocket 실시간 캐시 (ws_ticker 모듈) — 상시 연결 중이고 30초 이내 수신 데이터
+           → REST API 호출 없이 메모리에서 즉시 읽음 (~0ms)
+    2순위: LocMemCache 20초 스냅샷 — WS가 아직 준비 안 됐거나 30초 초과 시
+    3순위: Upbit REST API /v1/ticker 직접 호출 — 캐시 모두 미스 시
     """
     if not tickers:
         return tickers
@@ -132,7 +133,27 @@ def _enrich_upbit_ticker_snapshot(tickers):
         if valid_markets:
             tickers[:] = [item for item in tickers if item.get('ticker') in valid_markets]
 
-        snapshots = cache.get('upbit_ticker_snapshots_map')
+        snapshots = None
+
+        # ── 1순위: WebSocket 실시간 캐시 ──────────────────────────────────
+        try:
+            from ..ws_ticker import get_ws_snapshot, get_ws_snapshot_age
+            ws_age = get_ws_snapshot_age()
+            if ws_age <= 30:  # 30초 이내 수신 데이터면 신선한 것으로 판단
+                ws_snap = get_ws_snapshot()
+                if ws_snap:
+                    # WS SIMPLE 포맷 → REST 포맷으로 키 매핑
+                    # ws_snap[market] = {'trade_price', 'signed_change_rate', 'acc_trade_price_24h'}
+                    snapshots = ws_snap
+                    logger.debug('[WS_TICKER] 스냅샷 WS 캐시 사용 (age=%.1fs, %d종목)', ws_age, len(ws_snap))
+        except Exception as ws_exc:
+            logger.debug('[WS_TICKER] WS 캐시 조회 실패 (무시): %s', ws_exc)
+
+        # ── 2순위: LocMemCache 20초 스냅샷 ───────────────────────────────
+        if snapshots is None:
+            snapshots = cache.get('upbit_ticker_snapshots_map')
+
+        # ── 3순위: REST API 직접 호출 ────────────────────────────────────
         if snapshots is None:
             ticker_codes = [item.get('ticker') for item in tickers if item.get('ticker')]
 
@@ -153,25 +174,29 @@ def _enrich_upbit_ticker_snapshot(tickers):
                 except Exception:
                     return []
 
-            snapshots = {}
+            rest_snapshots = {}
             if chunks:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
                     for chunk_payload in executor.map(_fetch_chunk, chunks):
                         for item in chunk_payload:
                             market = item.get('market')
                             if market:
-                                snapshots[market] = item
+                                rest_snapshots[market] = item
 
-            if snapshots:
-                cache.set('upbit_ticker_snapshots_map', snapshots, 20)
-                cache.set('upbit_ticker_snapshots_lastgood', snapshots, 300)
+            if rest_snapshots:
+                snapshots = rest_snapshots
+                cache.set('upbit_ticker_snapshots_map', rest_snapshots, 20)
+                cache.set('upbit_ticker_snapshots_lastgood', rest_snapshots, 300)
             else:
                 snapshots = cache.get('upbit_ticker_snapshots_lastgood') or {}
 
+        # ── 스냅샷을 티커 목록에 보강 ────────────────────────────────────
         for ticker in tickers:
-            snapshot = snapshots.get(ticker.get('ticker'))
+            market_key = ticker.get('ticker')
+            snapshot = snapshots.get(market_key)
             if not snapshot:
                 continue
+            # WS 포맷과 REST 포맷 모두 동일한 키를 사용하므로 통일 처리
             price = snapshot.get('trade_price')
             change = snapshot.get('signed_change_rate')
             amount = snapshot.get('acc_trade_price_24h') or snapshot.get('acc_trade_price')
@@ -184,6 +209,7 @@ def _enrich_upbit_ticker_snapshot(tickers):
     except Exception as exc:
         logger.warning('Upbit ticker snapshot enrichment failed: %s', exc)
     return tickers
+
 
 
 def _get_tickers(exchange, vol_limit):

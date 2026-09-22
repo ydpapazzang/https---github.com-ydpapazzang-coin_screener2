@@ -32,3 +32,13 @@ class ScreenerConfig(AppConfig):
             configure_sqlite_connection,
             dispatch_uid='coinscreener.configure_sqlite_connection',
         )
+
+        # Upbit WebSocket 실시간 현재가 수신 스레드 시작.
+        # 테스트 환경(manage.py test)에서는 실행하지 않는다.
+        import sys
+        if 'test' not in sys.argv:
+            try:
+                from .ws_ticker import start_ws_ticker
+                start_ws_ticker()
+            except Exception as exc:
+                logger.warning('WebSocket ticker 스레드 시작 실패 (무시): %s', exc)
