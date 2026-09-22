@@ -122,6 +122,19 @@ def _enrich_upbit_ticker_snapshot(tickers):
     try:
         valid_markets = cache.get('upbit_valid_markets')
         if not valid_markets:
+            # WS 캐시가 살아있으면 이미 수신된 마켓 목록을 valid_markets로 재사용
+            try:
+                from ..ws_ticker import get_ws_snapshot, get_ws_snapshot_age
+                ws_age_early = get_ws_snapshot_age()
+                if ws_age_early <= 60:
+                    ws_snap_early = get_ws_snapshot()
+                    if ws_snap_early:
+                        valid_markets = set(ws_snap_early.keys())
+                        cache.set('upbit_valid_markets', valid_markets, 3600)
+            except Exception:
+                pass
+
+        if not valid_markets:
             markets = requests.get('https://api.upbit.com/v1/market/all', timeout=5).json()
             if isinstance(markets, list):
                 valid_markets = {
@@ -132,6 +145,7 @@ def _enrich_upbit_ticker_snapshot(tickers):
 
         if valid_markets:
             tickers[:] = [item for item in tickers if item.get('ticker') in valid_markets]
+
 
         snapshots = None
 
@@ -654,11 +668,18 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
         t_meta = _time.perf_counter() - _tm0
 
         # 2) 변경된(또는 처음 보는) 항목만 무거운 data를 읽어 파싱한다.
+        #    DB read는 단일 쿼리로 list()에 전부 로드한 뒤, CPU 바운드 pickle/zlib 역직렬화는
+        #    ThreadPoolExecutor로 병렬 처리한다. (직렬 289개 → 25s 병목 해소)
         _tp0 = _time.perf_counter()
         if reparse_ids:
             import pickle
             import zlib
-            for obj in OHLCVCache.objects.filter(id__in=reparse_ids):
+
+            # DB 행 전체를 한 번의 쿼리로 메모리에 올린다.
+            objs = list(OHLCVCache.objects.filter(id__in=reparse_ids))
+
+            def _parse_obj(obj):
+                """pickle/json 역직렬화 후 (key, updated_at, df) 반환. 실패 시 None."""
                 try:
                     if obj.frame_blob:
                         df = pickle.loads(zlib.decompress(bytes(obj.frame_blob)))
@@ -670,16 +691,26 @@ def _bulk_prefetch_ohlcv(tickers_data, conditions, exchange=None):
                             columns=data_dict['columns'],
                         )
                     df.index.name = None
+                    if len(df) == 0:
+                        return None
+                    return (obj.ticker, obj.timeframe), obj.updated_at, df
                 except Exception:
-                    continue
-                if len(df) == 0:
-                    continue
-                key = (obj.ticker, obj.timeframe)
-                with _PARSED_OHLCV_LOCK:
-                    # 상한 초과 시 단순 방어적으로 비운다(장수 프로세스 메모리 보호).
+                    return None
+
+            # 병렬 파싱 (I/O 없이 CPU 바운드지만 GIL 해제 구간인 zlib/pickle 포함으로 스레드 효과 있음)
+            _parse_workers = min(8, len(objs))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=_parse_workers) as _pe:
+                parse_results = list(_pe.map(_parse_obj, objs))
+
+            # 결과를 인프로세스 캐시에 일괄 반영
+            with _PARSED_OHLCV_LOCK:
+                for result in parse_results:
+                    if result is None:
+                        continue
+                    key, updated_at, df = result
                     if len(_PARSED_OHLCV) >= _PARSED_OHLCV_MAX and key not in _PARSED_OHLCV:
                         _PARSED_OHLCV.clear()
-                    _PARSED_OHLCV[key] = (obj.updated_at, df)
+                    _PARSED_OHLCV[key] = (updated_at, df)
         t_parse = _time.perf_counter() - _tp0
 
         # 3) 요청 타임프레임에 대해 파싱된 프레임을 요청 단위 LocMemCache에 적재.
