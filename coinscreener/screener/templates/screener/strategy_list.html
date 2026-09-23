@@ -210,7 +210,8 @@
 </header>
 <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; gap: 8px; background: var(--bg-color); position: sticky; top: 61px; z-index: 99;">
     <input type="text" id="search-input" oninput="filterStrategies()" placeholder="전략 이름 검색..." style="flex:1; background: var(--surface-color); border: 1px solid var(--border-color); color: var(--text-primary); padding: 10px 14px; border-radius: 10px; outline: none; font-size: 14px;">
-    <button id="full-scan-btn" onclick="toggleFullScan()" title="켜면 전체 코인을 스캔(느림), 끄면 거래대금 상위 150개만 빠르게 검색합니다. (업비트/코스피)" style="background: var(--surface-color); color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 10px; padding: 0 12px; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer;">범위: 상위150</button>
+    <button id="full-scan-btn" onclick="toggleFullScan()" title="켜면 전체 코인을 스캔(느림), 끄면 거래대금 상위 150개만 빠르게 검색합니다." style="background: var(--surface-color); color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 10px; padding: 0 12px; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer;">범위: 상위150</button>
+
     <button id="scan-all-btn" onclick="scanAllStrategies()" style="background: rgba(45,123,254,0.1); color: var(--primary-color); border: 1px solid rgba(45,123,254,0.3); border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;">전체 스캔</button>
 </div>
 {% endblock %}
@@ -232,14 +233,7 @@
                 <div class="badge-count" id="badge-{{ strategy.id }}" onclick="goToResults({{ strategy.id }})">0건</div>
             </div>
 
-            <div class="controls-grid">
-                <!-- 거래소 -->
-                <div class="control-btn" onclick="openSheet('extf', {{ strategy.id }})">
-                    <span class="control-val" id="extf-label-{{ strategy.id }}">업비트</span>
-                    <span style="font-size:10px;">▼</span>
-                </div>
-                <input type="hidden" id="ex-val-{{ strategy.id }}" value="upbit">
-            </div>
+            <input type="hidden" id="ex-val-{{ strategy.id }}" value="upbit">
 
             <div class="action-row">
                 <button type="button" class="btn-action btn-primary" onclick="runSearch({{ strategy.id }})">검색 실행</button>
@@ -279,14 +273,6 @@
 <!-- ── BOTTOM SHEETS ── -->
 <div class="sheet-overlay" id="sheet-overlay" onclick="closeSheet()"></div>
 
-<!-- 거래소 시트 -->
-<div class="bottom-sheet" id="sheet-extf">
-    <div class="sheet-handle"></div>
-    <div class="sheet-title">거래소 선택</div>
-    
-    <div class="sheet-opt ex-opt selected" onclick="selectEx('upbit', '업비트')">업비트</div>
-    <div class="sheet-opt ex-opt" onclick="selectEx('kospi', '코스피')">코스피</div>
-</div>
 
 <!-- ── MODALS ── -->
 <!-- 전략 추가 모달 -->
@@ -320,11 +306,8 @@
             </label>
         </div>
 
-        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">스캔 범위 설정</div>
-        <select id="alert-exchange" style="width:100%; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); color:#fff; padding:10px; border-radius:8px; margin-bottom:16px;">
-            <option value="upbit">업비트</option>
-            <option value="kospi">코스피 (주식/ETF)</option>
-        </select>
+        <input type="hidden" id="alert-exchange" value="upbit">
+
         <div id="tg-status" style="margin-bottom:16px; font-size:12px; padding:10px; border-radius:8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color);">상태 불러오는 중...</div>
 
         <label style="display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:20px; cursor:pointer;">
@@ -364,32 +347,12 @@
         document.querySelectorAll('.bottom-sheet').forEach(s => s.classList.remove('open'));
     }
 
-    const EX_LABELS = { upbit: '업비트', kospi: '코스피' };
-
-    function selectEx(val, text) {
-        if(!targetStrategyId) return;
-        document.getElementById('ex-val-' + targetStrategyId).value = val;
-        document.getElementById('extf-label-' + targetStrategyId).textContent = text;
-        localStorage.setItem('strategy_exchange_' + targetStrategyId, val);
-        closeSheet();
-    }
-
     window.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[id^="ex-val-"]').forEach(input => {
-            const id = input.id.replace('ex-val-', '');
-            const saved = localStorage.getItem('strategy_exchange_' + id);
-            if (saved === 'bithumb') {
-                localStorage.setItem('strategy_exchange_' + id, 'upbit');
-                input.value = 'upbit';
-                const label = document.getElementById('extf-label-' + id);
-                if (label) label.textContent = '업비트';
-            } else if (saved && EX_LABELS[saved]) {
-                input.value = saved;
-                const label = document.getElementById('extf-label-' + id);
-                if (label) label.textContent = EX_LABELS[saved];
-            }
+            input.value = 'upbit';
         });
     });
+
 
     /* ── Search & Scan ── */
     function isFullScan() { return localStorage.getItem('scan_full') === '1'; }

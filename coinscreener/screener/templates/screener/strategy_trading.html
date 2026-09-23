@@ -282,14 +282,7 @@
     </div>
     {% endif %}
 
-    <!-- Filters -->
-    <div class="filter-section">
-      <div class="filter-title">거래소 선택</div>
-      <div class="filter-chips">
-         <div class="fchip exchange-chip on" data-val="upbit" onclick="selectExchange(this)">업비트</div>
-         <div class="fchip exchange-chip" data-val="kospi" onclick="selectExchange(this)">코스피</div>
-      </div>
-    </div>
+
 
     <!-- Conditions -->
     <div class="section-header">
@@ -834,31 +827,22 @@
             .then(res => res.json())
             .then(data => {
                 if (data.enabled) document.querySelector('.toggle-switch').classList.add('on');
-                if (data.exchange) selectExchange(document.querySelector(`.exchange-chip[data-val="${data.exchange}"]`), false);
             });
     });
 
     // Exchange and Volume
-    function selectExchange(el, save=true) {
-        if(!el) return;
-        document.querySelectorAll('.exchange-chip').forEach(c => c.classList.remove('on'));
-        el.classList.add('on');
-        if(save) saveAlertSettings();
-    }
     function saveAlertSettings() {
-        const ex = document.querySelector('.exchange-chip.on').dataset.val;
         const tg = document.querySelector('.toggle-switch').classList.contains('on');
         secureFetch('{% url "alert_save" strategy.id %}', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: tg, exchange: ex, vol_limit: 0 })
+            body: JSON.stringify({ enabled: tg, exchange: 'upbit', vol_limit: 0 })
         });
     }
 
     // Search execute
     function runSearch() {
-        const ex = document.querySelector('.exchange-chip.on').dataset.val;
-        window.location.href = `{% url 'coin_search' strategy.id %}?exchange=${ex}&vol_limit=0`;
+        window.location.href = `{% url 'coin_search' strategy.id %}?exchange=upbit&vol_limit=0`;
     }
 
     // Strategy rename
