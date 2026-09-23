@@ -4,8 +4,6 @@ import threading
 import time
 import datetime
 import pyupbit
-import pybithumb
-import FinanceDataReader as fdr
 import pandas as pd
 from django.core.management.base import BaseCommand
 from django.core.cache import cache
@@ -13,13 +11,13 @@ from django.conf import settings
 from coinscreener.screener.models import Condition
 
 class Command(BaseCommand):
-    help = '코인 OHLCV 캐시를 반복 수집하고 모의 포지션 및 추천 성적을 독립적으로 추적합니다.'
+    help = '업비트 코인 OHLCV 캐시를 반복 수집하고 모의 포지션 및 추천 성적을 독립적으로 추적합니다.'
 
     MONITOR_INTERVAL_SECONDS = 60
     CORE_TIMEFRAMES = {'minute15', 'minute30', 'minute60', 'minute240', 'day'}
 
     def handle(self, *args, **options):
-        self.stdout.write(self.style.SUCCESS("Starting 24/7 Crypto & ETF Cache Bot..."))
+        self.stdout.write(self.style.SUCCESS("Starting 24/7 Upbit Cache Bot..."))
 
         # 전체 마켓 수집은 20분 이상 걸릴 수 있으므로 모의 포지션·스윙 추적은 독립 스레드로 실행한다.
         monitor_stop = threading.Event()
@@ -40,8 +38,6 @@ class Command(BaseCommand):
                 self._run_crawler()
                 elapsed = time.monotonic() - start_time
 
-                # 수집이 목표 주기보다 오래 걸려도 즉시 다음 전체 수집을 시작하지
-                # 않는다. SQLite·메모리·외부 API에 최소 60초 회복 시간을 준다.
                 sleep_time = max(60, 300 - elapsed)
                 self.stdout.write(
                     f"Cycle finished in {elapsed:.1f}s. Sleeping for {sleep_time:.1f}s..."
@@ -80,59 +76,47 @@ class Command(BaseCommand):
         specs_by_tf = indicator_specs_by_timeframe(
             list(Condition.objects.all())
         )
-        available_sources = (
-            ('upbit', lambda: pyupbit.get_tickers(fiat='KRW')),
-            ('bithumb', pybithumb.get_tickers),
+
+        # 업비트 KRW 마켓 티커 목록
+        try:
+            tickers = pyupbit.get_tickers(fiat='KRW')
+            if not tickers:
+                raise RuntimeError('종목 목록이 비어 있습니다.')
+            tickers = list(tickers)
+        except Exception as exc:
+            self.stdout.write(self.style.ERROR(
+                f"[CRAWLER_EXCHANGE_ERROR] exchange=upbit "
+                f"stage=ticker_list error={type(exc).__name__}: {exc}"
+            ))
+            return
+
+        self.stdout.write(
+            f"[CRAWLER_START] exchange=upbit "
+            f"tickers={len(tickers)} "
+            f"timeframes={len(active_timeframes)} "
+            f"tasks={len(tickers) * len(active_timeframes)}"
         )
-        sources = tuple(
-            source for source in available_sources
-            if source[0] in settings.ENABLED_CRYPTO_EXCHANGES
-        )
-        disabled = [name for name, _ in available_sources if name not in settings.ENABLED_CRYPTO_EXCHANGES]
-        if disabled:
-            self.stdout.write(f"[CRAWLER_DISABLED_EXCHANGES] {','.join(disabled)}")
+
         cycle_stats = {
             'requested': 0,
             'success': 0,
             'failed': 0,
             'retried': 0,
         }
-
-        for exchange, load_tickers in sources:
-            try:
-                tickers = load_tickers()
-                if not tickers:
-                    raise RuntimeError('종목 목록이 비어 있습니다.')
-                tickers = list(tickers)
-            except Exception as exc:
-                self.stdout.write(self.style.ERROR(
-                    f"[CRAWLER_EXCHANGE_ERROR] exchange={exchange} "
-                    f"stage=ticker_list error={type(exc).__name__}: {exc}"
-                ))
-                continue
-
-            self.stdout.write(
-                f"[CRAWLER_START] exchange={exchange} "
-                f"tickers={len(tickers)} "
-                f"timeframes={len(active_timeframes)} "
-                f"tasks={len(tickers) * len(active_timeframes)}"
+        try:
+            stats = self._crawl_exchange(
+                'upbit',
+                tickers,
+                active_timeframes,
+                specs_by_tf,
             )
-            try:
-                stats = self._crawl_exchange(
-                    exchange,
-                    tickers,
-                    active_timeframes,
-                    specs_by_tf,
-                )
-            except Exception as exc:
-                self.stdout.write(self.style.ERROR(
-                    f"[CRAWLER_EXCHANGE_ERROR] exchange={exchange} "
-                    f"stage=crawl error={type(exc).__name__}: {exc}"
-                ))
-                continue
-
             for key in cycle_stats:
                 cycle_stats[key] += stats[key]
+        except Exception as exc:
+            self.stdout.write(self.style.ERROR(
+                f"[CRAWLER_EXCHANGE_ERROR] exchange=upbit "
+                f"stage=crawl error={type(exc).__name__}: {exc}"
+            ))
 
         self.stdout.write(
             "[CRAWLER_CYCLE_SUMMARY] "
@@ -141,6 +125,8 @@ class Command(BaseCommand):
             f"failed={cycle_stats['failed']} "
             f"retried={cycle_stats['retried']}"
         )
+
+
 
     def _crawl_exchange(
         self,
@@ -276,53 +262,14 @@ class Command(BaseCommand):
             'error': last_error,
         }
 
+
     @staticmethod
     def _fetch_dataframe(ticker, timeframe, exchange):
         from coinscreener.screener.engine import _throttle
+        _throttle()
+        return pyupbit.get_ohlcv(ticker, interval=timeframe, count=200)
 
-        _throttle(exchange)
-        if exchange == 'upbit':
-            return pyupbit.get_ohlcv(
-                ticker,
-                interval=timeframe,
-                count=200,
-            )
 
-        if exchange != 'bithumb':
-            raise ValueError(f'unsupported exchange: {exchange}')
-
-        bithumb_tf_map = {
-            'minute15': 'minute5',
-            'minute30': 'minute30',
-            'minute60': 'hour',
-            'minute240': 'hour',
-            'day': 'day',
-            'week': 'day',
-            'month': 'day',
-        }
-        df = pybithumb.get_ohlcv(
-            ticker,
-            interval=bithumb_tf_map.get(timeframe, 'day'),
-        )
-        if df is None or df.empty:
-            return df
-
-        aggregations = {
-            'open': 'first',
-            'high': 'max',
-            'low': 'min',
-            'close': 'last',
-            'volume': 'sum',
-        }
-        if timeframe == 'minute15':
-            df = df.resample('15min').agg(aggregations).dropna()
-        elif timeframe == 'minute240':
-            df = df.resample('4h').agg(aggregations).dropna()
-        elif timeframe == 'week':
-            df = df.resample('W-MON').agg(aggregations).dropna()
-        elif timeframe == 'month':
-            df = df.resample('ME').agg(aggregations).dropna()
-        return df.tail(200)
 
     @staticmethod
     def _store_fetch_result(result):

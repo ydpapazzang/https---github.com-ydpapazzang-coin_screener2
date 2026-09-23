@@ -71,28 +71,14 @@ def shorten_url(url: str) -> str:
         pass
     return url
 
-
-EXCHANGE_LABEL = {'upbit': '업비트', 'bithumb': '빗썸', 'kospi': '코스피'}
+EXCHANGE_LABEL = {'upbit': '업비트'}
 
 
 def market_link(exchange: str, symbol: str) -> str:
-    """거래소별 종목 딥링크(유니버설 링크) 생성.
-    모바일에서 해당 앱이 설치돼 있으면 앱으로, 없으면 모바일 웹으로 연결된다.
-    - 업비트 → upbit.com (업비트 앱)
-    - 빗썸   → bithumb.com (빗썸 앱)
-    - 코스피 → m.stock.naver.com (네이버 증권/주식)
-    """
-    coin = symbol.replace('KRW-', '').strip()
-    if exchange == 'upbit':
-        market = symbol if symbol.startswith('KRW-') else f'KRW-{coin}'
-        # 앱이 App Link로 등록하는 정식 코인 상세 경로 형식
-        return f'https://www.upbit.com/exchange/CRIX.UPBIT.{market}'
-    if exchange == 'bithumb':
-        return f'https://www.bithumb.com/react/trade/order/{coin}-KRW'
-    if exchange == 'kospi':
-        # 코스피는 symbol이 종목코드(예: 005930)
-        return f'https://stock.naver.com/domestic/stock/{symbol}/price'
-    return ''
+    """업비트 종목 딥링크 생성."""
+    market = symbol if symbol.startswith('KRW-') else f'KRW-{symbol.replace("KRW-", "").strip()}'
+    return f'https://www.upbit.com/exchange/CRIX.UPBIT.{market}'
+
 
 
 def _site_url() -> str:

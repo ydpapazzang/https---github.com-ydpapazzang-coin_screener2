@@ -1,123 +1,52 @@
 from django.core.management.base import BaseCommand
-import FinanceDataReader as fdr
 import requests
 import math
 from coinscreener.screener.models import MarketData
-from coinscreener.screener.kospi_filters import is_kospi_cash_management_product
+
 
 class Command(BaseCommand):
-    help = 'Fetches and updates market data (price, volume, amount, market cap) into the database.'
+    help = '업비트 마켓 데이터(현재가, 거래량, 거래대금)를 DB에 업데이트합니다.'
 
     def handle(self, *args, **options):
-        self.stdout.write("Starting MarketData update...")
-        
-        # 1. Update KOSPI
-        self.stdout.write("Updating KOSPI...")
-        try:
-            kospi_df = fdr.StockListing('KOSPI')
-            self._update_fdr_data('kospi', kospi_df)
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error fetching KOSPI: {e}"))
-            
-        # 2. Update ETF
-        self.stdout.write("Updating ETF/KR...")
-        try:
-            etf_df = fdr.StockListing('ETF/KR')
-            self._update_fdr_data('kospi', etf_df) # store as kospi to match existing logic if user searches for kospi
-        except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error fetching ETF: {e}"))
-            
-        # 3. Update Upbit
-        self.stdout.write("Updating Upbit...")
+        self.stdout.write("Starting MarketData update (Upbit only)...")
         try:
             self._update_upbit_data()
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error fetching Upbit: {e}"))
-            
         self.stdout.write(self.style.SUCCESS("Successfully updated MarketData!"))
-
-    def _update_fdr_data(self, exchange_name, df):
-        from django.db import transaction
-        
-        # Check if empty for fast path
-        is_empty = not MarketData.objects.filter(exchange=exchange_name).exists()
-        
-        objects_to_create = []
-        
-        with transaction.atomic():
-            for index, row in df.iterrows():
-                ticker = str(row.get('Code', ''))
-                name = str(row.get('Name', ''))
-                if not ticker:
-                    continue
-                if exchange_name == 'kospi' and is_kospi_cash_management_product(name):
-                    continue
-                
-                # Handle NaN values
-                def _clean_val(v):
-                    if v is None or (isinstance(v, float) and math.isnan(v)):
-                        return 0
-                    return v
-
-                close_price = _clean_val(row.get('Close', 0))
-                volume = _clean_val(row.get('Volume', 0))
-                amount = _clean_val(row.get('Amount', 0))
-                marcap = _clean_val(row.get('Marcap', 0))
-                
-                if is_empty:
-                    objects_to_create.append(MarketData(
-                        exchange=exchange_name,
-                        ticker=ticker,
-                        name=name,
-                        close_price=float(close_price),
-                        volume=float(volume),
-                        amount=float(amount),
-                        market_cap=int(marcap) if marcap else None,
-                    ))
-                else:
-                    MarketData.objects.update_or_create(
-                        exchange=exchange_name,
-                        ticker=ticker,
-                        defaults={
-                            'name': name,
-                            'close_price': float(close_price),
-                            'volume': float(volume),
-                            'amount': float(amount),
-                            'market_cap': int(marcap) if marcap else None,
-                        }
-                    )
-            
-            if is_empty and objects_to_create:
-                MarketData.objects.bulk_create(objects_to_create, batch_size=500)
 
     def _update_upbit_data(self):
         from django.db import transaction
-        # 1. Get Korean Names
+
+        # 한글 종목명 조회
         market_all_url = 'https://api.upbit.com/v1/market/all'
         market_all_data = requests.get(market_all_url).json()
-        name_dict = {item['market']: item['korean_name'] for item in market_all_data if item['market'].startswith('KRW-')}
-        
-        # 2. Get Tickers and 24h Data
+        name_dict = {
+            item['market']: item['korean_name']
+            for item in market_all_data
+            if item['market'].startswith('KRW-')
+        }
+
         tickers = list(name_dict.keys())
         chunk_size = 100
-        
+
         is_empty = not MarketData.objects.filter(exchange='upbit').exists()
         objects_to_create = []
-        
+
         with transaction.atomic():
             for i in range(0, len(tickers), chunk_size):
-                chunk = tickers[i:i+chunk_size]
+                chunk = tickers[i:i + chunk_size]
                 markets = ','.join(chunk)
                 url = f'https://api.upbit.com/v1/ticker?markets={markets}'
                 resp = requests.get(url).json()
-                
+
                 for item in resp:
                     ticker = item['market']
                     name = name_dict.get(ticker, ticker)
                     close_price = float(item.get('trade_price', 0))
                     volume = float(item.get('acc_trade_volume_24h', 0))
                     amount = float(item.get('acc_trade_price_24h', 0))
-                    
+
                     if is_empty:
                         objects_to_create.append(MarketData(
                             exchange='upbit',
@@ -140,6 +69,6 @@ class Command(BaseCommand):
                                 'market_cap': None,
                             }
                         )
-            
+
             if is_empty and objects_to_create:
                 MarketData.objects.bulk_create(objects_to_create, batch_size=500)

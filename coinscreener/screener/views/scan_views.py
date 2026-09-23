@@ -28,8 +28,8 @@ from ..ownership import (
 from ..scan_guard import acquire_scan_lease, release_scan_lease
 from ..scan_quota import consume_scan, get_scan_quota, grant_reward_credit
 from ..cron_auth import is_cron_request_authorized
-from ..kospi_filters import filter_kospi_products, is_kospi_cash_management_product
 from .. import telegram as tg
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,18 +57,17 @@ RESULT_CACHE_MAX_SECONDS = 300
 
 
 def _exchange_is_enabled(exchange):
-    """Crypto exchanges can be paused without serving stale cache data."""
-    return exchange == 'kospi' or exchange in settings.ENABLED_CRYPTO_EXCHANGES
+    """업비트만 허용."""
+    return exchange == 'upbit'
 
 
 def _effective_scan_limit(exchange, vol_limit, full=False):
     """상호작용 검색에 적용할 실질 스캔 상한을 반환.
-    - full=True 이거나 사용자가 명시적 vol_limit(>0)을 지정하면 그대로 둔다.
-    - vol_limit=0(전체) 이고 거래대금(-amount) 정렬이 신뢰 가능한 거래소(업비트/코스피)면
-      상위 DEFAULT_SCAN_LIMIT 만 스캔한다. (빗썸은 정렬이 거래량 순이 아니라 제외)"""
-    if vol_limit == 0 and not full and exchange in ('upbit', 'kospi'):
+    vol_limit=0(전체)이고 full=True가 아니면 거래대금 상위 DEFAULT_SCAN_LIMIT만 스캔한다."""
+    if vol_limit == 0 and not full:
         return DEFAULT_SCAN_LIMIT
     return vol_limit
+
 
 
 def _result_cache_max_age(conditions):
@@ -226,37 +225,30 @@ def _enrich_upbit_ticker_snapshot(tickers):
 
 
 
-def _get_tickers(exchange, vol_limit):
-    """거래소 티커 목록을 안정적으로 반환.
+def _get_tickers(vol_limit):
+    """업비트 티커 목록을 안정적으로 반환.
 
-    성능: 동일 (exchange, vol_limit) 요청은 _TICKERS_FRESH_TTL초 동안 캐시된 목록을
-    그대로 반환해, 매 검색마다 반복되던 실시간 시세 API 왕복을 제거한다.
+    동일 vol_limit 요청은 _TICKERS_FRESH_TTL초 동안 캐시된 목록을 반환해
+    반복 검색 시 API 왕복을 생략한다. 장애 시 last_good 캐시로 폴백."""
+    fresh_key = f"tickers_fresh_upbit_{vol_limit}"
+    last_good_key = f"tickers_lastgood_upbit_{vol_limit}"
 
-    안정성: 외부 API나 DB가 간헐적으로 실패해 빈 목록이 나오면 '0/0 종목'으로 검색이
-    멈추므로,
-      1) 원본 조회를 최대 2회 재시도하고,
-      2) 성공(비어있지 않음)하면 fresh 캐시(짧게)와 last_good 캐시(5분)에 저장,
-      3) 그래도 비면 마지막 정상 목록을 폴백으로 사용한다."""
-    fresh_key = f"tickers_fresh_{exchange}_{vol_limit}"
-    last_good_key = f"tickers_lastgood_{exchange}_{vol_limit}"
-
-    # 짧은 fresh 캐시 히트 시 시세 API 호출 없이 즉시 반환
+    # 짧은 fresh 캐시 히트 시 즉시 반환
     try:
         fresh = cache.get(fresh_key)
         if fresh:
-            return filter_kospi_products(fresh) if exchange == 'kospi' else fresh
+            return fresh
     except Exception:
         pass
 
     result = []
     for attempt in range(2):
         try:
-            result = _get_tickers_raw(exchange, vol_limit)
+            result = _get_tickers_raw(vol_limit)
         except Exception as e:
-            logger.error(f"_get_tickers_raw error ({exchange}): {e}", exc_info=True)
+            logger.error(f"_get_tickers_raw error: {e}", exc_info=True)
             result = []
         if result:
-            # fresh(짧게) + last_good(5분, 장애 폴백용) 동시 저장
             try:
                 cache.set(fresh_key, result, _TICKERS_FRESH_TTL)
                 cache.set(last_good_key, result, 300)
@@ -264,129 +256,73 @@ def _get_tickers(exchange, vol_limit):
                 pass
             return result
 
-    # 재시도해도 비어있으면 마지막 정상 목록으로 폴백
     fallback = cache.get(last_good_key)
     if fallback:
-        if exchange == 'kospi':
-            fallback = filter_kospi_products(fallback)
-        logger.warning(f"_get_tickers fallback to cached list for {exchange} ({len(fallback)} tickers)")
+        logger.warning(f"_get_tickers fallback to cached list ({len(fallback)} tickers)")
         return fallback
     return result
 
 
-def _get_tickers_raw(exchange, vol_limit):
-    """거래소·거래대금 조건에 맞는 티커 목록 반환 (API 직접 호출, DB는 보조)"""
-    global KOSPI_NAME_MAP
 
-    # 먼저 DB에 데이터가 있으면 DB에서 가져오기 (market_cap, amount 등 추가 정보 포함)
+
+def _get_tickers_raw(vol_limit):
+    """업비트 KRW 마켓 티커 목록 반환 (DB 우선, API 폴백)"""
+    # 1순위: DB MarketData (거래대금 내림차순 정렬, 한글명 포함)
     try:
         from ..models import MarketData
-        db_count = MarketData.objects.filter(exchange=exchange).count()
+        db_count = MarketData.objects.filter(exchange='upbit').count()
         if db_count > 0:
-            qs = MarketData.objects.filter(exchange=exchange).order_by('-amount')
+            qs = MarketData.objects.filter(exchange='upbit').order_by('-amount')
             result_list = list(qs.values('ticker', 'name', 'market_cap', 'amount'))
-            if exchange == 'kospi':
-                result_list = filter_kospi_products(result_list)
             if vol_limit:
                 result_list = result_list[:vol_limit]
-            
-            # 업비트인 경우, 실시간 가격과 등락률·24시간 거래대금을 일괄 갱신합니다.
-            if exchange == 'upbit':
-                _enrich_upbit_ticker_snapshot(result_list)
-
+            _enrich_upbit_ticker_snapshot(result_list)
             return result_list
     except Exception:
-        pass  # DB 사용 불가 시 아래 API 직접 호출로 폴백
+        pass
 
-    # DB에 데이터가 없으면 원래 방식대로 API 직접 호출
-    if exchange == 'kospi':
-        import FinanceDataReader as fdr
-        try:
-            etf_df = fdr.StockListing('ETF/KR')
-            
-            if 'Amount' in etf_df.columns:
-                etf_df = etf_df.sort_values(by='Amount', ascending=False)
-                
-            limit = vol_limit if vol_limit else len(etf_df)
-            
-            result = []
-            etf_code_col = 'Symbol' if 'Symbol' in etf_df.columns else 'Code'
-            for _, row in etf_df.iterrows():
-                ticker = str(row.get(etf_code_col, ''))
-                name = str(row.get('Name', ''))
-                if is_kospi_cash_management_product(name):
-                    continue
-                cache.set(f"kospi_name_{ticker}", name, 3600*24)
-                result.append({'ticker': ticker, 'name': name, 'market_cap': 0, 'amount': 0})
-                if len(result) >= limit:
-                    break
-            
-            return result
-        except Exception as e:
-            print(f"Error fetching KOSPI tickers: {e}")
+    # 2순위: pyupbit + 업비트 REST API 직접 호출
+    try:
+        import pyupbit, time as _t
+        all_tickers = None
+        for _i in range(3):
+            all_tickers = pyupbit.get_tickers(fiat="KRW")
+            if all_tickers:
+                break
+            _t.sleep(0.3)
+        if not all_tickers:
             return []
-    elif exchange == 'bithumb':
+
+        name_dict = {}
         try:
-            import pybithumb
-            all_tickers = pybithumb.get_tickers()
-            if not all_tickers:
-                return []
-            
-            if vol_limit:
-                all_tickers = all_tickers[:vol_limit]
+            market_all = requests.get('https://api.upbit.com/v1/market/all', timeout=5).json()
+            name_dict = {
+                item['market']: item['korean_name']
+                for item in market_all
+                if item['market'].startswith('KRW-')
+            }
+        except Exception:
+            pass
 
-            result = []
-            for t in all_tickers:
-                # 빗썸은 별도 한글명 API가 없으므로 티커 그대로 사용하거나 하드코딩 필요
-                # 편의상 티커를 이름으로 사용
-                result.append({
-                    'ticker': t,
-                    'name': t,
-                    'market_cap': 0,
-                    'amount': 0,
-                })
-            return result
-        except Exception as e:
-            print(f"Error fetching Bithumb tickers: {e}")
-            return []
-    else:
-        # 업비트 — pyupbit로 직접 가져오기
-        try:
-            import pyupbit, time as _t
-            all_tickers = None
-            for _i in range(3):  # 일시적 rate limit/네트워크 실패 대비 재시도
-                all_tickers = pyupbit.get_tickers(fiat="KRW")
-                if all_tickers:
-                    break
-                _t.sleep(0.3)
-            if not all_tickers:
-                return []
-            
-            # 이름 매핑을 위해 업비트 API 호출
-            import requests
-            name_dict = {}
-            try:
-                market_all = requests.get('https://api.upbit.com/v1/market/all', timeout=5).json()
-                name_dict = {item['market']: item['korean_name'] for item in market_all if item['market'].startswith('KRW-')}
-            except Exception:
-                pass
+        if vol_limit:
+            all_tickers = all_tickers[:vol_limit]
 
-            if vol_limit:
-                all_tickers = all_tickers[:vol_limit]
+        result = [
+            {
+                'ticker': t,
+                'name': name_dict.get(t, t.replace("KRW-", "")),
+                'market_cap': 0,
+                'amount': 0,
+            }
+            for t in all_tickers
+        ]
+        _enrich_upbit_ticker_snapshot(result)
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching Upbit tickers: {e}")
+        return []
 
-            result = []
-            for t in all_tickers:
-                result.append({
-                    'ticker': t,
-                    'name': name_dict.get(t, t.replace("KRW-", "")),
-                    'market_cap': 0,
-                    'amount': 0,
-                })
-            _enrich_upbit_ticker_snapshot(result)
-            return result
-        except Exception as e:
-            print(f"Error fetching Upbit tickers: {e}")
-            return []
+
 
 
 
@@ -399,10 +335,8 @@ def coin_search(request, strategy_id):
         messages.warning(request, "조건을 먼저 추가해주세요.")
         return redirect('strategy_detail', strategy_id=strategy_id)
 
-    exchange  = request.GET.get('exchange', 'upbit')
-    if not _exchange_is_enabled(exchange):
-        messages.warning(request, '빗썸 시세 수집은 서버 안정화를 위해 일시 중단되었습니다.')
-        return redirect('strategy_detail', strategy_id=strategy_id)
+    exchange  = 'upbit'
+
     # 사용자가 선택한 스캔 범위를 그대로 사용합니다. (0인 경우 전체 코인 스캔)
     try:
         vol_limit_param = request.GET.get('vol_limit')
@@ -545,14 +479,12 @@ def cron_prefetch(request):
                     active_timeframes.add(c.timeframe)
 
             tasks = []
-            for ex in ['upbit', 'kospi']:
-                tickers_info = _get_tickers(ex, 0)
-                for t_info in tickers_info:
-                    for tf in active_timeframes:
-                        if ex == 'kospi' and tf not in ['day', 'week', 'month']:
-                            continue
-                        tasks.append({"exchange": ex, "ticker": t_info["ticker"], "timeframe": tf})
+            tickers_info = _get_tickers(0)
+            for t_info in tickers_info:
+                for tf in active_timeframes:
+                    tasks.append({"exchange": "upbit", "ticker": t_info["ticker"], "timeframe": tf})
             cache.set('prefetch_tasks', tasks, 600)
+
 
         total_tasks = len(tasks)
         
@@ -811,14 +743,12 @@ def coin_search_stream(request, strategy_id):
             yield "data: " + json.dumps({"type": "error", "msg": "조건이 없습니다."}) + "\n\n"
             return
 
-        # (B) vol_limit=0(전체)이라도 full=1이 아니면 거래대금 상위 N만 스캔(업비트/코스피)
+        # (B) vol_limit=0(전체)이라도 full=1이 아니면 거래대금 상위 N만 스캔
         scan_limit = _effective_scan_limit(exchange, vol_limit, full_scan)
         _t_tickers0 = time.perf_counter()
-        tickers_data = _get_tickers(exchange, scan_limit)
-        # _get_tickers는 원본 조회 때 이미 업비트 시세 스냅샷을 보강하고, 그 결과를
-        # 짧게 캐시한다. 여기서 다시 API를 호출하면 한 번의 수동 검색에 같은 요청이
-        # 두 번 발생해 4~5초가 낭비된다.
+        tickers_data = _get_tickers(scan_limit)
         t_tickers = time.perf_counter() - _t_tickers0
+
         total   = len(tickers_data)
 
         # 티커를 못 불러오면(외부 API/DB 일시 장애) 조용히 멈추지 않고 명확히 알림

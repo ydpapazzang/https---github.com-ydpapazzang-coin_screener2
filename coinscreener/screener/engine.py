@@ -6,10 +6,10 @@ import numpy as np
 import threading
 import random
 import datetime
-import FinanceDataReader as fdr
 from django.core.cache import cache
 import logging
 import traceback
+
 
 logger = logging.getLogger(__name__)
 
@@ -23,30 +23,25 @@ def _safe_float(v):
         return 0.0
 
 
-# 거래소별 최소 요청 간격(초). 거래소마다 rate limit이 다르므로 분리한다.
-# 하나의 전역 스로틀로 묶으면 빗썸(티커 468개)이 업비트 한도(10req/s)에 발목잡혀
-# 콜드 스캔이 50초 이상 걸리던 문제가 있었다.
+# 업비트 요청 간격(초). Quotation API 10req/s 한도 방어 (~9/s)
 _RATE_INTERVALS = {
-    'upbit':   0.11,  # 업비트 Quotation 10req/s 한도 방어 (~9/s)
-    'bithumb': 0.02,  # 빗썸 공개 API는 관대 -> 사실상 워커 수로 제한 (상한 ~50/s)
-    'kospi':   0.10,  # FinanceDataReader 스크래핑 부하 완화
+    'upbit': 0.11,
 }
 _rate_locks = {ex: threading.Lock() for ex in _RATE_INTERVALS}
 _last_request_time = {ex: 0.0 for ex in _RATE_INTERVALS}
 
 
 def _throttle(exchange='upbit'):
-    """거래소별 토큰버킷 방식 속도 제한. 실제 API 호출 직전에만 최소 간격을
-    강제해 처리량을 극대화하면서 429를 방어한다. 거래소별로 카운터가 독립적이라
-    한 거래소 스캔이 다른 거래소 한도에 영향받지 않는다."""
-    ex = exchange if exchange in _RATE_INTERVALS else 'upbit'
-    interval = _RATE_INTERVALS[ex]
-    with _rate_locks[ex]:
+    """업비트 API 속도 제한. 실제 API 호출 직전에만 최소 간격을 강제해
+    처리량을 극대화하면서 429를 방어한다."""
+    interval = _RATE_INTERVALS.get('upbit', 0.11)
+    with _rate_locks['upbit']:
         now = time.time()
-        wait = interval - (now - _last_request_time[ex])
+        wait = interval - (now - _last_request_time['upbit'])
         if wait > 0:
             time.sleep(wait)
-        _last_request_time[ex] = time.time()
+        _last_request_time['upbit'] = time.time()
+
 
 
 # 타임프레임별 캔들 주기(초). 이 값보다 오래된 캐시는 '옛 캔들'이므로 재조회한다.
@@ -67,17 +62,12 @@ def max_cache_age(interval):
     return _TF_SECONDS.get(interval, 86400)
 
 
+
 def _resolve_exchange(ticker, exchange=None):
-    """티커가 어느 거래소인지 결정. exchange가 주어지면 우선하고,
-    없으면 티커 형식으로 추정한다. (빗썸 티커는 'BTC'처럼 밑줄이 없어
-    형식만으로는 코스피와 구분되지 않으므로 exchange 명시가 정확하다.)"""
-    if exchange in ('upbit', 'bithumb', 'kospi'):
-        return exchange
-    if ticker.startswith('KRW-'):
-        return 'upbit'
-    if '_' in ticker:
-        return 'bithumb'
-    return 'kospi'
+    """업비트 전용. exchange 인수는 하위 호환을 위해 유지하나 항상 'upbit' 반환."""
+    return 'upbit'
+
+
 
 
 def save_cache_payload(ticker, timeframe, data, frame_blob=None, retries=3):
@@ -177,57 +167,33 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
         import pyupbit
         ex = _resolve_exchange(ticker, exchange)
         for attempt in range(retries):
-            if ex == 'upbit':
-                # Upbit 캔들 API는 한 번에 최대 200개만 반환한다. 200개를
-                # 넘겨 요청하면 오래된 봉을 페이지로 이어 받아, 마지막 진행 봉을
-                # 제외한 뒤에도 MA200 같은 장기 지표를 계산할 수 있게 한다.
-                pages = []
-                before = None
-                previous_oldest = None
-                while sum(len(page) for page in pages) < count:
-                    already_loaded = sum(len(page) for page in pages)
-                    request_count = min(200, count - already_loaded)
-                    _throttle(ex)
-                    kwargs = {'interval': interval, 'count': request_count}
-                    if before is not None:
-                        kwargs['to'] = before
-                    page = pyupbit.get_ohlcv(ticker, **kwargs)
-                    if page is None or page.empty:
-                        break
-                    page = page.copy()
-                    pages.append(page)
-                    oldest = page.index.min()
-                    # API가 같은 최저 시각을 되풀이하면 무한 루프를 막는다.
-                    if oldest == previous_oldest or len(page) < request_count:
-                        break
-                    previous_oldest = oldest
-                    before = oldest.to_pydatetime() if hasattr(oldest, 'to_pydatetime') else oldest
-                if pages:
-                    df = pd.concat(pages).sort_index()
-                    df = df[~df.index.duplicated(keep='last')].tail(count)
-                else:
-                    df = None
-            elif ex == 'bithumb':
-                _throttle(ex)  # 실제 API 호출 직전 거래소별 속도 제한
-                import pybithumb
-                bithumb_tf_map = {'minute15': 'minute5', 'minute30': 'minute30', 'minute60': 'hour', 'minute240': 'hour', 'day': 'day', 'week': 'day', 'month': 'day'}
-                btf = bithumb_tf_map.get(interval, 'day')
-                df = pybithumb.get_ohlcv(ticker, interval=btf)
-                if df is not None and not df.empty:
-                    if interval == 'minute15': df = df.resample('15min').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    elif interval == 'minute240': df = df.resample('4h').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    elif interval == 'week': df = df.resample('W-MON').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    elif interval == 'month': df = df.resample('ME').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    df = df.tail(count)
-            else: # KOSPI
-                import FinanceDataReader as fdr
-                df = fdr.DataReader(ticker)
-                if df is not None and not df.empty:
-                    df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
-                    if interval == 'week': df = df.resample('W-MON').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    elif interval == 'month': df = df.resample('ME').agg({'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'}).dropna()
-                    df = df.tail(count)
-                    
+            # 업비트: 한 번에 최대 200개만 반환. 200개 초과 요청 시 페이지네이션.
+            pages = []
+            before = None
+            previous_oldest = None
+            while sum(len(page) for page in pages) < count:
+                already_loaded = sum(len(page) for page in pages)
+                request_count = min(200, count - already_loaded)
+                _throttle()
+                kwargs = {'interval': interval, 'count': request_count}
+                if before is not None:
+                    kwargs['to'] = before
+                page = pyupbit.get_ohlcv(ticker, **kwargs)
+                if page is None or page.empty:
+                    break
+                page = page.copy()
+                pages.append(page)
+                oldest = page.index.min()
+                if oldest == previous_oldest or len(page) < request_count:
+                    break
+                previous_oldest = oldest
+                before = oldest.to_pydatetime() if hasattr(oldest, 'to_pydatetime') else oldest
+            if pages:
+                df = pd.concat(pages).sort_index()
+                df = df[~df.index.duplicated(keep='last')].tail(count)
+            else:
+                df = None
+
             if df is not None and not df.empty:
                 df.index.name = None
                 cache.set(cache_key, df, min(180, max_cache_age(interval)))
@@ -243,8 +209,10 @@ def get_ohlcv_with_retry(ticker, interval, count=200, retries=3, delay=0.3,
             time.sleep(delay)
     except Exception as e:
         logger.error(f"Live API fallback error for {ticker}: {e}")
-        
+
     return None
+
+
 
 
 def calculate_rsi(ohlc: pd.DataFrame, period: int = 14):

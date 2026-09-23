@@ -75,7 +75,7 @@ class P1ScheduledScanTestCase(TestCase):
             enabled=True,
             alert_hour=10,
             alert_min=0,
-            exchange='kospi',
+            exchange='upbit',
             vol_limit=0,
         )
         OHLCVCache.objects.create(
@@ -180,22 +180,4 @@ class P1HealthEndpointTestCase(TestCase):
         send_message.assert_not_called()
 
 
-class P1AlertDefaultTimeTestCase(TestCase):
-    def setUp(self):
-        self.strategy = Strategy.objects.create(name='KOSPI time')
-        session = self.client.session
-        session['owner_key'] = 'owner-test'
-        session.save()
-        self.strategy.owner_key = 'owner-test'
-        self.strategy.save(update_fields=['owner_key'])
-
-    def test_kospi_alert_defaults_to_ten_kst(self):
-        response = self.client.post(
-            reverse('alert_save', args=[self.strategy.id]),
-            data='{"enabled": true, "exchange": "kospi", "vol_limit": 0}',
-            content_type='application/json',
-        )
-        self.assertEqual(response.status_code, 200)
-        setting = AlertSetting.objects.get(strategy=self.strategy)
-        self.assertEqual((setting.alert_hour, setting.alert_min), (10, 0))
 

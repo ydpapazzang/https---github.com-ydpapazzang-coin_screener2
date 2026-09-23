@@ -42,14 +42,12 @@ def _get_cron_secret():
     return os.environ.get('CRON_SECRET', '')
 
 
-
 def clear_strategy_cache(strategy_id):
-    exchanges = ['upbit', 'bithumb']
     vol_limits = [0, 30, 50, 80, 100, 200]
     cache.delete(f"strategy_results_{strategy_id}")
-    for ex in exchanges:
-        for vol in vol_limits:
-            cache.delete(f"strategy_results_{strategy_id}_{ex}_{vol}")
+    for vol in vol_limits:
+        cache.delete(f"strategy_results_{strategy_id}_upbit_{vol}")
+
 
 
 def strategy_list(request):
@@ -538,10 +536,8 @@ def alert_save(request, strategy_id):
         return JsonResponse({'ok': False, 'error': f'숫자 형식 오류: {e}'}, status=400)
 
     enabled   = bool(body.get('enabled', False))
-    exchange  = body.get('exchange', 'upbit')
-    # KOSPI 전체 스캔은 단타·스윙 배치와 겹치지 않게 KST 10시
-    # (유럽 서머타임 기준 03시)로 분산한다.
-    alert_hour = 10 if exchange == 'kospi' else 9
+    exchange  = 'upbit'
+    alert_hour = 9
     alert_min = 0
     send_test = bool(body.get('send_test', False))
 
@@ -570,15 +566,13 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
     """
     주어진 전략과 티커 목록을 대상으로 스캔하고,
     알림 이력 저장 및 12시간 중복 방지 필터링을 거친 결과를 반환합니다.
-    exchange 명시 시 거래소 라우팅이 정확해짐(빗썸).
     """
     from django.utils import timezone
     import datetime
 
-    _bulk_prefetch_ohlcv(tickers, conditions, exchange=exchange)
+    _bulk_prefetch_ohlcv(tickers, conditions, exchange='upbit')
 
     # 최근 12시간 안에 실제 발송 대상으로 기록된 종목은 다시 보내지 않는다.
-    # 중복 스캔 자체는 이력에 남기되 is_notified=False로 구분한다.
     duplicate_cutoff = timezone.now() - datetime.timedelta(hours=12)
     recently_notified = set(
         AlertHistory.objects.filter(
@@ -593,7 +587,7 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
     def _proc(t_data):
         ticker = t_data['ticker'] if isinstance(t_data, dict) else t_data
         fallback_name = ticker.replace('KRW-', '')
-        name = t_data.get('name', fallback_name) if isinstance(t_data, dict) else cache.get(f"kospi_name_{ticker}", fallback_name)
+        name = t_data.get('name', fallback_name) if isinstance(t_data, dict) else fallback_name
         fast_price = t_data.get('current_price') if isinstance(t_data, dict) else None
         fast_change_rate = t_data.get('change_rate') if isinstance(t_data, dict) else None
 
@@ -602,7 +596,7 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
                 ticker, conditions,
                 current_price=fast_price,
                 current_change_rate=fast_change_rate,
-                exchange=exchange,
+                exchange='upbit',
                 persist_db=False,
             )
             if is_match and price:
@@ -628,9 +622,6 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
             if r:
                 results.append(r)
 
-    # 워커는 계산만 담당하고 SQLite 쓰기는 요청 스레드에서 한 번에 수행한다.
-    # 여러 워커가 update/create를 동시에 실행할 때 발생하던 database is locked와
-    # 조용한 매칭 누락을 방지한다.
     AlertHistory.objects.bulk_create([
         AlertHistory(
             strategy=strategy,
@@ -644,12 +635,8 @@ def process_scan_and_alert(strategy, tickers, conditions, exchange='upbit'):
         for r in results
     ])
 
-    # 거래대금 순으로 정렬
     results.sort(key=lambda x: x.get('volume', 0), reverse=True)
-    
-    # 텔레그램용 결과: 중복 발송 방지 처리된(should_notify=True) 코인들만 선별
     tg_results = [r for r in results if r['should_notify']]
-    
     return results, tg_results
 
 
@@ -669,16 +656,16 @@ def alert_send_now(request, strategy_id):
     except Exception:
         body = {}
 
-    # body 파싱 실패해도 안전하게 기본값 사용
-    exchange  = body.get('exchange', 'upbit') or 'upbit'
+    exchange  = 'upbit'
     try:
         vol_limit_val = body.get('vol_limit')
         vol_limit = int(vol_limit_val) if vol_limit_val is not None else 0
     except (ValueError, TypeError):
         vol_limit = 0
 
-    tickers = _get_tickers(exchange, vol_limit)
-    results, tg_results = process_scan_and_alert(strategy, tickers, conditions, exchange=exchange)
+    tickers = _get_tickers(vol_limit)
+    results, tg_results = process_scan_and_alert(strategy, tickers, conditions, exchange='upbit')
+
 
     if results and not tg_results:
         return JsonResponse({
@@ -709,41 +696,18 @@ def open_market(request):
 
     # Android: 앱 커스텀 스킴을 intent로 시도한다.
     # https App Link는 앱이 등록하지 않아 실패했으므로, 커스텀 스킴(upbit:// 등) + 패키지 명시로 앱에 직접 전달.
-    # 스킴 host/path는 앱마다 다르며 미검증. 실패 시 browser_fallback_url로 웹 폴백.
+    # 업비트 전용 딥링크
     market = sym if sym.startswith('KRW-') else f'KRW-{coin}'
-    ANDROID_PKG = {
-        'upbit':   'com.dunamu.exchange',
-        'bithumb': 'com.btckorea.bithumb',
-        'kospi':   'com.nhn.android.search',
-    }
-    # (scheme, scheme 뒤 host+path+query)
-    SCHEME_TARGET = {
-        'upbit':   ('upbit',   f'exchange?code=CRIX.UPBIT.{market}'),
-        'bithumb': ('bithumb', f'fx/trade?coinType={coin}&crncCd=KRW'),
-    }
+    android_intent = (
+        f"intent://exchange?code=CRIX.UPBIT.{market}#Intent;scheme=upbit;"
+        f"package=com.dunamu.exchange;S.browser_fallback_url={fb};end"
+    )
     host_path = web_url.replace('https://', '').replace('http://', '')
-    if ex in SCHEME_TARGET:
-        scheme, target = SCHEME_TARGET[ex]
-        pkg = ANDROID_PKG.get(ex, '')
-        android_intent = (f"intent://{target}#Intent;scheme={scheme};"
-                          f"package={pkg};S.browser_fallback_url={fb};end")
-    else:
-        # 코스피 등: https App Link + 패키지(네이버앱)
-        pkg = ANDROID_PKG.get(ex, '')
-        pkg_part = f"package={pkg};" if pkg else ""
-        android_intent = (f"intent://{host_path}#Intent;scheme=https;"
-                          f"{pkg_part}S.browser_fallback_url={fb};end")
-
-    # Chrome 재오픈(2차 시도용): App Link 검증이 켜진 기기에서 앱으로 전환
-    android_chrome = (f"intent://{host_path}#Intent;scheme=https;"
-                      f"package=com.android.chrome;S.browser_fallback_url={fb};end")
-
-    # iOS: 커스텀 스킴 best-effort (실패 시 웹 폴백)
-    ios_scheme = ''
-    if ex == 'upbit':
-        ios_scheme = f"upbit://exchange?code=CRIX.UPBIT.{market}"
-    elif ex == 'bithumb':
-        ios_scheme = f"bithumb://fx/trade?coinType={coin}&crncCd=KRW"
+    android_chrome = (
+        f"intent://{host_path}#Intent;scheme=https;"
+        f"package=com.android.chrome;S.browser_fallback_url={fb};end"
+    )
+    ios_scheme = f"upbit://exchange?code=CRIX.UPBIT.{market}"
 
     return render(request, 'screener/open_redirect.html', {
         'web_url': web_url,
@@ -751,6 +715,7 @@ def open_market(request):
         'android_chrome': android_chrome,
         'ios_scheme': ios_scheme,
         'symbol': sym,
-        'exchange': ex,
+        'exchange': 'upbit',
     })
+
 
